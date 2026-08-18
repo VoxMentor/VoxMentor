@@ -75,3 +75,6 @@ build/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# ===== Project specific =====
+autosetup/
