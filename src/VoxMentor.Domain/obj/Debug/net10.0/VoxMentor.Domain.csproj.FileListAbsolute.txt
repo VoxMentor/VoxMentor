@@ -1,0 +1,12 @@
+C:\Users\Dell\Desktop\New folder\VoxMentor\src\VoxMentor.Domain\bin\Debug\net10.0\VoxMentor.Domain.deps.json
+C:\Users\Dell\Desktop\New folder\VoxMentor\src\VoxMentor.Domain\bin\Debug\net10.0\VoxMentor.Domain.dll
+C:\Users\Dell\Desktop\New folder\VoxMentor\src\VoxMentor.Domain\bin\Debug\net10.0\VoxMentor.Domain.pdb
+C:\Users\Dell\Desktop\New folder\VoxMentor\src\VoxMentor.Domain\obj\Debug\net10.0\VoxMentor.Domain.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Dell\Desktop\New folder\VoxMentor\src\VoxMentor.Domain\obj\Debug\net10.0\VoxMentor.Domain.AssemblyInfoInputs.cache
+C:\Users\Dell\Desktop\New folder\VoxMentor\src\VoxMentor.Domain\obj\Debug\net10.0\VoxMentor.Domain.AssemblyInfo.cs
+C:\Users\Dell\Desktop\New folder\VoxMentor\src\VoxMentor.Domain\obj\Debug\net10.0\VoxMentor.Domain.csproj.CoreCompileInputs.cache
+C:\Users\Dell\Desktop\New folder\VoxMentor\src\VoxMentor.Domain\obj\Debug\net10.0\VoxMentor.Domain.sourcelink.json
+C:\Users\Dell\Desktop\New folder\VoxMentor\src\VoxMentor.Domain\obj\Debug\net10.0\VoxMentor.Domain.dll
+C:\Users\Dell\Desktop\New folder\VoxMentor\src\VoxMentor.Domain\obj\Debug\net10.0\refint\VoxMentor.Domain.dll
+C:\Users\Dell\Desktop\New folder\VoxMentor\src\VoxMentor.Domain\obj\Debug\net10.0\VoxMentor.Domain.pdb
+C:\Users\Dell\Desktop\New folder\VoxMentor\src\VoxMentor.Domain\obj\Debug\net10.0\ref\VoxMentor.Domain.dll

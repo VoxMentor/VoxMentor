@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "Wyd5MDYly3E=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\Dell\\Desktop\\New folder\\VoxMentor\\src\\VoxMentor.CodeExecService\\VoxMentor.CodeExecService.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\Dell\\.nuget\\packages\\microsoft.aspnetcore.openapi\\10.0.11\\microsoft.aspnetcore.openapi.10.0.11.nupkg.sha512",
+    "C:\\Users\\Dell\\.nuget\\packages\\microsoft.openapi\\2.7.5\\microsoft.openapi.2.7.5.nupkg.sha512"
+  ],
+  "logs": []
+}
