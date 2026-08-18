@@ -1,0 +1,6 @@
+@VoxMentor.TutorService_HostAddress = http://localhost:5050
+
+GET {{VoxMentor.TutorService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

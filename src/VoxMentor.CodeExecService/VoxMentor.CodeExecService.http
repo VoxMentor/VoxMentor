@@ -1,0 +1,6 @@
+@VoxMentor.CodeExecService_HostAddress = http://localhost:5167
+
+GET {{VoxMentor.CodeExecService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
