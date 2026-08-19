@@ -9,5 +9,5 @@ public record RegisterCommand(
     string Password
 ) : IRequest<ApiResponse<RegisterResponseDto>>
 {
-    public override string ToString() => $"RegisterCommand {{ FullName = {FullName}, Email = {Email}, Password = *** }}";
+    public override string ToString() => "RegisterCommand { SensitiveFields = *** }";
 }

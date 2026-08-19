@@ -8,5 +8,5 @@ public record LoginCommand(
     string Password
 ) : IRequest<ApiResponse<LoginResultDto>>
 {
-    public override string ToString() => $"LoginCommand {{ Email = {Email}, Password = *** }}";
+    public override string ToString() => "LoginCommand { SensitiveFields = *** }";
 }
