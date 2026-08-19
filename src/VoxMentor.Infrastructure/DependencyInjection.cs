@@ -35,13 +35,22 @@ public static class DependencyInjection
             options.User.RequireUniqueEmail = true;
         })
         .AddEntityFrameworkStores<ApplicationDbContext>()
-        .AddDefaultTokenProviders();
+        .AddDefaultTokenProviders()
+        .AddSignInManager();
 
         var jwtSettings = new JwtSettings();
         configuration.Bind(JwtSettings.SectionName, jwtSettings);
         services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
 
+        if (string.IsNullOrWhiteSpace(jwtSettings.Secret) ||
+            Encoding.UTF8.GetByteCount(jwtSettings.Secret) < 32)
+        {
+            throw new InvalidOperationException(
+                "JwtSettings:Secret must be configured via deployment secret storage and be at least 32 bytes long.");
+        }
+
         services.AddSingleton<IJwtTokenGenerator, JwtTokenGenerator>();
+        services.AddSingleton<IRefreshTokenHasher, RefreshTokenHasher>();
         services.AddScoped<IHealthService, HealthService>();
 
         services.AddAuthentication(options =>
@@ -82,7 +91,8 @@ public static class DependencyInjection
     {
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            return "Host=localhost;Database=voxmentordb;Username=postgres;Password=postgres;";
+            throw new InvalidOperationException(
+                "The 'ConnectionStrings:DefaultConnection' configuration value is missing. Provide a valid PostgreSQL connection string via deployment configuration.");
         }
 
         if (connectionString.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) ||
@@ -112,7 +122,7 @@ public static class DependencyInjection
                     user = Uri.UnescapeDataString(user);
                     pass = Uri.UnescapeDataString(pass);
 
-                    return $"Host={host};Port={port};Database={dbName};Username={user};Password={pass};Ssl Mode=Require;Trust Server Certificate=true;";
+                    return $"Host={host};Port={port};Database={dbName};Username={user};Password={pass};Ssl Mode=VerifyFull;";
                 }
             }
             catch

@@ -28,8 +28,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         builder.Entity<RefreshToken>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.Token).IsRequired();
-            entity.HasIndex(e => e.Token).IsUnique();
+            entity.Property(e => e.TokenHash).IsRequired();
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+            entity.Property(e => e.Version).IsConcurrencyToken();
 
             entity.HasOne(e => e.User)
                 .WithMany()

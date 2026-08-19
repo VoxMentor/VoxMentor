@@ -18,7 +18,7 @@ public class JwtTokenGenerator : IJwtTokenGenerator
         _jwtSettings = jwtOptions.Value;
     }
 
-    public (string Token, DateTime Expiration) GenerateAccessToken(ApplicationUser user, IList<string> roles)
+    public (string Token, DateTimeOffset Expiration) GenerateAccessToken(ApplicationUser user, IList<string> roles)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -36,13 +36,13 @@ public class JwtTokenGenerator : IJwtTokenGenerator
             claims.Add(new Claim(ClaimTypes.Role, role));
         }
 
-        var expiration = DateTime.UtcNow.AddMinutes(_jwtSettings.AccessTokenExpirationMinutes);
+        var expiration = DateTimeOffset.UtcNow.AddMinutes(_jwtSettings.AccessTokenExpirationMinutes);
 
         var token = new JwtSecurityToken(
             issuer: _jwtSettings.Issuer,
             audience: _jwtSettings.Audience,
             claims: claims,
-            expires: expiration,
+            expires: expiration.UtcDateTime,
             signingCredentials: credentials);
 
         var tokenHandler = new JwtSecurityTokenHandler();

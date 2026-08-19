@@ -165,7 +165,8 @@ namespace VoxMentor.Infrastructure.Migrations
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     UserId = table.Column<string>(type: "text", nullable: false),
-                    Token = table.Column<string>(type: "text", nullable: false),
+                    TokenHash = table.Column<string>(type: "text", nullable: false),
+                    Version = table.Column<string>(type: "text", nullable: false),
                     ExpiryTime = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     IsRevoked = table.Column<bool>(type: "boolean", nullable: false),
                     CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
@@ -220,9 +221,9 @@ namespace VoxMentor.Infrastructure.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_RefreshTokens_Token",
+                name: "IX_RefreshTokens_TokenHash",
                 table: "RefreshTokens",
-                column: "Token",
+                column: "TokenHash",
                 unique: true);
 
             migrationBuilder.CreateIndex(

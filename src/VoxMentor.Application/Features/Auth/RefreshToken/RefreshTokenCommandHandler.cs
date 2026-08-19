@@ -14,15 +14,18 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, A
     private readonly IApplicationDbContext _dbContext;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IJwtTokenGenerator _jwtTokenGenerator;
+    private readonly IRefreshTokenHasher _refreshTokenHasher;
 
     public RefreshTokenCommandHandler(
         IApplicationDbContext dbContext,
         UserManager<ApplicationUser> userManager,
-        IJwtTokenGenerator jwtTokenGenerator)
+        IJwtTokenGenerator jwtTokenGenerator,
+        IRefreshTokenHasher refreshTokenHasher)
     {
         _dbContext = dbContext;
         _userManager = userManager;
         _jwtTokenGenerator = jwtTokenGenerator;
+        _refreshTokenHasher = refreshTokenHasher;
     }
 
     public async Task<ApiResponse<LoginResultDto>> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
@@ -32,9 +35,11 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, A
             throw new UnauthorizedAccessException("Refresh token is required.");
         }
 
+        var tokenHash = _refreshTokenHasher.Hash(request.RefreshToken);
+
         var existingToken = await _dbContext.RefreshTokens
             .Include(t => t.User)
-            .FirstOrDefaultAsync(t => t.Token == request.RefreshToken, cancellationToken);
+            .FirstOrDefaultAsync(t => t.TokenHash == tokenHash, cancellationToken);
 
         if (existingToken == null || existingToken.IsRevoked || existingToken.ExpiryTime <= DateTimeOffset.UtcNow)
         {
@@ -49,6 +54,7 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, A
 
         existingToken.IsRevoked = true;
         existingToken.RevokedAt = DateTimeOffset.UtcNow;
+        existingToken.Version = Guid.NewGuid().ToString();
 
         var roles = await _userManager.GetRolesAsync(user);
         var (newAccessToken, accessExpiration) = _jwtTokenGenerator.GenerateAccessToken(user, roles);
@@ -57,13 +63,21 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, A
         var newRefreshTokenEntity = new RefreshTokenEntity
         {
             UserId = user.Id,
-            Token = newRefreshToken,
+            TokenHash = _refreshTokenHasher.Hash(newRefreshToken),
             ExpiryTime = refreshExpiration,
             CreatedAt = DateTimeOffset.UtcNow
         };
 
         _dbContext.RefreshTokens.Add(newRefreshTokenEntity);
-        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new UnauthorizedAccessException("Invalid or expired refresh token.");
+        }
 
         var userDto = new LoginResponseDto
         {

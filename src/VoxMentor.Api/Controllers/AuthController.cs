@@ -74,16 +74,17 @@ public class AuthController : ControllerBase
         var command = new LogoutCommand(refreshToken);
         var response = await _sender.Send(command, cancellationToken);
 
-        Response.Cookies.Delete("access_token");
-        Response.Cookies.Delete("refresh_token");
+        Response.Cookies.Delete("access_token", new CookieOptions { Path = "/api/v1" });
+        Response.Cookies.Delete("refresh_token", new CookieOptions { Path = "/api/v1/auth" });
 
         return Ok(response);
     }
 
-    private void SetTokenCookies(string accessToken, DateTime accessExpiration, string refreshToken, DateTimeOffset refreshExpiration)
+    private void SetTokenCookies(string accessToken, DateTimeOffset accessExpiration, string refreshToken, DateTimeOffset refreshExpiration)
     {
         var accessCookieOptions = new CookieOptions
         {
+            Path = "/api/v1",
             HttpOnly = true,
             Secure = true,
             SameSite = SameSiteMode.Lax,
@@ -92,6 +93,7 @@ public class AuthController : ControllerBase
 
         var refreshCookieOptions = new CookieOptions
         {
+            Path = "/api/v1/auth",
             HttpOnly = true,
             Secure = true,
             SameSite = SameSiteMode.Lax,

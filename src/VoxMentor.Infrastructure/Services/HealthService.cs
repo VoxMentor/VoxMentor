@@ -31,6 +31,10 @@ public class HealthService : IHealthService
                 isHealthy = false;
             }
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch
         {
             checks["postgres"] = "Unhealthy";

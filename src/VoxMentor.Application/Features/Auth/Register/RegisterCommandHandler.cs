@@ -50,6 +50,7 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, ApiRespon
         var roleResult = await _userManager.AddToRoleAsync(user, assignedRole);
         if (!roleResult.Succeeded)
         {
+            await _userManager.DeleteAsync(user);
             var errors = roleResult.Errors
                 .GroupBy(e => e.Code)
                 .ToDictionary(g => g.Key, g => g.Select(e => e.Description).ToArray());

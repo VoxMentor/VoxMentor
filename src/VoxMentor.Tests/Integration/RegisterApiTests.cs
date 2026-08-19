@@ -19,6 +19,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseSetting("ConnectionStrings:DefaultConnection",
+            "Host=localhost;Port=5432;Database=voxmentor-tests;Username=postgres;Password=postgres;Ssl Mode=VerifyFull;");
+        builder.UseSetting("JwtSettings:Secret", "TestJwtSecretKeyThatIsAtLeast32BytesLong!!");
+
         builder.ConfigureServices(services =>
         {
             var descriptor = services.SingleOrDefault(

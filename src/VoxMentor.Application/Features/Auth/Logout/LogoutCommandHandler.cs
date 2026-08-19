@@ -8,18 +8,21 @@ namespace VoxMentor.Application.Features.Auth.Logout;
 public class LogoutCommandHandler : IRequestHandler<LogoutCommand, ApiResponse<object>>
 {
     private readonly IApplicationDbContext _dbContext;
+    private readonly IRefreshTokenHasher _refreshTokenHasher;
 
-    public LogoutCommandHandler(IApplicationDbContext dbContext)
+    public LogoutCommandHandler(IApplicationDbContext dbContext, IRefreshTokenHasher refreshTokenHasher)
     {
         _dbContext = dbContext;
+        _refreshTokenHasher = refreshTokenHasher;
     }
 
     public async Task<ApiResponse<object>> Handle(LogoutCommand request, CancellationToken cancellationToken)
     {
         if (!string.IsNullOrWhiteSpace(request.RefreshToken))
         {
+            var tokenHash = _refreshTokenHasher.Hash(request.RefreshToken);
             var tokenEntity = await _dbContext.RefreshTokens
-                .FirstOrDefaultAsync(t => t.Token == request.RefreshToken, cancellationToken);
+                .FirstOrDefaultAsync(t => t.TokenHash == tokenHash, cancellationToken);
 
             if (tokenEntity != null && !tokenEntity.IsRevoked)
             {

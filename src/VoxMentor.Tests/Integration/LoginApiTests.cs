@@ -104,6 +104,47 @@ public class LoginApiTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
+    public async Task RefreshToken_ConcurrentRequests_ExactlyOneSucceeds()
+    {
+        var registerRequest = new
+        {
+            fullName = "Concurrent Refresh User",
+            email = "concurrentrefresh@example.com",
+            password = "Password@123"
+        };
+        await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
+
+        var loginRequest = new
+        {
+            email = "concurrentrefresh@example.com",
+            password = "Password@123"
+        };
+        var loginResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", loginRequest);
+        Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
+
+        var cookies = loginResponse.Headers.GetValues("Set-Cookie").ToList();
+        var refreshCookieHeader = cookies.FirstOrDefault(c => c.StartsWith("refresh_token="));
+        Assert.NotNull(refreshCookieHeader);
+        var refreshTokenValue = refreshCookieHeader.Split(';')[0];
+
+        var firstMessage = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/refresh");
+        firstMessage.Headers.Add("Cookie", refreshTokenValue);
+        var secondMessage = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/refresh");
+        secondMessage.Headers.Add("Cookie", refreshTokenValue);
+
+        var results = await Task.WhenAll(
+            _client.SendAsync(firstMessage),
+            _client.SendAsync(secondMessage));
+
+        var statusCodes = results.Select(r => r.StatusCode).OrderBy(s => s).ToList();
+        Assert.Equal(2, statusCodes.Count);
+        Assert.Contains(HttpStatusCode.OK, statusCodes);
+        Assert.Contains(HttpStatusCode.Unauthorized, statusCodes);
+        Assert.Equal(1, statusCodes.Count(s => s == HttpStatusCode.OK));
+        Assert.Equal(1, statusCodes.Count(s => s == HttpStatusCode.Unauthorized));
+    }
+
+    [Fact]
     public async Task Login_InvalidPassword_Returns401Unauthorized()
     {
         var registerRequest = new

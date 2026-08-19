@@ -7,4 +7,7 @@ public record RegisterCommand(
     string FullName,
     string Email,
     string Password
-) : IRequest<ApiResponse<RegisterResponseDto>>;
+) : IRequest<ApiResponse<RegisterResponseDto>>
+{
+    public override string ToString() => $"RegisterCommand {{ FullName = {FullName}, Email = {Email}, Password = *** }}";
+}
