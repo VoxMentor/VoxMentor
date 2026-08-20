@@ -1,4 +1,6 @@
+using System.Security.Claims;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Features.Auth.Login;
@@ -78,6 +80,34 @@ public class AuthController : ControllerBase
         Response.Cookies.Delete("refresh_token", new CookieOptions { Path = "/api/v1/auth" });
 
         return Ok(response);
+    }
+
+    [Authorize]
+    [HttpGet("me")]
+    [ProducesResponseType(typeof(ApiResponse<LoginResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public IActionResult Me()
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                     ?? User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
+        var email = User.FindFirst(ClaimTypes.Email)?.Value
+                    ?? User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Email)?.Value;
+        var name = User.FindFirst(ClaimTypes.Name)?.Value
+                   ?? User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Name)?.Value;
+        var roles = User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList();
+
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var user = new LoginResponseDto
+        {
+            Id = userId,
+            FullName = name ?? string.Empty,
+            Email = email ?? string.Empty,
+            Roles = roles
+        };
+
+        return Ok(ApiResponse<LoginResponseDto>.SuccessResult(user));
     }
 
     private void SetTokenCookies(string accessToken, DateTimeOffset accessExpiration, string refreshToken, DateTimeOffset refreshExpiration)
