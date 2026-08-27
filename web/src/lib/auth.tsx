@@ -6,6 +6,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
   type ReactNode,
 } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -17,6 +18,8 @@ interface AuthContextType {
   setUser: (user: LoginResponse | null) => void;
   logout: () => Promise<void>;
 }
+
+let authCheckVersion = 0;
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
@@ -30,22 +33,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
+  const checkAuthStartVersion = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
+    const thisCheckVersion = ++authCheckVersion;
+    checkAuthStartVersion.current = thisCheckVersion;
 
     async function checkAuth() {
       try {
         const me = await api.me();
-        if (!cancelled) {
+        if (
+          !cancelled &&
+          checkAuthStartVersion.current === authCheckVersion
+        ) {
           setUser(me);
+          setLoading(false);
         }
       } catch {
-        if (!cancelled) {
+        if (
+          !cancelled &&
+          checkAuthStartVersion.current === authCheckVersion
+        ) {
           setUser(null);
-        }
-      } finally {
-        if (!cancelled) {
           setLoading(false);
         }
       }
@@ -71,12 +81,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, loading, pathname, router]);
 
   const logout = useCallback(async () => {
-    try {
-      await api.logout();
-    } finally {
-      setUser(null);
-      router.replace("/login");
-    }
+    ++authCheckVersion;
+    await api
+      .logout()
+      .catch(() => {})
+      .finally(() => {
+        setUser(null);
+        router.replace("/login");
+      });
   }, [router]);
 
   return (
@@ -88,4 +100,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   return useContext(AuthContext);
+}
+
+export function invalidateAuthCheck() {
+  ++authCheckVersion;
 }

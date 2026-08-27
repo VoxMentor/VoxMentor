@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useAuth, invalidateAuthCheck } from "@/lib/auth";
 import AuthFormShell from "@/components/AuthFormShell";
 
 export default function RegisterPage() {
@@ -21,9 +21,9 @@ export default function RegisterPage() {
     setError("");
     setLoading(true);
     try {
-      const user = await api.register({ fullName, email, password });
-      setUser(user);
-      router.push("/dashboard");
+      await api.register({ fullName, email, password });
+      invalidateAuthCheck();
+      router.push("/login");
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);

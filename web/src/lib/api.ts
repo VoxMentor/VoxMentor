@@ -62,6 +62,11 @@ export interface RegisterRequest {
   password: string;
 }
 
+export interface RegisterResponse {
+  message: string;
+  email: string;
+}
+
 export interface LoginRequest {
   email: string;
   password: string;
@@ -69,7 +74,7 @@ export interface LoginRequest {
 
 export const api = {
   register: (data: RegisterRequest) =>
-    request<LoginResponse>("/v1/auth/register", {
+    request<RegisterResponse>("/v1/auth/register", {
       method: "POST",
       body: JSON.stringify(data),
     }),

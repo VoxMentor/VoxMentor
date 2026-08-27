@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useAuth, invalidateAuthCheck } from "@/lib/auth";
 import AuthFormShell from "@/components/AuthFormShell";
 
 export default function LoginPage() {
@@ -21,6 +21,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const user = await api.login({ email, password });
+      invalidateAuthCheck();
       setUser(user);
       router.push("/dashboard");
     } catch (err) {
