@@ -30,6 +30,9 @@ nunit-*.xml
 .idea/
 *.DotSettings.user
 
+# ===== .NET — dev config contains secrets, never commit =====
+appsettings.Development.json
+
 # ===== Node / Next.js =====
 node_modules/
 .next/
