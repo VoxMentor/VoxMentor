@@ -1,12 +1,18 @@
 import type { NextConfig } from "next";
 
+const getBackendOrigin = (): string => {
+  const origin = process.env.BACKEND_ORIGIN;
+  if (!origin) {
+    throw new Error(
+      "BACKEND_ORIGIN is not configured. Set it in your environment or .env file."
+    );
+  }
+  return origin;
+};
+
 const nextConfig: NextConfig = {
   async rewrites() {
-    const destination = process.env.BACKEND_ORIGIN;
-
-    if (!destination) {
-      return [];
-    }
+    const destination = getBackendOrigin();
 
     return [
       {

@@ -48,7 +48,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           checkAuthStartVersion.current === authCheckVersion
         ) {
           setUser(me);
-          setLoading(false);
         }
       } catch {
         if (
@@ -56,6 +55,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           checkAuthStartVersion.current === authCheckVersion
         ) {
           setUser(null);
+        }
+      } finally {
+        if (!cancelled) {
           setLoading(false);
         }
       }
