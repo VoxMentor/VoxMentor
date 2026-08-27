@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
-import { useAuth, invalidateAuthCheck } from "@/lib/auth";
+import { invalidateAuthCheck } from "@/lib/auth";
 import AuthFormShell from "@/components/AuthFormShell";
 
 export default function RegisterPage() {
@@ -13,7 +13,6 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { setUser } = useAuth();
   const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent) {

@@ -15,10 +15,12 @@ namespace VoxMentor.Api.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly ISender _sender;
+    private readonly IWebHostEnvironment _env;
 
-    public AuthController(ISender sender)
+    public AuthController(ISender sender, IWebHostEnvironment env)
     {
         _sender = sender;
+        _env = env;
     }
 
     [HttpPost("register")]
@@ -112,11 +114,12 @@ public class AuthController : ControllerBase
 
     private void SetTokenCookies(string accessToken, DateTimeOffset accessExpiration, string refreshToken, DateTimeOffset refreshExpiration)
     {
+        var useSecure = !_env.IsDevelopment();
         var accessCookieOptions = new CookieOptions
         {
             Path = "/api/v1",
             HttpOnly = true,
-            Secure = true,
+            Secure = useSecure,
             SameSite = SameSiteMode.Lax,
             Expires = accessExpiration
         };
@@ -125,7 +128,7 @@ public class AuthController : ControllerBase
         {
             Path = "/api/v1/auth",
             HttpOnly = true,
-            Secure = true,
+            Secure = useSecure,
             SameSite = SameSiteMode.Lax,
             Expires = refreshExpiration
         };
