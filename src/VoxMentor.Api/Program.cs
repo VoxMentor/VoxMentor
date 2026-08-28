@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using VoxMentor.Api.Hubs;
 using VoxMentor.Api.Middleware;
 using VoxMentor.Application;
 using VoxMentor.Infrastructure;
@@ -13,6 +14,8 @@ builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+builder.Services.AddSignalR();
 
 builder.Services.AddCors(options =>
 {
@@ -54,6 +57,10 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.MapHub<TutorHub>("/hubs/tutor");
+app.MapHub<MasteryHub>("/hubs/mastery");
+app.MapHub<InterviewHub>("/hubs/interview");
 
 app.Run();
 

@@ -121,6 +121,34 @@ export default function DashboardPage() {
               </button>
             ))}
           </div>
+
+          {/* Concept List */}
+          <div className="mt-10">
+            <h2 className="font-heading font-semibold text-navy text-lg mb-4">Your Concepts</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[
+                { name: "Arrays", mastery: 85, color: "bg-green-500" },
+                { name: "Dynamic Programming", mastery: 52, color: "bg-yellow-500" },
+                { name: "Graphs", mastery: 30, color: "bg-orange-500" },
+                { name: "Trees", mastery: 65, color: "bg-blue-500" },
+                { name: "System Design", mastery: 15, color: "bg-red-500" },
+                { name: "Recursion", mastery: 70, color: "bg-teal-500" },
+              ].map((concept) => (
+                <div key={concept.name} className="card">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-heading font-medium text-navy text-sm">{concept.name}</h3>
+                    <span className="text-xs font-medium text-text-muted">{concept.mastery}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${concept.color}`}
+                      style={{ width: `${concept.mastery}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </main>
       </div>
     </ProtectedRoute>
