@@ -1,428 +1,445 @@
-# VoxMentor — API Documentation
+# VoxMentor — Complete API Reference
 
-Base URL: `http://localhost:8080` (via YARP Gateway) or `http://localhost:5000` (direct to Core API)
+> Every API endpoint needed to complete this project.
+>
+> Status legend: ✅ Implemented | 🚧 To be built
 
-Authentication: All endpoints (except `/auth/*` and `/health`) require `Authorization: Bearer <JWT>` header.
+## Base URLs
 
-Error format: RFC 7807 Problem Details (JSON with `type`, `title`, `status`, `detail`, `requestId`).
+| Service | Dev URL | Docker/Prod URL |
+|---|---|---|
+| Core API (`VoxMentor.Api`) | `http://localhost:5253` | `http://localhost:5000` |
+| YARP Gateway (`VoxMentor.Gateway`) | `http://localhost:5106` | `http://localhost:8080` |
+| AI Tutor Service | `http://localhost:5050` | `http://localhost:5001` |
+| Code Exec Service | `http://localhost:5167` | `http://localhost:5002` |
+| Voice Service (Python) | — | `http://localhost:8001` |
+| Web (Next.js) | `http://localhost:3000` | — |
+
+The Next.js client proxies `/api/:path*` → `BACKEND_ORIGIN` (`web/next.config.ts`, `web/.env`).
 
 ---
 
-## Authentication
+## Conventions
+
+### Authentication
+- JWT Bearer: `Authorization: Bearer <token>` (Issuer `VoxMentorApi`, Audience `VoxMentorApp`, 120-min expiry).
+- The Core API also accepts the JWT from the `access_token` cookie (set on login, `Path=/api/v1`, HttpOnly, SameSite=Lax).
+- Refresh token lives in the `refresh_token` cookie (`Path=/api/v1/auth`, HttpOnly).
+- For SignalR hubs pass the JWT as `?access_token=<token>` query string.
+- Anonymous endpoints: `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`, `/health`.
+- Admin endpoints require role `Admin`; everything else requires role `Student` (or any authenticated user).
+
+### Response envelope (all Core API endpoints)
+```json
+{
+  "success": true,
+  "message": "Optional message",
+  "data": { },
+  "errors": null
+}
+```
+
+### Error format
+On failure: `{ "success": false, "message": "...", "errors": { "field": ["reason"] } }`
+
+| HTTP Status | Trigger |
+|---|---|
+| 400 | Validation failure |
+| 401 | Missing/invalid JWT or bad credentials |
+| 404 | Resource not found |
+| 409 | Conflict (duplicate email, interview already ended) |
+| 429 | Rate limited (includes `retryAfter` in message) |
+| 500 | Unhandled error |
+| 503 | Dependency down (Ollama/Judge0) |
+
+---
+
+# 1. Authentication — ✅ Implemented
+
+Route base: `api/v1/auth` (`src/VoxMentor.Api/Controllers/AuthController.cs`)
 
 ### POST /api/v1/auth/register
-Register a new user.
+Register a new user (role `Student`). Anonymous.
 
-**Request:**
+Request:
 ```json
-{
-  "email": "student@example.com",
-  "password": "SecurePass123!",
-  "fullName": "Student Name",
-  "preferredLanguage": "en"
-}
+{ "fullName": "Student Name", "email": "student@example.com", "password": "SecurePass123!" }
 ```
 
-**Response (201 Created):**
+Response `201`:
 ```json
 {
-  "userId": "uuid-here",
-  "email": "student@example.com",
-  "token": "eyJhbGciOi...",
-  "refreshToken": "refresh-token-here"
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "fullName": "Student Name",
+    "email": "student@example.com",
+    "role": "Student",
+    "createdAt": "2026-08-28T10:00:00Z"
+  }
 }
 ```
+Errors: `400` validation, `409` email already exists.
 
 ### POST /api/v1/auth/login
-Login and receive JWT + refresh token.
+Login. Anonymous. Sets `access_token` + `refresh_token` HttpOnly cookies.
 
-**Request:**
+Request:
 ```json
-{
-  "email": "student@example.com",
-  "password": "SecurePass123!"
-}
+{ "email": "student@example.com", "password": "SecurePass123!" }
 ```
 
-**Response (200 OK):**
+Response `200`:
 ```json
-{
-  "userId": "uuid-here",
-  "token": "eyJhbGciOi...",
-  "refreshToken": "refresh-token-here",
-  "expiresAt": "2026-08-18T15:30:00Z"
-}
+{ "success": true, "data": { "id": "uuid", "fullName": "Student Name", "email": "student@example.com", "roles": ["Student"] } }
 ```
+Errors: `400` validation, `401` invalid credentials.
 
 ### POST /api/v1/auth/refresh
-Rotate refresh token (old token invalidated).
+Rotate tokens. No body — reads `refresh_token` cookie, re-sets both cookies.
 
-**Request:**
-```json
-{
-  "refreshToken": "old-refresh-token"
-}
-```
+Response `200`: same shape as login. Error: `401` invalid/expired refresh token.
 
-**Response (200 OK):**
+### POST /api/v1/auth/logout
+Invalidates refresh token, deletes both cookies. No body.
+
+Response `200`: `{ "success": true, "data": null }`
+
+### GET /api/v1/auth/me
+Current user from JWT claims. Requires auth (header or cookie).
+
+Response `200`:
 ```json
-{
-  "token": "new-jwt-token",
-  "refreshToken": "new-refresh-token"
-}
+{ "success": true, "data": { "id": "uuid", "fullName": "Student Name", "email": "student@example.com", "roles": ["Student"] } }
 ```
 
 ---
 
-## JD Intelligence
+# 2. Health — ✅ Implemented
+
+### GET /health (Core API)
+Checks PostgreSQL. Anonymous.
+```json
+{ "status": "Healthy", "checks": { "postgres": "Healthy" } }
+```
+Extend `checks` with `redis`, `ollama`, `judge0` as those are wired up.
+
+### GET /health (Tutor Service, Code Exec Service)
+Stubs — `{ "status": "Healthy" }`.
+
+---
+
+# 3. JD Intelligence — 🚧 To be built
 
 ### POST /api/v1/jd/upload
-Upload a Job Description. AI parses it and extracts weighted skills + HR requirements.
+Upload a Job Description. LLM (Ollama) parses it into weighted skills; falls back to keyword heuristics when Ollama is offline.
 
-**Request:**
+Request:
 ```json
-{
-  "rawText": "Amazon is hiring an SDE-1. Strong fundamentals in DSA, proficiency in Java/C++/Python, understanding of distributed systems. Candidates should demonstrate ownership and customer obsession..."
-}
+{ "rawText": "Amazon is hiring an SDE-1. Strong fundamentals in DSA, proficiency in Java/C++/Python..." }
 ```
+Validation: `rawText` required, 50–20000 chars.
 
-**Response (200 OK):**
+Response `200`:
 ```json
 {
-  "jdId": "uuid-here",
+  "jdId": "uuid",
   "companyName": "Amazon",
   "role": "SDE-1",
-  "technicalSkills": {
-    "DP": 0.35,
-    "Graphs": 0.25,
-    "Arrays": 0.15,
-    "Trees": 0.10,
-    "SystemDesign": 0.15
-  },
-  "hrSkills": {
-    "Leadership": 0.30,
-    "Ownership": 0.25,
-    "CustomerObsession": 0.25,
-    "ConflictResolution": 0.20
-  },
+  "technicalSkills": { "DP": 0.35, "Graphs": 0.25, "Arrays": 0.15, "Trees": 0.10, "System Design": 0.15 },
+  "hrSkills": { "Leadership": 0.30, "Ownership": 0.25, "Customer Obsession": 0.25, "Conflict Resolution": 0.20 },
   "difficulty": "Medium-Hard",
   "estimatedWeeks": 6,
-  "createdAt": "2026-08-18T10:00:00Z"
+  "createdAt": "2026-08-28T10:00:00Z"
 }
 ```
+Skill weights in each object sum to 1.0.
 
 ### GET /api/v1/jd/{jdId}
-Get parsed JD + Readiness Score + roadmap.
+Parsed JD + Readiness Score + gap analysis + week-by-week roadmap for the current student.
 
-**Response (200 OK):**
+Response `200`:
 ```json
 {
-  "jdId": "uuid-here",
+  "jdId": "uuid",
   "companyName": "Amazon",
+  "role": "SDE-1",
+  "technicalSkills": { "DP": 0.35, "Graphs": 0.25 },
+  "hrSkills": { "Leadership": 0.3 },
+  "difficulty": "Medium-Hard",
   "readinessScore": 42,
-  "gaps": [
-    {
-      "topic": "DP",
-      "mastery": 0.15,
-      "jdWeight": 0.35,
-      "severity": 0.298
-    }
-  ],
+  "gaps": [ { "topic": "DP", "severity": 0.298, "recommendation": "Practice 6 DP problems per week for the next 2 weeks." } ],
   "estimatedWeeks": 6,
-  "roadmap": [
-    { "week": 1, "focus": "DP", "conceptIds": ["uuid-1", "uuid-2"] },
-    { "week": 2, "focus": "Graphs", "conceptIds": ["uuid-3"] }
-  ]
+  "roadmap": [ { "week": 1, "focus": "DP", "conceptIds": ["uuid-1", "uuid-2"] } ],
+  "createdAt": "2026-08-28T10:00:00Z"
 }
 ```
+Errors: `404` JD not found / not owned by user.
 
 ---
 
-## Practice & Learning
+# 4. Practice & Learning — 🚧 To be built
 
 ### GET /api/v1/student/next-question?jdId={jdId}
-Get the next adaptive question based on mastery + JD weights.
+Adaptive next question. Selection = BKT mastery gap × JD weight; question difficulty targets `1 + mastery×9` (eased after recent failure). `jdId` optional — without it the weakest concept is chosen.
 
-**Response (200 OK):**
+Response `200`:
 ```json
 {
-  "questionId": "uuid-here",
+  "questionId": "uuid",
   "conceptId": "uuid-dp",
   "conceptName": "Dynamic Programming",
   "text": "Given an array of integers, find the maximum sum of a contiguous subarray.",
   "questionType": "Code",
   "difficulty": 6,
-  "testCases": [
-    {
-      "input": "[-2, 1, -3, 4, -1, 2, 1, -5, 4]",
-      "expected": "6",
-      "hidden": false
-    }
-  ],
+  "testCases": [ { "input": "[-2,1,-3,4,-1,2,1,-5,4]", "expected": "6", "hidden": false } ],
   "isomorphicInstanceId": "uuid-unique-per-student"
 }
 ```
+Hidden test cases are excluded from the payload. Errors: `404` no JD / no questions in bank.
 
 ### POST /api/v1/student/submit-code
-Submit code for execution + AI evaluation.
+Submit code → sandboxed execution (Judge0) + AI evaluation + plagiarism check + BKT mastery update.
 
-**Request:**
+Request:
 ```json
-{
-  "questionId": "uuid-here",
-  "code": "def max_subarray(nums):\n    max_sum = nums[0]\n    current = nums[0]\n    for n in nums[1:]:\n        current = max(n, current + n)\n        max_sum = max(max_sum, current)\n    return max_sum",
-  "language": "python"
-}
+{ "questionId": "uuid", "code": "def max_subarray(nums): ...", "language": "python" }
 ```
+Validation: `language` ∈ `python | java | cpp | c | javascript | csharp`; `code` ≤ 50000 chars.
 
-**Response (200 OK):**
+Response `200`:
 ```json
 {
-  "submissionId": "uuid-here",
+  "submissionId": "uuid",
   "testCasesPassed": 8,
   "testCasesTotal": 10,
   "executionTimeMs": 45,
   "memoryUsageKb": 12300,
   "aiEvaluation": {
-    "correctness": { "score": 8, "maxScore": 10, "feedback": "2 hidden test cases failed on edge cases (empty array, single element)." },
-    "timeComplexity": { "score": "O(n)", "isOptimal": true, "feedback": "O(n) is optimal. Good use of Kadane's algorithm." },
+    "correctness": { "score": 8, "maxScore": 10, "feedback": "2 hidden test cases failed on edge cases." },
+    "timeComplexity": { "score": "O(n)", "isOptimal": true, "feedback": "Optimal. Good use of Kadane's." },
     "spaceComplexity": { "score": "O(1)", "isOptimal": true },
-    "codeStyle": { "score": 7, "maxScore": 10, "feedback": "Variable names are clear. Add a docstring." }
+    "codeStyle": { "score": 7, "maxScore": 10, "feedback": "Clear names. Add a docstring." }
   },
-  "bktUpdate": {
-    "previousMastery": 0.45,
-    "newMastery": 0.52,
-    "masteryDelta": 0.07
-  },
+  "bktUpdate": { "previousMastery": 0.45, "newMastery": 0.52, "masteryDelta": 0.07 },
   "plagiarismScore": 0.12,
-  "submittedAt": "2026-08-18T10:05:00Z"
+  "submittedAt": "2026-08-28T10:05:00Z"
 }
 ```
+BKT params: p(learn)=0.3, p(guess)=0.2, p(slip)=0.1; correct ⇔ all test cases pass. Mastery ≥ 0.85 = mastered.
+Side effect: pushes `MasteryUpdated` on `/hubs/mastery`.
+Errors: `404` question not found.
 
 ### GET /api/v1/student/mastery
-Get mastery profile for all concepts.
+Mastery profile across all concepts + overall readiness (against latest JD, or average mastery if no JD).
 
-**Response (200 OK):**
+Response `200`:
 ```json
 {
   "concepts": [
-    { "conceptId": "uuid", "name": "Arrays", "mastery": 0.85, "isMastered": true },
-    { "conceptId": "uuid", "name": "DP", "mastery": 0.52, "isMastered": false },
-    { "conceptId": "uuid", "name": "Graphs", "mastery": 0.30, "isMastered": false }
+    { "conceptId": "uuid", "name": "Arrays", "mastery": 0.85, "isMastered": true, "correctAttempts": 9, "incorrectAttempts": 2 },
+    { "conceptId": "uuid", "name": "DP", "mastery": 0.52, "isMastered": false, "correctAttempts": 3, "incorrectAttempts": 4 }
   ],
   "overallReadiness": 42
 }
 ```
 
 ### GET /api/v1/student/readiness?jdId={jdId}
-Get current Readiness Score for a specific JD.
+Readiness Score breakdown for a JD (defaults to the user's latest JD).
 
-**Response (200 OK):**
+Response `200`:
 ```json
 {
-  "readinessScore": 42,
+  "score": 42,
   "maxScore": 100,
-  "breakdown": [
-    { "topic": "DP", "mastery": 0.15, "jdWeight": 0.35, "contribution": 5.25 },
-    { "topic": "Graphs", "mastery": 0.30, "jdWeight": 0.25, "contribution": 7.5 }
-  ],
-  "gaps": [
-    { "topic": "DP", "severity": 0.298, "recommendation": "Practice 2 DP problems/day for 2 weeks" }
-  ],
+  "breakdown": [ { "topic": "DP", "mastery": 0.15, "jdWeight": 0.35, "contribution": 5.25 } ],
+  "gaps": [ { "topic": "DP", "severity": 0.298, "recommendation": "Practice 6 DP problems per week for the next 2 weeks." } ],
   "estimatedWeeksToReady": 6
 }
 ```
+Formula: `score = 100 × Σ mastery(topic) × jdWeight(topic)`; `severity = jdWeight × (1 − mastery)`.
+Errors: `404` no JD found.
 
 ---
 
-## AI Coach
+# 5. AI Coach (RAG Tutor) — 🚧 To be built
 
 ### POST /api/v1/tutor/ask
-Ask the RAG AI Coach a question. Response streams via SignalR.
+Ask the AI Coach. Answer is generated asynchronously — stream it on `/hubs/tutor` or poll the session endpoint.
+**Rate limit:** 10 requests/hour per student (free tier) → `429`.
 
-**Rate limit:** 10 requests per hour per student (free tier).
+Request:
+```json
+{ "conceptId": "uuid-dp", "question": "Why is Kadane's algorithm O(n)?" }
+```
+Validation: `question` required, ≤ 2000 chars; `conceptId` optional (must exist).
 
-**Request:**
+Response `202`:
+```json
+{ "sessionId": "uuid", "message": "Response is being generated. Stream via /hubs/tutor or poll GET /api/v1/tutor/sessions/{sessionId}." }
+```
+
+### GET /api/v1/tutor/sessions/{sessionId}
+Poll a tutor session's status/answer.
+
+Response `200`:
 ```json
 {
+  "sessionId": "uuid",
   "conceptId": "uuid-dp",
-  "question": "Why is Kadane's algorithm O(n) and not O(n^2)?"
+  "question": "Why is Kadane's algorithm O(n)?",
+  "answer": "Kadane's algorithm makes a single pass...",
+  "status": "Completed",
+  "totalTokens": 145,
+  "createdAt": "2026-08-28T11:00:00Z",
+  "completedAt": "2026-08-28T11:00:06Z"
 }
 ```
-
-**Response (202 Accepted):**
-```json
-{
-  "sessionId": "uuid-here",
-  "message": "Streaming response via SignalR. Listen on 'TutorToken' event."
-}
-```
-
-**SignalR events (client receives):**
-```
-event: TutorToken
-data: "Kadane's"
-
-event: TutorToken
-data: " algorithm"
-
-event: TutorToken
-data: " is O(n) because..."
-
-event: TutorComplete
-data: { "sessionId": "uuid-here", "totalTokens": 145 }
-```
+`status` ∈ `Pending | Streaming | Completed | Failed`. Errors: `404` session not found / not owned.
 
 ---
 
-## Mock Interviews
+# 6. Mock Interviews — 🚧 To be built
 
 ### POST /api/v1/mock/start
-Start an AI mock interview.
+Start an AI mock interview. Opening message is generated from the JD's company/role and an adaptively chosen problem.
+**Rate limit:** 1/day free tier, 5/day Pro → `429`.
 
-**Rate limit:** 1 per day (free tier), 5 per day (Pro tier).
-
-**Request:**
+Request:
 ```json
-{
-  "jdId": "uuid-here",
-  "type": "Technical",
-  "voiceMode": true
-}
+{ "jdId": "uuid", "type": "Technical", "voiceMode": true }
 ```
+`type` ∈ `Technical | Hr | Both`. `jdId` optional.
 
-**Response (202 Accepted):**
+Response `202`:
 ```json
 {
-  "interviewId": "uuid-here",
+  "interviewId": "uuid",
   "type": "Technical",
   "status": "InProgress",
   "duration": 45,
-  "startedAt": "2026-08-18T14:00:00Z"
+  "startedAt": "2026-08-28T14:00:00Z",
+  "openingMessage": "Hi, I'm your interviewer at Amazon for the SDE-1 position. Let's start with your first problem: ..."
 }
 ```
+Errors: `404` JD not found, `429` daily limit.
 
-**SignalR events (client receives during interview):**
-```
-event: InterviewerMessage
-data: "Hi, I'm your Amazon interviewer today. I'll give you 2 coding problems and 1 system design question."
+### POST /api/v1/mock/{interviewId}/answer
+Submit the candidate's answer; the interviewer replies with a follow-up or the next problem (up to 3 problems).
 
-event: InterviewerMessage
-data: "Let's start. Here's your first problem: Given an array, find the maximum sum of a contiguous subarray."
-
-event: InterviewFollowUp
-data: "Your solution is O(n^2). Can you optimize to O(n)?"
-
-event: InterviewComplete
-data: { "interviewId": "uuid", "score": 68 }
+Request:
+```json
+{ "message": "I'd use Kadane's algorithm — track the running sum..." }
 ```
 
-### GET /api/v1/mock/{interviewId}/review
-Get post-interview AI review.
+Response `200`:
+```json
+{ "interviewerMessage": "Good. What's the space complexity? Can you handle all-negative arrays?", "turnNumber": 4, "interviewOngoing": true }
+```
+Errors: `404` interview not found, `409` interview already ended, `400` empty message.
 
-**Response (200 OK):**
+### POST /api/v1/mock/{interviewId}/complete
+End the interview and get the AI review (score, per-problem feedback, next steps).
+
+Response `200`:
 ```json
 {
-  "interviewId": "uuid-here",
   "score": 68,
   "type": "Technical",
   "technicalReview": {
-    "problem1": { "solved": true, "complexity": "O(n)", "feedback": "Good Kadane's implementation." },
-    "problem2": { "solved": false, "complexity": "O(n^2)", "feedback": "DP recurrence was incorrect. Practice these 5 problems." },
-    "systemDesign": { "score": 6, "maxScore": 10, "feedback": "Good approach but missed caching layer." }
+    "problem1": { "solved": true, "complexity": "Discussed", "feedback": "Candidate articulated a complete approach." },
+    "problem2": { "solved": false, "complexity": "Not completed", "feedback": "Answer lacked detail — practice explaining approach and complexity clearly." }
   },
-  "readinessDelta": { "before": 62, "after": 68, "delta": 6 },
-  "nextSteps": "Practice 3 more DP sessions to reach 85% readiness."
+  "readinessDelta": { "before": 62, "after": 62, "delta": 0 },
+  "nextSteps": "Good foundation. Focus on explaining complexity and edge cases out loud."
+}
+```
+Errors: `404` not found, `409` already ended.
+
+### GET /api/v1/mock/{interviewId}/review
+Fetch the stored review of a completed interview.
+
+Response `200`:
+```json
+{
+  "interviewId": "uuid",
+  "status": "Completed",
+  "score": 68,
+  "review": { "score": 68, "type": "Technical", "technicalReview": { }, "readinessDelta": { }, "nextSteps": "..." },
+  "startedAt": "2026-08-28T14:00:00Z",
+  "completedAt": "2026-08-28T14:40:00Z"
 }
 ```
 
 ### GET /api/v1/mock/history
-List past mock interviews.
+List the user's interviews, newest first.
 
-**Response (200 OK):**
+Response `200`:
 ```json
 {
   "interviews": [
-    {
-      "interviewId": "uuid-1",
-      "type": "Technical",
-      "score": 55,
-      "date": "2026-08-11T14:00:00Z"
-    },
-    {
-      "interviewId": "uuid-2",
-      "type": "HR",
-      "score": 70,
-      "date": "2026-08-13T14:00:00Z"
-    }
+    { "interviewId": "uuid-1", "type": "Technical", "status": "Completed", "score": 55, "date": "2026-08-21T14:00:00Z" },
+    { "interviewId": "uuid-2", "type": "Hr", "status": "InProgress", "score": null, "date": "2026-08-28T14:00:00Z" }
   ]
 }
 ```
 
 ---
 
-## Resume
+# 7. Resume ATS — 🚧 To be built
 
 ### POST /api/v1/resume/analyze
-Upload resume + JD for ATS analysis.
+Upload resume + optional JD for ATS analysis. `multipart/form-data`: `file` (`.pdf` or `.txt`) + optional `jdId`. Without `jdId`, keywords are extracted from the raw JD text heuristically.
 
-**Request:** `multipart/form-data`
-```
-file: resume.pdf
-jdId: uuid-here
-```
-
-**Response (200 OK):**
+Response `200`:
 ```json
 {
+  "analysisId": "uuid",
   "matchScore": 72,
   "keywordMatch": {
-    "matched": ["Python", "PostgreSQL", "DSA"],
-    "missing": ["AWS", "Distributed Systems", "Docker"]
+    "matched": ["Python", "Databases", "Teamwork"],
+    "missing": ["System Design", "DP", "Leadership"]
   },
   "atsParseability": {
     "score": 85,
-    "issues": ["Table in education section — ATS may not parse correctly"]
+    "issues": ["No 'projects' section detected — ATS parsers expect clearly labeled sections."]
   },
   "suggestions": [
-    "Add 'AWS' to skills section — it's in the JD but not your resume.",
-    "Remove the table in education section — use bullet points instead.",
-    "Add 'Distributed Systems' keyword — mentioned 3 times in JD."
+    "Add 'System Design' to your resume — it appears in the JD but is missing from your resume.",
+    "Use plain, clearly-labeled section headings (Education, Experience, Skills, Projects) instead of tables or columns."
   ]
 }
 ```
+Errors: `400` missing/unsupported file, `404` JD not found.
 
 ---
 
-## Admin
+# 8. Admin — 🚧 To be built (requires role `Admin`)
 
 ### POST /api/v1/admin/concepts
-Create a new DSA concept.
+Create a DSA concept.
 
-**Request:**
+Request:
 ```json
-{
-  "name": "Backtracking",
-  "category": "DSA",
-  "difficulty": 7
-}
+{ "name": "Backtracking", "category": "DSA", "difficulty": 7 }
 ```
+Response `201`: `{ "conceptId": "uuid", "name": "Backtracking", "category": "DSA", "difficulty": 7 }`
+Errors: `400` validation (difficulty 1–10), `409` duplicate concept name.
 
 ### POST /api/v1/admin/prerequisites
-Add a prerequisite edge.
+Add a prerequisite edge to the knowledge graph.
 
-**Request:**
+Request:
 ```json
-{
-  "conceptId": "uuid-backtracking",
-  "prerequisiteId": "uuid-recursion"
-}
+{ "conceptId": "uuid-backtracking", "prerequisiteId": "uuid-recursion" }
 ```
+Response `201`: `{ "conceptId": "uuid-backtracking", "prerequisiteId": "uuid-recursion" }`
+Errors: `404` either concept missing, `409` edge exists, `400` self-reference.
 
 ### POST /api/v1/admin/questions
-Add a question to the bank.
+Add a question (with test cases + rubric) to the bank.
 
-**Request:**
+Request:
 ```json
 {
   "conceptId": "uuid-dp",
@@ -430,7 +447,8 @@ Add a question to the bank.
   "questionType": "Code",
   "difficulty": 6,
   "testCases": [
-    { "input": "[[1,3,1],[1,5,1],[4,2,1]]", "expected": "7", "hidden": false }
+    { "input": "[[1,3,1],[1,5,1],[4,2,1]]", "expected": "7", "hidden": false, "isExample": true },
+    { "input": "[[1,2],[5,6],[1,1]]", "expected": "9", "hidden": true, "isExample": false }
   ],
   "templateVariables": null,
   "rubric": [
@@ -439,48 +457,52 @@ Add a question to the bank.
   ]
 }
 ```
+Response `201`: `{ "questionId": "uuid", "conceptId": "uuid-dp", "testCasesCreated": 2 }`
+Errors: `404` concept missing, `400` no test cases / invalid difficulty.
 
 ### POST /api/v1/admin/textbook/upload
-Upload interview prep content (CTCI, GFG) for auto-embedding.
+Upload prep content (CTCI, GFG notes — `.pdf`/`.txt`) for chunking + concept mapping. `multipart/form-data`: `file` + optional `conceptId`.
 
-**Request:** `multipart/form-data`
-```
-file: cracking-the-coding-interview.pdf
-conceptId: uuid-dp (optional — auto-detected from section titles)
+Response `202`:
+```json
+{ "jobId": "uuid", "message": "Background job started. Check GET /api/v1/admin/textbook/status/{jobId}." }
 ```
 
-**Response (202 Accepted):**
+### GET /api/v1/admin/textbook/status/{jobId}
+Poll ingestion job progress.
+
+Response `200`:
 ```json
 {
-  "jobId": "uuid-here",
-  "message": "Background job started. Chunks will be embedded via Ollama nomic-embed-text. Check progress via GET /api/v1/admin/textbook/status/{jobId}."
+  "jobId": "uuid",
+  "fileName": "cracking-the-coding-interview.pdf",
+  "status": "Processing",
+  "totalChunks": 240,
+  "processedChunks": 118,
+  "error": null,
+  "createdAt": "2026-08-28T09:00:00Z",
+  "completedAt": null
 }
 ```
+`status` ∈ `Pending | Processing | Completed | Failed`. Errors: `404` job not found.
 
 ---
 
-## Health
+# 9. Voice Service (Python FastAPI, port 8001) — 🚧 To be built
 
-### GET /health
-Check health of all services. No auth required.
+| Method + Route | Body | Response |
+|---|---|---|
+| `POST /stt` | `multipart/form-data` audio (wav/webm) | `{ "text": "...", "language": "en", "durationMs": 3200 }` |
+| `POST /tts` | `{ "text": "...", "voice": "en_IN-female" }` | `audio/wav` stream |
+| `GET /health` | — | `{ "status": "Healthy" }` |
 
-**Response (200 OK):**
-```json
-{
-  "status": "Healthy",
-  "checks": {
-    "postgres": "Healthy",
-    "redis": "Healthy",
-    "ollama": "Healthy",
-    "judge0": "Healthy"
-  },
-  "uptime": "01:23:45"
-}
-```
+Stack: faster-whisper (STT) + Piper (TTS). Used by the interview flow when `voiceMode=true`.
 
 ---
 
-## SignalR Hubs
+# 10. SignalR Hubs — 🚧 To be built
+
+Auth: JWT via `?access_token=<token>` query string on the hub URL.
 
 ### /hubs/tutor — AI Coach streaming
 | Event | Direction | Data |
@@ -488,47 +510,86 @@ Check health of all services. No auth required.
 | `AskTutor` | Client → Server | `{ conceptId, question }` |
 | `TutorToken` | Server → Client | `"token text"` (streamed) |
 | `TutorComplete` | Server → Client | `{ sessionId, totalTokens }` |
+| `TutorError` | Server → Client | `{ sessionId, message }` |
 
 ### /hubs/mastery — Real-time mastery updates
 | Event | Direction | Data |
 |---|---|---|
-| `MasteryUpdated` | Server → Client | `{ conceptId, newMastery, delta }` |
+| `MasteryUpdated` | Server → Client | `{ conceptId, conceptName, newMastery, delta }` |
 | `ReadinessChanged` | Server → Client | `{ newScore, delta }` |
 
-### /hubs/interview — Mock interview real-time
+### /hubs/interview — Mock interview real-time (voice + text)
 | Event | Direction | Data |
 |---|---|---|
 | `StartMock` | Client → Server | `{ jdId, type, voiceMode }` |
+| `SendAnswer` | Client → Server | `{ interviewId, message }` |
+| `CompleteMock` | Client → Server | `{ interviewId }` |
 | `InterviewerMessage` | Server → Client | `"text"` (streamed) |
-| `InterviewerVoice` | Server → Client | `audioChunk` (WebRTC) |
+| `InterviewerVoice` | Server → Client | audio chunk (via Voice Service) |
 | `InterviewFollowUp` | Server → Client | `"follow-up question"` |
 | `InterviewComplete` | Server → Client | `{ interviewId, score }` |
 
 ---
 
-## Error Format (RFC 7807)
+# 11. Gateway Routing (YARP, port 8080) — 🚧 To be built
 
-All error responses follow this format:
-
-```json
-{
-  "type": "https://voxmentor.ai/errors/subscription-expired",
-  "title": "Subscription expired",
-  "status": 402,
-  "detail": "Your free tier daily limit for AI Coach has been reached (10/10). Upgrade to Pro for unlimited access.",
-  "instance": "/api/v1/tutor/ask",
-  "requestId": "req-9a8b7c6d",
-  "retryAfter": 3600
-}
-```
-
-| HTTP Status | Meaning |
+| Path prefix | Target |
 |---|---|
-| 400 | Bad Request (validation error) |
-| 401 | Unauthorized (missing/invalid JWT) |
-| 403 | Forbidden (wrong role) |
-| 404 | Not Found |
-| 409 | Conflict (duplicate submission) |
-| 429 | Too Many Requests (rate limited) |
-| 500 | Internal Server Error |
-| 503 | Service Unavailable (Ollama/Judge0 down) |
+| `/api/v1/auth`, `/api/v1/jd`, `/api/v1/student`, `/api/v1/mock`, `/api/v1/resume`, `/api/v1/admin` | Core API (`:5000`) |
+| `/api/v1/tutor` | Core API (`:5000`) — move to Tutor Service (`:5001`) when extracted |
+| `/voice` | Voice Service (`:8001`) |
+| `/hubs/*` | Core API (`:5000`) — WebSocket upgrade |
+| `/health` | Core API (`:5000`) |
+
+Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, health checks.
+
+---
+
+# 12. External Dependencies (consumed, not exposed)
+
+| Dependency | URL | Used for |
+|---|---|---|
+| Ollama | `http://localhost:11434` | `llama3.2:3b` chat (tutor, JD parse, code eval, interview), `nomic-embed-text` embeddings (768-dim, RAG retrieval) |
+| Judge0 | `http://localhost:2358` | Sandboxed code execution (language ids: python=71, java=62, cpp=54, c=50, javascript=63, csharp=51) |
+| PostgreSQL 15 + pgvector | `localhost:5432` | Relational + knowledge graph (recursive CTE) + vector storage (textbook chunks) |
+| Redis 7 | `localhost:6379` | Cache, SignalR backplane, Redis Streams event bus |
+
+### Internal domain events (Redis Streams)
+`MasteryUpdated`, `CodeSubmitted`, `MockInterviewCompleted`, `PlagiarismDetected`
+
+---
+
+# 13. Data Model (tables to create)
+
+| Table | Key columns |
+|---|---|
+| `Concepts` | Id, Name, Category, Difficulty (1–10) |
+| `ConceptPrerequisites` | ConceptId → PrerequisiteId (graph edges) |
+| `Questions` | Id, ConceptId, Text, QuestionType, Difficulty, TemplateVariablesJson, RubricJson |
+| `QuestionTestCases` | Id, QuestionId, Input, Expected, Hidden, IsExample |
+| `StudentMasteries` | Id, UserId, ConceptId, Mastery (0–1), CorrectAttempts, IncorrectAttempts — unique (UserId, ConceptId) |
+| `JobDescriptions` | Id, UserId, RawText, CompanyName, Role, TechnicalSkillsJson, HrSkillsJson, Difficulty, EstimatedWeeks |
+| `CodeSubmissions` | Id, UserId, QuestionId, Code, Language, TestCasesPassed/Total, ExecutionTimeMs, MemoryUsageKb, AiEvaluationJson, PlagiarismScore, MasteryBefore/After |
+| `MockInterviews` | Id, UserId, JdId?, Type, Status, Score?, TranscriptJson, ReviewJson, StartedAt, CompletedAt? |
+| `ResumeAnalyses` | Id, UserId, JdId?, FileName, MatchScore, KeywordMatchJson, AtsParseabilityJson, SuggestionsJson |
+| `TutorSessions` | Id, UserId, ConceptId?, Question, Answer, Status, TotalTokens |
+| `TextbookJobs` | Id, FileName, Status, TotalChunks, ProcessedChunks, Error? |
+| `TextbookChunks` | Id, JobId, ConceptId?, Content, Source (+ pgvector embedding column) |
+
+---
+
+# Endpoint Count Summary
+
+| Area | Endpoints | Status |
+|---|---|---|
+| Auth | 5 (register, login, refresh, logout, me) | ✅ Done |
+| Health | 3 (Core, Tutor, CodeExec) | ✅ Done |
+| JD Intelligence | 2 (upload, get) | 🚧 |
+| Practice/Learning | 4 (next-question, submit-code, mastery, readiness) | 🚧 |
+| AI Coach | 2 REST (ask, session) + hub | 🚧 |
+| Mock Interviews | 5 REST (start, answer, complete, review, history) + hub | 🚧 |
+| Resume ATS | 1 (analyze) | 🚧 |
+| Admin | 5 (concepts, prerequisites, questions, textbook upload, textbook status) | 🚧 |
+| Voice Service | 3 (stt, tts, health) | 🚧 |
+| Gateway | YARP routing + rate limiting | 🚧 |
+| **Total** | **30 REST + 3 hubs** | 8 done / 22 to build |
