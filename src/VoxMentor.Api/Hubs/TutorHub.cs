@@ -17,7 +17,7 @@ public class TutorHub : Hub
         await Clients.Caller.SendAsync("TutorComplete", new
         {
             SessionId = sessionId,
-            TotalTokens = 3
+            TotalChunks = 3
         });
     }
 }

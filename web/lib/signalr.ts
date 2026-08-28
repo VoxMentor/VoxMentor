@@ -1,6 +1,7 @@
 import {
   HubConnectionBuilder,
   HubConnection,
+  HubConnectionState,
   LogLevel,
   HttpTransportType,
 } from "@microsoft/signalr";
@@ -76,7 +77,11 @@ export function getInterviewConnection(): HubConnection {
 
 export async function startAllConnections(): Promise<void> {
   const hubs = [getTutorConnection(), getMasteryConnection(), getInterviewConnection()];
-  await Promise.all(hubs.map((c) => c.start()));
+  await Promise.all(
+    hubs
+      .filter((c) => c.state === HubConnectionState.Disconnected)
+      .map((c) => c.start())
+  );
 }
 
 export async function stopAllConnections(): Promise<void> {
