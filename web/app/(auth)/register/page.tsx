@@ -4,15 +4,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
-import { useAuth, invalidateAuthCheck } from "@/lib/auth";
+import { invalidateAuthCheck } from "@/lib/auth";
 import AuthFormShell from "@/components/AuthFormShell";
 
-export default function LoginPage() {
+export default function RegisterPage() {
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { setUser } = useAuth();
   const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -20,10 +20,9 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const user = await api.login({ email, password });
+      await api.register({ fullName, email, password });
       invalidateAuthCheck();
-      setUser(user);
-      router.push("/dashboard");
+      router.push("/login");
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -37,16 +36,16 @@ export default function LoginPage() {
 
   return (
     <AuthFormShell
-      heading="Welcome back"
-      subheading="Sign in to your account"
+      heading="Create your account"
+      subheading="Start practicing interviews today"
       footer={
         <>
-          Don&apos;t have an account?{" "}
+          Already have an account?{" "}
           <Link
-            href="/register"
+            href="/login"
             className="text-primary font-semibold hover:text-primary-dark transition-colors"
           >
-            Create one
+            Sign in
           </Link>
         </>
       }
@@ -64,6 +63,19 @@ export default function LoginPage() {
         )}
 
         <div className="input-group animate-slide-up animate-delay-1">
+          <label htmlFor="fullName">Full name</label>
+          <input
+            id="fullName"
+            type="text"
+            required
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            placeholder="John Doe"
+            autoComplete="name"
+          />
+        </div>
+
+        <div className="input-group animate-slide-up animate-delay-2">
           <label htmlFor="email">Email</label>
           <input
             id="email"
@@ -76,23 +88,24 @@ export default function LoginPage() {
           />
         </div>
 
-        <div className="input-group animate-slide-up animate-delay-2">
+        <div className="input-group animate-slide-up animate-delay-3">
           <label htmlFor="password">Password</label>
           <input
             id="password"
             type="password"
             required
+            minLength={8}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter your password"
-            autoComplete="current-password"
+            placeholder="Min. 8 characters"
+            autoComplete="new-password"
           />
         </div>
 
         <button
           type="submit"
           disabled={loading}
-          className="btn-primary animate-slide-up animate-delay-3"
+          className="btn-primary animate-slide-up animate-delay-4"
         >
           {loading ? (
             <span className="flex items-center justify-center gap-2">
@@ -100,10 +113,10 @@ export default function LoginPage() {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              Signing in...
+              Creating account...
             </span>
           ) : (
-            "Sign In"
+            "Get Started"
           )}
         </button>
       </form>

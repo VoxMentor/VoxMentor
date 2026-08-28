@@ -1,7 +1,7 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
-import { type ReactNode } from "react";
+import { motion, useReducedMotion, type ForwardRefComponent, type HTMLMotionProps } from "motion/react";
+import { type ReactNode, useMemo } from "react";
 
 interface FadeContentProps {
   children: ReactNode;
@@ -22,12 +22,19 @@ export default function FadeContent({
 }: FadeContentProps) {
   const reduce = useReducedMotion();
 
+  const MotionComponent = useMemo(() => {
+    return motion.create(Tag as string) as ForwardRefComponent<
+      React.ElementRef<typeof Tag>,
+      HTMLMotionProps<typeof Tag>
+    >;
+  }, [Tag]);
+
   if (reduce) {
     return <Tag className={className}>{children}</Tag>;
   }
 
   return (
-    <motion.div
+    <MotionComponent
       initial={{ opacity: 0, y: 24, filter: blur ? "blur(10px)" : "blur(0px)" }}
       animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
       transition={{
@@ -38,6 +45,6 @@ export default function FadeContent({
       className={className}
     >
       {children}
-    </motion.div>
+    </MotionComponent>
   );
 }

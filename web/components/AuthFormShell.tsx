@@ -25,11 +25,11 @@ export default function AuthFormShell({
                 <line x1="12" x2="12" y1="19" y2="22" />
               </svg>
             </div>
-            <span className="logo-text">VoxMentor</span>
+            <span className="logo-text-white">VoxMentor</span>
           </div>
         </div>
         <div className="relative z-10">
-          <h2 className="text-white text-3xl font-bold leading-tight tracking-tight mb-3">
+          <h2 className="text-white text-3xl font-heading font-bold leading-tight tracking-tight mb-3">
             Ace your next<br />interview with AI.
           </h2>
           <p className="text-blue-200/70 text-base leading-relaxed max-w-sm">
@@ -37,15 +37,15 @@ export default function AuthFormShell({
           </p>
           <div className="flex gap-6 mt-8">
             <div className="text-center">
-              <div className="text-2xl font-bold text-white">10k+</div>
+              <div className="text-2xl font-heading font-bold text-white">10k+</div>
               <div className="text-xs text-blue-200/60 mt-0.5">Practice Sessions</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-white">94%</div>
+              <div className="text-2xl font-heading font-bold text-white">94%</div>
               <div className="text-xs text-blue-200/60 mt-0.5">Success Rate</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-white">50+</div>
+              <div className="text-2xl font-heading font-bold text-white">50+</div>
               <div className="text-xs text-blue-200/60 mt-0.5">Job Roles</div>
             </div>
           </div>
@@ -56,7 +56,7 @@ export default function AuthFormShell({
       <div className="auth-form-panel">
         <div className="glass-card">
           <div className="mb-8">
-            <h1 className="text-2xl font-bold text-text-heading tracking-tight mb-1">
+            <h1 className="text-2xl font-heading font-bold text-navy tracking-tight mb-1">
               {heading}
             </h1>
             <p className="text-sm text-text-muted">{subheading}</p>

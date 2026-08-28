@@ -7,8 +7,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth, invalidateAuthCheck } from "@/lib/auth";
 import AuthFormShell from "@/components/AuthFormShell";
 
-export default function RegisterPage() {
-  const [fullName, setFullName] = useState("");
+export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -21,9 +20,10 @@ export default function RegisterPage() {
     setError("");
     setLoading(true);
     try {
-      await api.register({ fullName, email, password });
+      const user = await api.login({ email, password });
       invalidateAuthCheck();
-      router.push("/login");
+      setUser(user);
+      router.push("/dashboard");
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -37,23 +37,23 @@ export default function RegisterPage() {
 
   return (
     <AuthFormShell
-      heading="Create your account"
-      subheading="Start practicing interviews today"
+      heading="Welcome back"
+      subheading="Sign in to your account"
       footer={
         <>
-          Already have an account?{" "}
+          Don&apos;t have an account?{" "}
           <Link
-            href="/login"
+            href="/register"
             className="text-primary font-semibold hover:text-primary-dark transition-colors"
           >
-            Sign in
+            Create one
           </Link>
         </>
       }
     >
       <form onSubmit={handleSubmit}>
         {error && (
-          <div className="error-banner">
+          <div className="error-banner" role="alert">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" />
               <line x1="15" x2="9" y1="9" y2="15" />
@@ -64,19 +64,6 @@ export default function RegisterPage() {
         )}
 
         <div className="input-group animate-slide-up animate-delay-1">
-          <label htmlFor="fullName">Full name</label>
-          <input
-            id="fullName"
-            type="text"
-            required
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            placeholder="John Doe"
-            autoComplete="name"
-          />
-        </div>
-
-        <div className="input-group animate-slide-up animate-delay-2">
           <label htmlFor="email">Email</label>
           <input
             id="email"
@@ -89,24 +76,23 @@ export default function RegisterPage() {
           />
         </div>
 
-        <div className="input-group animate-slide-up animate-delay-3">
+        <div className="input-group animate-slide-up animate-delay-2">
           <label htmlFor="password">Password</label>
           <input
             id="password"
             type="password"
             required
-            minLength={8}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Min. 8 characters"
-            autoComplete="new-password"
+            placeholder="Enter your password"
+            autoComplete="current-password"
           />
         </div>
 
         <button
           type="submit"
           disabled={loading}
-          className="btn-primary animate-slide-up animate-delay-4"
+          className="btn-primary animate-slide-up animate-delay-3"
         >
           {loading ? (
             <span className="flex items-center justify-center gap-2">
@@ -114,10 +100,10 @@ export default function RegisterPage() {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              Creating account...
+              Signing in...
             </span>
           ) : (
-            "Get Started"
+            "Sign In"
           )}
         </button>
       </form>
