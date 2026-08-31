@@ -82,7 +82,7 @@ public class BktParameters
     public Guid Id { get; set; }
     public Guid ConceptId { get; set; }
     public float PriorKnowledge { get; set; } = 0.1f;  // P(L₀)
-    public float LearnRate { get; set; } = 3.0f;       // Learning rate multiplier
+    public float LearnRate { get; set; } = 0.3f;       // P(learn | not learned, correct) — bounded [0,1]
     public float GuessRate { get; set; } = 0.2f;       // P(correct | not learned)
     public float SlipRate { get; set; } = 0.1f;        // P(incorrect | learned)
     public DateTime CreatedAt { get; set; }
@@ -116,11 +116,9 @@ public class BktEngine : IBktEngine
             newMastery = (p.SlipRate * pL) / pIncorrect;
         }
 
-        // Apply learning rate (boost if correct, dampen if incorrect)
+        // Apply learning transition (only on correct answers)
         if (correct)
-            newMastery = newMastery + (1 - newMastery) * p.LearnRate * newMastery;
-        else
-            newMastery = newMastery * (1 - p.LearnRate * (1 - newMastery));
+            newMastery = newMastery + (1 - newMastery) * p.LearnRate;
 
         return Math.Clamp(newMastery, 0f, 1f);
     }
@@ -270,11 +268,12 @@ CREATE TABLE "BktParameters" (
     "Id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     "ConceptId" uuid NOT NULL REFERENCES "Concepts"("Id"),
     "PriorKnowledge" real DEFAULT 0.1,
-    "LearnRate" real DEFAULT 3.0,
+    "LearnRate" real DEFAULT 0.3,
     "GuessRate" real DEFAULT 0.2,
     "SlipRate" real DEFAULT 0.1,
     "CreatedAt" timestamp with time zone DEFAULT now(),
-    "UpdatedAt" timestamp with time zone DEFAULT now()
+    "UpdatedAt" timestamp with time zone DEFAULT now(),
+    CONSTRAINT "UQ_BktParameters_ConceptId" UNIQUE ("ConceptId")
 );
 ```
 
@@ -289,8 +288,9 @@ CREATE TABLE "BktParameters" (
 ```sql
 -- scripts/seed-bkt-parameters.sql
 INSERT INTO "BktParameters" ("Id", "ConceptId", "PriorKnowledge", "LearnRate", "GuessRate", "SlipRate", "CreatedAt", "UpdatedAt")
-SELECT gen_random_uuid(), "Id", 0.1, 3.0, 0.2, 0.1, now(), now()
-FROM "Concepts";
+SELECT gen_random_uuid(), "Id", 0.1, 0.3, 0.2, 0.1, now(), now()
+FROM "Concepts"
+ON CONFLICT ("ConceptId") DO NOTHING;
 ```
 
 **Verification:** `dotnet ef database update` succeeds, BktParameters table has 50 rows.
@@ -344,7 +344,7 @@ src/VoxMentor.Api/Controllers/AnswerController.cs
 public record SubmitAnswerCommand : IRequest<ApiResponse<SubmitAnswerResultDto>>
 {
     public Guid QuestionId { get; init; }
-    public bool IsCorrect { get; init; }  // From Judge0 test results
+    public Guid CodeSubmissionId { get; init; }  // Link to Judge0 result — IsCorrect derived server-side
 }
 ```
 
@@ -354,14 +354,16 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
 {
     // 1. Get current user from JWT claims
     // 2. Load question → get ConceptId
-    // 3. Load StudentMastery for (UserId, ConceptId) — create if doesn't exist
-    // 4. Load BktParameters for ConceptId
-    // 5. Run BktEngine.UpdateMastery(currentMastery, bktParams, isCorrect)
-    // 6. Save new mastery + increment CorrectAttempts/IncorrectAttempts
-    // 7. Set LastPracticedAt = now
-    // 8. Persist to database
-    // 9. Emit MasteryUpdated event (Redis Streams)
-    // 10. Return result with mastery delta
+    // 3. Load CodeSubmission by CodeSubmissionId → verify ownership + get test results
+    // 4. Derive IsCorrect from submission (all test cases passed)
+    // 5. Load StudentMastery for (UserId, ConceptId) — create if doesn't exist
+    // 6. Load BktParameters for ConceptId
+    // 7. Run BktEngine.UpdateMastery(currentMastery, bktParams, isCorrect)
+    // 8. Save new mastery + increment CorrectAttempts/IncorrectAttempts
+    // 9. Set LastPracticedAt = now
+    // 10. Persist to database
+    // 11. Emit MasteryUpdated event (Redis Streams)
+    // 12. Return result with mastery delta
 }
 ```
 
@@ -383,7 +385,7 @@ public class AnswerController : ControllerBase
 ```
 
 **Verification:**
-- POST to `/api/v1/answer` with `{"questionId": "...", "isCorrect": true}`
+- POST to `/api/v1/answer` with `{"questionId": "...", "codeSubmissionId": "..."}`
 - Returns `{"previousMastery": 0.1, "newMastery": 0.35, "masteryDelta": 0.25}`
 - StudentMastery row updated in database
 
@@ -431,7 +433,14 @@ src/VoxMentor.CodeExecService/Models/ExecutionResult.cs
 public class Judge0Client
 {
     private readonly HttpClient _http;
-    private readonly string _baseUrl = "http://localhost:2358";
+    private readonly string _baseUrl;
+
+    // Inject configuration — read from appsettings.json or environment
+    public Judge0Client(HttpClient http, IConfiguration config)
+    {
+        _http = http;
+        _baseUrl = config["Judge0:BaseUrl"] ?? "http://judge0:2358";
+    }
 
     // Language IDs:
     // Python = 71, Java = 62, C++ = 54, C = 50,
@@ -450,8 +459,13 @@ public class Judge0Client
             memory_limit = 256000
         });
 
+        response.EnsureSuccessStatusCode();
+
         var submission = await response.Content
             .ReadFromJsonAsync<Judge0Submission>();
+
+        if (submission?.Token == null)
+            throw new InvalidOperationException("Judge0 returned null submission");
 
         // Poll until status.id >= 3 (finished)
         return await PollResultAsync(submission.Token);
@@ -730,12 +744,13 @@ public class SpacedRepetitionDecayJob
     public async Task Execute()
     {
         var staleMasteries = await _db.StudentMasteries
-            .Where(m => m.LastPracticedAt < DateTime.UtcNow.AddDays(7))
+            .Where(m => m.LastPracticedAt < DateTime.UtcNow.AddDays(-7))
             .ToListAsync();
 
         foreach (var m in staleMasteries)
         {
-            var daysSince = (DateTime.UtcNow - m.LastPracticedAt).Days;
+            var lastPracticed = m.LastPracticedAt ?? m.CreatedAt;
+            var daysSince = (DateTime.UtcNow - lastPracticed).Days;
             var decay = Math.Pow(0.95, daysSince - 7); // 5% decay per day
             m.Mastery = Math.Max(0.1f, m.Mastery * (float)decay);
         }
@@ -765,6 +780,8 @@ protected override void OnModelCreating(ModelBuilder builder)
 - Hangfire dashboard at `/hangfire` shows recurring jobs
 - BKT tuning job runs and updates parameters
 - Spaced repetition decay reduces stale mastery scores
+
+> **Note:** For multi-tenant deployments, Hangfire jobs must enumerate tenants explicitly. Each job should query distinct `TenantId` values and run per-tenant, or use Hangfire's `[DisableConcurrentExecution]` with tenant partitioning.
 
 ---
 

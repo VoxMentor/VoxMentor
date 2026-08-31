@@ -32,13 +32,13 @@ AI-powered interview preparation platform for college students. Paste a job desc
 
 Modular monolith + 3 microservices + YARP API Gateway:
 
-```
+```text
 Client (Next.js :3000)
     ↓ HTTPS + SignalR + WebRTC
 YARP Gateway (:8080)
     ↓ routes to
-Core API (:5000) ←→ Tutor Service (:5001) ←→ CodeExec Service (:5002)
-    ↓                                          ↓
+Core API (:5000) ←→ Tutor Service (:5001) ←→ CodeExec Service (:5002) ←→ Voice Service (:8001)
+    ↓                                                                        ↓
 PostgreSQL + pgvector ←→ Redis 7 ←→ Ollama (local LLM)
 ```
 
@@ -51,7 +51,7 @@ See `ARCHITECTURE.md` for full architecture decisions (ADRs).
 
 ## Project Structure
 
-```
+```text
 VoxMentor/
 ├── src/
 │   ├── VoxMentor.Domain/          ← Pure C# entities, value objects, enums (zero deps)
@@ -102,8 +102,8 @@ VoxMentor/
 docker compose up -d
 
 # 2. Pull Ollama models (one-time, ~2GB)
-docker exec voxmentor-ollama-1 ollama pull llama3.2:3b
-docker exec voxmentor-ollama-1 ollama pull nomic-embed-text
+docker compose exec ollama ollama pull llama3.2:3b
+docker compose exec ollama ollama pull nomic-embed-text
 
 # 3. Initialize database
 bash scripts/init-db.sh
