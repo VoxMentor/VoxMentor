@@ -1,0 +1,19 @@
+# Both members review everything
+*       @naheel0 @ansifmk
+
+# Backend
+src/    @naheel0 @ansifmk
+
+# Frontend
+web/    @naheel0 @ansifmk
+
+# DevOps & CI
+docker/     @naheel0 @ansifmk
+.github/    @naheel0 @ansifmk
+scripts/    @naheel0 @ansifmk
+
+# Voice Service
+voice-service/  @naheel0 @ansifmk
+
+# Documentation
+docs/   @naheel0 @ansifmk
