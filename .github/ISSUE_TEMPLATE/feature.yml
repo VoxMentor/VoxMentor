@@ -1,0 +1,69 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What does this feature do? Why do we need it?
+      placeholder: "Describe the feature..."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: What does "done" look like? Checklist format.
+      value: |
+        - [ ] Criterion 1
+        - [ ] Criterion 2
+        - [ ] Unit tests pass
+        - [ ] No regressions in existing features
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Files to Create / Modify
+      description: Which files need to be changed?
+      placeholder: |
+        - src/VoxMentor.Application/Services/BktEngine.cs
+        - src/VoxMentor.Tests/Unit/BktEngineTests.cs
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: What part of the codebase does this affect?
+      options:
+        - Backend
+        - Frontend
+        - Infrastructure
+        - Documentation
+    validations:
+      required: true
+  - type: dropdown
+    id: day
+    attributes:
+      label: Day
+      description: Which day should this be worked on?
+      options:
+        - D1
+        - D2
+        - D3
+        - D4
+        - D5
+        - D6
+        - D7
+    validations:
+      required: false
+  - type: textarea
+    id: reference
+    attributes:
+      label: Reference
+      description: Links to docs, designs, or related issues.
+      placeholder: "📖 docs/WEEK2-PLAN.md — Day 1"
+    validations:
+      required: false

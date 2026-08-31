@@ -25,7 +25,7 @@ export default function FadeContent({
   const MotionComponent = useMemo(() => {
     return motion.create(Tag as string) as ForwardRefComponent<
       React.ElementRef<typeof Tag>,
-      HTMLMotionProps<typeof Tag>
+      HTMLMotionProps<"div">
     >;
   }, [Tag]);
 
