@@ -6,7 +6,7 @@
 |---|---|---|
 | **Docker Desktop** | Latest | Runs Postgres, Redis, Ollama, Judge0, Seq |
 | **.NET 8 SDK** | 8.0.x | Backend (.NET 8) |
-| **Node.js** | 20.x | Frontend (Next.js 14) |
+| **Node.js** | 20.x | Frontend (Next.js 16) |
 | **Python** | 3.12+ | Voice service (Whisper + Piper) |
 | **Git** | Latest | Version control |
 | **VS Code** | Latest | IDE (with C# Dev Kit + Copilot extensions) |
@@ -69,17 +69,17 @@ docker compose ps
 
 ```bash
 # Pull the LLM (chat model)
-docker exec voxmentor-ollama-1 ollama pull llama3.2:3b
+docker compose exec ollama ollama pull llama3.2:3b
 # This takes 5-15 minutes depending on internet speed
 # Downloads ~2GB
 
 # Pull the embedding model
-docker exec voxmentor-ollama-1 ollama pull nomic-embed-text
+docker compose exec ollama ollama pull nomic-embed-text
 # This takes 1-3 minutes
 # Downloads ~270MB
 
 # Verify models are loaded
-docker exec voxmentor-ollama-1 ollama list
+docker compose exec ollama ollama list
 # Expected output:
 # NAME                SIZE
 # llama3.2:3b        2.0 GB
@@ -104,14 +104,14 @@ bash scripts/init-db.sh
 # 7. Embeds CTCI + GFG content into TextbookChunks (via Ollama nomic-embed-text)
 
 # Verify database
-docker exec voxmentor-postgres-1 psql -U dev -d voxmentor -c "\dt"
+docker compose exec postgres psql -U dev -d voxmentor -c "\dt"
 # Should list all tables: AspNetUsers, Concepts, Prerequisites, Questions, etc.
 
 # Verify seed data
-docker exec voxmentor-postgres-1 psql -U dev -d voxmentor -c "SELECT COUNT(*) FROM Concepts;"
+docker compose exec postgres psql -U dev -d voxmentor -c "SELECT COUNT(*) FROM Concepts;"
 # Should return: 50
 
-docker exec voxmentor-postgres-1 psql -U dev -d voxmentor -c "SELECT COUNT(*) FROM Questions;"
+docker compose exec postgres psql -U dev -d voxmentor -c "SELECT COUNT(*) FROM Questions;"
 # Should return: 100
 ```
 
@@ -164,7 +164,7 @@ npm install  # first time only
 npm run dev
 
 # Expected output:
-# ▲ Next.js 14
+# ▲ Next.js 16
 # - Local: http://localhost:3000
 # ✓ Ready in 2.3s
 
@@ -257,23 +257,23 @@ docker compose up -d
 
 ```bash
 # Check Ollama is running
-docker exec voxmentor-ollama-1 ollama list
+docker compose exec ollama ollama list
 
 # Test Ollama directly
-docker exec voxmentor-ollama-1 ollama run llama3.2:3b "Hello"
+docker compose exec ollama ollama run llama3.2:3b "Hello"
 
 # Check Ollama logs
-docker logs voxmentor-ollama-1
+docker compose logs ollama
 
 # Restart Ollama
-docker restart voxmentor-ollama-1
+docker compose restart ollama
 ```
 
 ### Database migration fails
 
 ```bash
 # Connect to Postgres
-docker exec -it voxmentor-postgres-1 psql -U dev -d voxmentor
+docker compose exec -it postgres psql -U dev -d voxmentor
 
 # Check tables
 \dt
@@ -282,8 +282,8 @@ docker exec -it voxmentor-postgres-1 psql -U dev -d voxmentor
 dotnet ef database update --project src/VoxMentor.Infrastructure --startup-project src/VoxMentor.Api
 
 # Re-seed data
-docker exec voxmentor-postgres-1 psql -U dev -d voxmentor -f scripts/seed-dsa-concepts.sql
-docker exec voxmentor-postgres-1 psql -U dev -d voxmentor -f scripts/seed-questions.sql
+docker compose exec postgres psql -U dev -d voxmentor -f scripts/seed-dsa-concepts.sql
+docker compose exec postgres psql -U dev -d voxmentor -f scripts/seed-questions.sql
 ```
 
 ### Frontend can't connect to backend
@@ -311,7 +311,7 @@ curl http://localhost:2358/system_info
 # → Should return JSON with version info
 
 # Check Judge0 logs
-docker logs voxmentor-judge0-1
+docker compose logs judge0
 
 # Test with a simple Python program
 curl -X POST http://localhost:2358/submissions \

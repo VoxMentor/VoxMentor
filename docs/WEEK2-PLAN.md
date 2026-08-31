@@ -355,15 +355,16 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
     // 1. Get current user from JWT claims
     // 2. Load question → get ConceptId
     // 3. Load CodeSubmission by CodeSubmissionId → verify ownership + get test results
-    // 4. Derive IsCorrect from submission (all test cases passed)
-    // 5. Load StudentMastery for (UserId, ConceptId) — create if doesn't exist
-    // 6. Load BktParameters for ConceptId
-    // 7. Run BktEngine.UpdateMastery(currentMastery, bktParams, isCorrect)
-    // 8. Save new mastery + increment CorrectAttempts/IncorrectAttempts
-    // 9. Set LastPracticedAt = now
-    // 10. Persist to database
-    // 11. Emit MasteryUpdated event (Redis Streams)
-    // 12. Return result with mastery delta
+    // 4. Verify CodeSubmission.QuestionId == command.QuestionId (reject mismatch)
+    // 5. Derive IsCorrect from submission (all test cases passed)
+    // 6. Load StudentMastery for (UserId, ConceptId) — create if doesn't exist
+    // 7. Load BktParameters for ConceptId
+    // 8. Run BktEngine.UpdateMastery(currentMastery, bktParams, isCorrect)
+    // 9. Save new mastery + increment CorrectAttempts/IncorrectAttempts
+    // 10. Set LastPracticedAt = now
+    // 11. Persist to database
+    // 12. Emit MasteryUpdated event (Redis Streams)
+    // 13. Return result with mastery delta
 }
 ```
 
@@ -464,8 +465,8 @@ public class Judge0Client
         var submission = await response.Content
             .ReadFromJsonAsync<Judge0Submission>();
 
-        if (submission?.Token == null)
-            throw new InvalidOperationException("Judge0 returned null submission");
+        if (submission == null || string.IsNullOrWhiteSpace(submission.Token))
+            throw new InvalidOperationException("Judge0 returned null or empty submission token");
 
         // Poll until status.id >= 3 (finished)
         return await PollResultAsync(submission.Token);
@@ -744,7 +745,7 @@ public class SpacedRepetitionDecayJob
     public async Task Execute()
     {
         var staleMasteries = await _db.StudentMasteries
-            .Where(m => m.LastPracticedAt < DateTime.UtcNow.AddDays(-7))
+            .Where(m => m.LastPracticedAt == null || m.LastPracticedAt < DateTime.UtcNow.AddDays(-7))
             .ToListAsync();
 
         foreach (var m in staleMasteries)
@@ -781,7 +782,25 @@ protected override void OnModelCreating(ModelBuilder builder)
 - BKT tuning job runs and updates parameters
 - Spaced repetition decay reduces stale mastery scores
 
-> **Note:** For multi-tenant deployments, Hangfire jobs must enumerate tenants explicitly. Each job should query distinct `TenantId` values and run per-tenant, or use Hangfire's `[DisableConcurrentExecution]` with tenant partitioning.
+> **Note:** For multi-tenant deployments, Hangfire jobs must enumerate tenants explicitly:
+> ```csharp
+> public async Task Execute()
+> {
+>     var tenantIds = await _db.StudentMasteries
+>         .Select(m => m.TenantId)
+>         .Distinct()
+>         .ToListAsync();
+>
+>     foreach (var tenantId in tenantIds)
+>     {
+>         using var scope = _scopeFactory.CreateScope();
+>         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+>         db.TenantId = tenantId; // set tenant context
+>         // ... run job logic within this tenant scope
+>     }
+> }
+> ```
+> Use `[DisableConcurrentExecution]` to prevent overlapping tenant runs.
 
 ---
 
