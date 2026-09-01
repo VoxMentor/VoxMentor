@@ -12,4 +12,5 @@ RUN dotnet publish src/VoxMentor.Gateway/VoxMentor.Gateway.csproj -c Release -o 
 FROM base AS final
 WORKDIR /app
 COPY --from=build /app/publish .
+USER app
 ENTRYPOINT ["dotnet", "VoxMentor.Gateway.dll"]
