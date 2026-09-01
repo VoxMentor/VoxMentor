@@ -1,0 +1,13 @@
+services:
+  seq:
+    image: datalust/seq:latest
+    container_name: voxmentor-seq
+    environment:
+      - ACCEPT_EULA=Y
+    ports:
+      - "8081:80"
+    volumes:
+      - seq-data:/data
+
+volumes:
+  seq-data:
