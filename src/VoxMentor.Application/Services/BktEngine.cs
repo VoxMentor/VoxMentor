@@ -10,7 +10,6 @@ public class BktEngine : IBktEngine
 
         // P(correct) = P(C|L)*P(L) + P(C|~L)*P(~L)
         float pCorrect = (1 - p.SlipRate) * pL + p.GuessRate * (1 - pL);
-        float pIncorrect = 1f - pCorrect;
 
         float newMastery;
         if (correct)
@@ -21,14 +20,14 @@ public class BktEngine : IBktEngine
         }
         else
         {
+            // P(L | incorrect) = P(~C|L)*P(L) / P(~C)
+            float pIncorrect = p.SlipRate * pL + (1 - p.GuessRate) * (1 - pL);
             if (pIncorrect == 0f) return currentMastery;
-            // P(L | incorrect) = P(C|~L)*P(L) / P(~C)
             newMastery = (p.SlipRate * pL) / pIncorrect;
         }
 
-        // Apply learning transition (only on correct answers)
-        if (correct)
-            newMastery = newMastery + (1 - newMastery) * p.LearnRate;
+        // Apply learning transition after every observation
+        newMastery = newMastery + (1 - newMastery) * p.LearnRate;
 
         return Math.Clamp(newMastery, 0f, 1f);
     }

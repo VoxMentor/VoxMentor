@@ -1,0 +1,16 @@
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+WORKDIR /app
+EXPOSE 8080
+
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+COPY src/VoxMentor.Gateway/VoxMentor.Gateway.csproj src/VoxMentor.Gateway/
+RUN dotnet restore src/VoxMentor.Gateway/VoxMentor.Gateway.csproj
+COPY src/VoxMentor.Gateway/ src/VoxMentor.Gateway/
+RUN dotnet publish src/VoxMentor.Gateway/VoxMentor.Gateway.csproj -c Release -o /app/publish
+
+FROM base AS final
+WORKDIR /app
+COPY --from=build /app/publish .
+USER app
+ENTRYPOINT ["dotnet", "VoxMentor.Gateway.dll"]
