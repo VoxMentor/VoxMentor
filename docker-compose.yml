@@ -1,6 +1,6 @@
 services:
   seq:
-    image: datalust/seq:latest
+    image: datalust/seq:2024.3.3
     container_name: voxmentor-seq
     environment:
       - ACCEPT_EULA=Y
@@ -8,6 +8,23 @@ services:
       - "127.0.0.1:8081:80"
     volumes:
       - seq-data:/data
+
+  # Gateway — uncomment and set env vars when running in Docker.
+  # In containers, use service DNS names instead of localhost.
+  # gateway:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/Dockerfile.Gateway
+  #   environment:
+  #     - ConnectionStrings__Hangfire=Host=db;Port=5432;...
+  #     - ReverseProxy__Clusters__core-api__Destinations__d1__Address=http://api:5000/
+  #     - ReverseProxy__Clusters__tutor-service__Destinations__d1__Address=http://tutor:5001/
+  #     - ReverseProxy__Clusters__codeexec-service__Destinations__d1__Address=http://codeexec:5002/
+  #     - Serilog__WriteTo__1__Args__serverUrl=http://seq:80
+  #   ports:
+  #     - "127.0.0.1:8080:8080"
+  #   depends_on:
+  #     - seq
 
 volumes:
   seq-data:

@@ -42,7 +42,9 @@ if (app.Environment.IsDevelopment() && !string.IsNullOrEmpty(hangfireConnectionS
 // Register nightly job
 if (!string.IsNullOrEmpty(hangfireConnectionString))
 {
-    RecurringJob.AddOrUpdate<NightlyJob>(
+    using var scope = app.Services.CreateScope();
+    var manager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+    manager.AddOrUpdate<NightlyJob>(
         "nightly-cleanup",
         job => job.ExecuteAsync(CancellationToken.None),
         Cron.Daily);
