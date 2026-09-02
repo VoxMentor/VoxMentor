@@ -10,17 +10,19 @@ public class BktEngine : IBktEngine
 
         // P(correct) = P(C|L)*P(L) + P(C|~L)*P(~L)
         float pCorrect = (1 - p.SlipRate) * pL + p.GuessRate * (1 - pL);
+        float pIncorrect = 1f - pCorrect;
 
         float newMastery;
         if (correct)
         {
+            if (pCorrect == 0f) return currentMastery;
             // P(L | correct) = P(C|L)*P(L) / P(C)
             newMastery = ((1 - p.SlipRate) * pL) / pCorrect;
         }
         else
         {
+            if (pIncorrect == 0f) return currentMastery;
             // P(L | incorrect) = P(C|~L)*P(L) / P(~C)
-            float pIncorrect = p.SlipRate * pL + (1 - p.GuessRate) * (1 - pL);
             newMastery = (p.SlipRate * pL) / pIncorrect;
         }
 
