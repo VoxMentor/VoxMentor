@@ -65,4 +65,22 @@ public class BktEngineTests
 
         Assert.Equal(batchResult, individualResult);
     }
+
+    [Fact]
+    public void UpdateMastery_ZeroPCorrect_ReturnsCurrentMastery()
+    {
+        // mastery=0, GuessRate=0, SlipRate=1, correct=true → pCorrect=0
+        var p = new BktParameters { LearnRate = 0.3f, GuessRate = 0f, SlipRate = 1f };
+        float result = _engine.UpdateMastery(0f, p, correct: true);
+        Assert.Equal(0f, result);
+    }
+
+    [Fact]
+    public void UpdateMastery_ZeroPIncorrect_ReturnsCurrentMastery()
+    {
+        // mastery=1, GuessRate=1, SlipRate=0, correct=false → pIncorrect=0
+        var p = new BktParameters { LearnRate = 0.3f, GuessRate = 1f, SlipRate = 0f };
+        float result = _engine.UpdateMastery(1f, p, correct: false);
+        Assert.Equal(1f, result);
+    }
 }
