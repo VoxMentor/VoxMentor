@@ -13,15 +13,18 @@ builder.Host.UseSerilog((context, config) =>
 builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
-// Hangfire (Supabase Postgres)
-builder.Services.AddHangfire(config => config
-    .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
-    .UseSimpleAssemblyNameTypeSerializer()
-    .UseRecommendedSerializerSettings()
-    .UsePostgreSqlStorage(options =>
-        options.UseNpgsqlConnection(
-            builder.Configuration.GetConnectionString("Hangfire"))));
-builder.Services.AddHangfireServer();
+// Hangfire (Supabase Postgres) — only when connection string is configured
+var hangfireConnectionString = builder.Configuration.GetConnectionString("Hangfire");
+if (!string.IsNullOrEmpty(hangfireConnectionString))
+{
+    builder.Services.AddHangfire(config => config
+        .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+        .UseSimpleAssemblyNameTypeSerializer()
+        .UseRecommendedSerializerSettings()
+        .UsePostgreSqlStorage(options =>
+            options.UseNpgsqlConnection(hangfireConnectionString)));
+    builder.Services.AddHangfireServer();
+}
 
 var app = builder.Build();
 
@@ -31,15 +34,18 @@ app.UseSerilogRequestLogging();
 app.MapReverseProxy();
 
 // Hangfire dashboard (dev only)
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() && !string.IsNullOrEmpty(hangfireConnectionString))
 {
     app.MapHangfireDashboard("/hangfire");
 }
 
 // Register nightly job
-RecurringJob.AddOrUpdate<NightlyJob>(
-    "nightly-cleanup",
-    job => job.ExecuteAsync(CancellationToken.None),
-    Cron.Daily);
+if (!string.IsNullOrEmpty(hangfireConnectionString))
+{
+    RecurringJob.AddOrUpdate<NightlyJob>(
+        "nightly-cleanup",
+        job => job.ExecuteAsync(CancellationToken.None),
+        Cron.Daily);
+}
 
 app.Run();

@@ -14,19 +14,20 @@ public class BktEngine : IBktEngine
         float newMastery;
         if (correct)
         {
+            if (pCorrect == 0f) return currentMastery;
             // P(L | correct) = P(C|L)*P(L) / P(C)
             newMastery = ((1 - p.SlipRate) * pL) / pCorrect;
         }
         else
         {
-            // P(L | incorrect) = P(C|~L)*P(L) / P(~C)
+            // P(L | incorrect) = P(~C|L)*P(L) / P(~C)
             float pIncorrect = p.SlipRate * pL + (1 - p.GuessRate) * (1 - pL);
+            if (pIncorrect == 0f) return currentMastery;
             newMastery = (p.SlipRate * pL) / pIncorrect;
         }
 
-        // Apply learning transition (only on correct answers)
-        if (correct)
-            newMastery = newMastery + (1 - newMastery) * p.LearnRate;
+        // Apply learning transition after every observation
+        newMastery = newMastery + (1 - newMastery) * p.LearnRate;
 
         return Math.Clamp(newMastery, 0f, 1f);
     }
