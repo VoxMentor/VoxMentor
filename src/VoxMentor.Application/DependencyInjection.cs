@@ -2,6 +2,7 @@ using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using VoxMentor.Application.Common.Behaviors;
+using VoxMentor.Application.Services;
 
 namespace VoxMentor.Application;
 
@@ -12,6 +13,8 @@ public static class DependencyInjection
         var assembly = typeof(DependencyInjection).Assembly;
 
         services.AddValidatorsFromAssembly(assembly);
+
+        services.AddScoped<IBktEngine, BktEngine>();
 
         services.AddMediatR(cfg =>
         {
