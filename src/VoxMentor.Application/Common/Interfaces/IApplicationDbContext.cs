@@ -16,4 +16,5 @@ public interface IApplicationDbContext
     DbSet<AuditLog> AuditLogs { get; }
     DbSet<BktParameters> BktParameters { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+    void ClearChangeTracker();
 }

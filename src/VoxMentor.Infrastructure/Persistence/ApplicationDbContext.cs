@@ -22,6 +22,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<AuditLog> AuditLogs { get; set; } = null!;
     public DbSet<BktParameters> BktParameters { get; set; } = null!;
 
+    public void ClearChangeTracker() => ChangeTracker.Clear();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -69,6 +71,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.UserId, e.ConceptId }).IsUnique();
+            entity.Property(e => e.RowVersion).IsRowVersion();
         });
 
         builder.Entity<CodeSubmission>(entity =>

@@ -46,6 +46,28 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
             .FirstOrDefaultAsync(p => p.ConceptId == question.ConceptId, cancellationToken)
             ?? new BktParameters { ConceptId = question.ConceptId };
 
+        // Retry on lost-update conflicts: reload fresh state and recalculate.
+        const int maxAttempts = 3;
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return await TrySubmitAsync(userId, question, parameters, request, cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < maxAttempts - 1)
+            {
+                _db.ClearChangeTracker();
+            }
+        }
+    }
+
+    private async Task<ApiResponse<SubmitAnswerResultDto>> TrySubmitAsync(
+        string userId,
+        Question question,
+        BktParameters parameters,
+        SubmitAnswerCommand request,
+        CancellationToken cancellationToken)
+    {
         var mastery = await _db.StudentMasteries
             .FirstOrDefaultAsync(m => m.UserId == userId && m.ConceptId == question.ConceptId, cancellationToken);
         if (mastery is null)

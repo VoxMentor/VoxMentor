@@ -24,10 +24,10 @@ public class SubmitAnswerHandlerTests
         }
     }
 
-    private static Infrastructure.Persistence.ApplicationDbContext CreateDb()
+    private static Infrastructure.Persistence.ApplicationDbContext CreateDb(string? sharedName = null)
     {
         var options = new DbContextOptionsBuilder<Infrastructure.Persistence.ApplicationDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .UseInMemoryDatabase(sharedName ?? Guid.NewGuid().ToString())
             .Options;
         return new Infrastructure.Persistence.ApplicationDbContext(options);
     }
@@ -131,5 +131,43 @@ public class SubmitAnswerHandlerTests
         var validator = new SubmitAnswerValidator();
         var result = validator.Validate(new SubmitAnswerCommand(Guid.Empty, true));
         Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public async Task Handle_ConcurrentSubmissions_BothPersistWithoutLostUpdate()
+    {
+        var storeName = Guid.NewGuid().ToString();
+        Guid questionId;
+        using (var seedDb = CreateDb(storeName))
+        {
+            var question = await SeedQuestionAsync(seedDb);
+            questionId = question.Id;
+            seedDb.StudentMasteries.Add(new StudentMastery
+            {
+                UserId = "user-1",
+                ConceptId = question.ConceptId,
+                MasteryProbability = 0.5f
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        using var db1 = CreateDb(storeName);
+        using var db2 = CreateDb(storeName);
+        var publisher1 = new FakeEventPublisher();
+        var publisher2 = new FakeEventPublisher();
+
+        var task1 = CreateHandler(db1, publisher: publisher1)
+            .Handle(new SubmitAnswerCommand(questionId, true), CancellationToken.None);
+        var task2 = CreateHandler(db2, publisher: publisher2)
+            .Handle(new SubmitAnswerCommand(questionId, false), CancellationToken.None);
+        var responses = await Task.WhenAll(task1, task2);
+
+        Assert.All(responses, r => Assert.True(r.Success));
+
+        using var verifyDb = CreateDb(storeName);
+        var stored = await verifyDb.StudentMasteries.FirstAsync();
+        Assert.Equal(1, stored.CorrectAttempts);
+        Assert.Equal(1, stored.IncorrectAttempts);
+        Assert.Equal(2, publisher1.PublishedCount + publisher2.PublishedCount);
     }
 }
