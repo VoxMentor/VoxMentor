@@ -133,6 +133,89 @@ public class SubmitAnswerHandlerTests
         Assert.False(result.IsValid);
     }
 
+    private sealed class FlakyDbContext : IApplicationDbContext
+    {
+        private readonly IApplicationDbContext _inner;
+        private readonly Func<int, Exception?> _fault;
+        private int _saves;
+
+        public FlakyDbContext(IApplicationDbContext inner, Func<int, Exception?> fault)
+        {
+            _inner = inner;
+            _fault = fault;
+        }
+
+        public DbSet<ApplicationUser> Users => _inner.Users;
+        public DbSet<RefreshToken> RefreshTokens => _inner.RefreshTokens;
+        public DbSet<Concept> Concepts => _inner.Concepts;
+        public DbSet<Prerequisite> Prerequisites => _inner.Prerequisites;
+        public DbSet<Question> Questions => _inner.Questions;
+        public DbSet<StudentMastery> StudentMasteries => _inner.StudentMasteries;
+        public DbSet<CodeSubmission> CodeSubmissions => _inner.CodeSubmissions;
+        public DbSet<MockInterview> MockInterviews => _inner.MockInterviews;
+        public DbSet<AuditLog> AuditLogs => _inner.AuditLogs;
+        public DbSet<BktParameters> BktParameters => _inner.BktParameters;
+
+        public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            var fault = _fault(++_saves);
+            if (fault is not null)
+                throw fault;
+            return await _inner.SaveChangesAsync(cancellationToken);
+        }
+
+        public void ClearChangeTracker() => _inner.ClearChangeTracker();
+    }
+
+    [Fact]
+    public async Task Handle_ConcurrencyConflictOnce_RetriesAndSucceeds()
+    {
+        using var db = CreateDb();
+        var question = await SeedQuestionAsync(db);
+        db.StudentMasteries.Add(new StudentMastery
+        {
+            UserId = "user-1",
+            ConceptId = question.ConceptId,
+            MasteryProbability = 0.5f
+        });
+        await db.SaveChangesAsync();
+
+        var flaky = new FlakyDbContext(db, saveNumber =>
+            saveNumber == 1 ? new DbUpdateConcurrencyException("simulated conflict") : null);
+        var publisher = new FakeEventPublisher();
+        var handler = new SubmitAnswerHandler(db: flaky, bktEngine: new BktEngine(), currentUser: new FakeCurrentUserService(), eventPublisher: publisher);
+
+        var response = await handler.Handle(new SubmitAnswerCommand(question.Id, true), CancellationToken.None);
+
+        Assert.True(response.Success);
+        Assert.Equal(1, response.Data!.CorrectAttempts);
+        Assert.NotEqual(0.5f, response.Data.NewMastery);
+        Assert.Equal(1, publisher.PublishedCount);
+    }
+
+    [Fact]
+    public async Task Handle_UniqueViolationOnce_RetriesAsUpdate()
+    {
+        using var db = CreateDb();
+        var question = await SeedQuestionAsync(db);
+        db.StudentMasteries.Add(new StudentMastery
+        {
+            UserId = "user-1",
+            ConceptId = question.ConceptId,
+            MasteryProbability = 0.5f
+        });
+        await db.SaveChangesAsync();
+
+        var flaky = new FlakyDbContext(db, saveNumber =>
+            saveNumber == 1 ? new DbUpdateException("duplicate key value violates unique constraint") : null);
+        var handler = new SubmitAnswerHandler(db: flaky, bktEngine: new BktEngine(), currentUser: new FakeCurrentUserService(), eventPublisher: new FakeEventPublisher());
+
+        var response = await handler.Handle(new SubmitAnswerCommand(question.Id, false), CancellationToken.None);
+
+        Assert.True(response.Success);
+        Assert.Equal(1, response.Data!.IncorrectAttempts);
+    }
+
     [Fact]
     public async Task Handle_ConcurrentSubmissions_BothPersistWithoutLostUpdate()
     {

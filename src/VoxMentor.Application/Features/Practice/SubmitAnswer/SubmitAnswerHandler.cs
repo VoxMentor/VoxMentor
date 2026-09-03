@@ -46,7 +46,7 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
             .FirstOrDefaultAsync(p => p.ConceptId == question.ConceptId, cancellationToken)
             ?? new BktParameters { ConceptId = question.ConceptId };
 
-        // Retry on lost-update conflicts: reload fresh state and recalculate.
+        // Bounded retries on write races: recalculate from fresh state instead of losing updates.
         const int maxAttempts = 3;
         for (var attempt = 0; ; attempt++)
         {
@@ -56,7 +56,23 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
             }
             catch (DbUpdateConcurrencyException) when (attempt < maxAttempts - 1)
             {
+                // Lost-update race: another request saved first.
                 _db.ClearChangeTracker();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new ConflictException("Concurrent submissions conflicted. Please retry.");
+            }
+            catch (DbUpdateException) when (attempt < maxAttempts - 1)
+            {
+                // Possible insert-insert race on first submit (unique-violation):
+                // retry only if the winner's row actually exists, else surface the real failure.
+                _db.ClearChangeTracker();
+                var existing = await _db.StudentMasteries
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(m => m.UserId == userId && m.ConceptId == question.ConceptId, cancellationToken);
+                if (existing is null)
+                    throw;
             }
         }
     }
