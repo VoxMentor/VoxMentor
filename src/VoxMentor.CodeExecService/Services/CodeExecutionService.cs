@@ -1,3 +1,4 @@
+using System.Globalization;
 using VoxMentor.CodeExecService.Clients;
 using VoxMentor.CodeExecService.Models;
 
@@ -33,9 +34,10 @@ public class CodeExecutionService
         var result = new ExecutionResult
         {
             Stdout = judge0Result.Stdout ?? string.Empty,
-            Stderr = judge0Result.Stderr ?? string.Empty,
+            Stderr = judge0Result.Stderr ?? judge0Result.CompileOutput ?? string.Empty,
             ExecutionTimeMs = judge0Result.Time != null
-                ? (int)(double.Parse(judge0Result.Time) * 1000)
+                && double.TryParse(judge0Result.Time, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
+                ? (int)(seconds * 1000)
                 : null,
             MemoryUsageKb = judge0Result.Memory,
             Status = judge0Result.Status?.Description ?? "Unknown",
@@ -45,26 +47,37 @@ public class CodeExecutionService
         if (request.ExpectedOutputs is { Length: > 0 })
         {
             result.TestResults = new List<TestCaseResult>();
-            var actualOutputs = result.Stdout.Split(new[] { '\n', '\r' },
-                StringSplitOptions.RemoveEmptyEntries);
+            var actualOutputs = NormalizeOutput(result.Stdout);
 
             for (int i = 0; i < request.ExpectedOutputs.Length; i++)
             {
                 var expected = request.ExpectedOutputs[i].Trim();
-                var actual = i < actualOutputs.Length ? actualOutputs[i].Trim() : string.Empty;
+                var actual = i < actualOutputs.Length ? actualOutputs[i] : null;
 
                 result.TestResults.Add(new TestCaseResult
                 {
                     TestCaseIndex = i,
-                    Expected = expected,
-                    Actual = actual,
-                    Passed = string.Equals(expected, actual, StringComparison.Ordinal)
+                    Expected = request.ExpectedOutputs[i].Trim(),
+                    Actual = actual ?? string.Empty,
+                    Passed = actual != null
+                        && string.Equals(expected, actual, StringComparison.Ordinal)
                 });
             }
 
-            result.AllTestCasesPassed = result.TestResults.All(t => t.Passed);
+            result.AllTestCasesPassed = result.TestResults.All(t => t.Passed)
+                && actualOutputs.Length == request.ExpectedOutputs.Length;
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Splits output into lines, removing only the final line terminator while
+    /// preserving interior blank lines that are part of the expected output.
+    /// </summary>
+    private static string[] NormalizeOutput(string output)
+    {
+        var normalized = output.Replace("\r\n", "\n").TrimEnd('\n');
+        return normalized.Length == 0 ? Array.Empty<string>() : normalized.Split('\n');
     }
 }

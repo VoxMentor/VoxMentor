@@ -23,25 +23,29 @@ var jwtIssuer = builder.Configuration["JwtSettings:Issuer"]
 var jwtAudience = builder.Configuration["JwtSettings:Audience"]
     ?? Environment.GetEnvironmentVariable("JwtSettings__Audience");
 
-if (!string.IsNullOrWhiteSpace(jwtSecret) && jwtSecret.Length >= 32)
+if (string.IsNullOrWhiteSpace(jwtSecret) || jwtSecret.Length < 32)
 {
-    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(options =>
-        {
-            options.TokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateIssuer = true,
-                ValidateAudience = true,
-                ValidateLifetime = true,
-                ValidateIssuerSigningKey = true,
-                ValidIssuer = jwtIssuer,
-                ValidAudience = jwtAudience,
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
-            };
-        });
-
-    builder.Services.AddAuthorization();
+    throw new InvalidOperationException(
+        "Missing or invalid JWT configuration: 'JwtSettings:Secret' must be a non-empty string of at least 32 characters. " +
+        "Set it via configuration or the 'JwtSettings__Secret' environment variable.");
 }
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
+        };
+    });
+
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 

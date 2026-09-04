@@ -29,7 +29,8 @@ public class Judge0Client
             source_code = sourceCode,
             language_id = languageId,
             stdin = stdin,
-            cpu_time_limit = 5,
+            cpu_time_limit = 10,
+            wall_time_limit = 10,
             memory_limit = 256000
         };
 
@@ -50,22 +51,32 @@ public class Judge0Client
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken, timeoutCts.Token);
 
-        while (!linkedCts.Token.IsCancellationRequested)
+        try
         {
-            var response = await _http.GetAsync(
-                $"{_baseUrl}/submissions/{token}?base64_encoded=false",
-                linkedCts.Token);
+            while (!linkedCts.Token.IsCancellationRequested)
+            {
+                var response = await _http.GetAsync(
+                    $"{_baseUrl}/submissions/{token}?base64_encoded=false",
+                    linkedCts.Token);
 
-            response.EnsureSuccessStatusCode();
+                response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<Judge0Response>(
-                JsonOptions, linkedCts.Token);
+                var result = await response.Content.ReadFromJsonAsync<Judge0Response>(
+                    JsonOptions, linkedCts.Token);
 
-            if (result?.Status?.Id >= 3)
-                return result;
+                if (result?.Status?.Id >= 3)
+                    return result;
 
-            await Task.Delay(500, linkedCts.Token);
+                await Task.Delay(500, linkedCts.Token);
+            }
         }
+        catch (OperationCanceledException) when (!timeoutCts.IsCancellationRequested)
+        {
+            throw;
+        }
+
+        if (!timeoutCts.IsCancellationRequested)
+            linkedCts.Token.ThrowIfCancellationRequested();
 
         return new Judge0Response
         {
@@ -89,6 +100,9 @@ public class Judge0Response
 
     [JsonPropertyName("stderr")]
     public string? Stderr { get; set; }
+
+    [JsonPropertyName("compile_output")]
+    public string? CompileOutput { get; set; }
 
     [JsonPropertyName("time")]
     public string? Time { get; set; }
