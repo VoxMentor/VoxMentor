@@ -9,7 +9,9 @@ public class StudentMastery
     public int CorrectAttempts { get; set; }
     public int IncorrectAttempts { get; set; }
     public DateTime? LastPracticedAt { get; set; }
-    public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+    // Optimistic concurrency token mapped to PostgreSQL's xmin system column
+    // (Npgsql maps uint + IsRowVersion to xmin; no table column required).
+    public uint RowVersion { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
