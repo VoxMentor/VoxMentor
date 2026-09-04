@@ -84,7 +84,8 @@ INSERT INTO "Concepts" ("Id", "Name", "Description", "DifficultyLevel", "Categor
 ('a0000001-0000-0000-0000-000000000048', 'Knapsack Problem', '0/1 and unbounded knapsack: capacity states and take/skip decisions.', 4, 'Dynamic Programming', now()),
 ('a0000001-0000-0000-0000-000000000049', 'Longest Common Subsequence', 'Classic 2D string DP; edit distance as a related problem.', 4, 'Dynamic Programming', now()),
 -- Algorithms: Greedy (50)
-('a0000001-0000-0000-0000-000000000050', 'Greedy Algorithms', 'Local optimal choices with proofs of global optimality.', 3, 'Algorithms', now());
+('a0000001-0000-0000-0000-000000000050', 'Greedy Algorithms', 'Local optimal choices with proofs of global optimality.', 3, 'Algorithms', now())
+ON CONFLICT ("Id") DO NOTHING;
 
 INSERT INTO "Prerequisites" ("Id", "ConceptId", "RequiredConceptId", "Weight", "CreatedAt")
 SELECT gen_random_uuid(), v."ConceptId"::uuid, v."RequiredConceptId"::uuid, 1, now()
