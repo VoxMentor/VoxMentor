@@ -8,6 +8,12 @@ using VoxMentor.Domain.Entities;
 
 namespace VoxMentor.Application.Features.Practice.SubmitAnswer;
 
+/// <summary>
+/// Processes answer submissions end-to-end: authenticates the user, loads the
+/// question and BKT parameters, updates mastery (creating it on first submit),
+/// persists attempt counters, and publishes a mastery-updated event. Handles
+/// concurrent submissions via bounded optimistic-concurrency retries.
+/// </summary>
 public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiResponse<SubmitAnswerResultDto>>
 {
     private readonly IApplicationDbContext _db;
@@ -27,6 +33,15 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
         _eventPublisher = eventPublisher;
     }
 
+    /// <summary>
+    /// Executes the submission pipeline with retry handling for write races.
+    /// Retries concurrency conflicts and first-submit insert races up to three
+    /// attempts, recalculating BKT mastery from fresh state each time; throws
+    /// <see cref="ConflictException"/> when retries are exhausted.
+    /// </summary>
+    /// <exception cref="UnauthorizedAccessException">No authenticated user.</exception>
+    /// <exception cref="NotFoundException">The question does not exist.</exception>
+    /// <exception cref="ConflictException">Retries were exhausted by concurrent submissions.</exception>
     public async Task<ApiResponse<SubmitAnswerResultDto>> Handle(SubmitAnswerCommand request, CancellationToken cancellationToken)
     {
         var userId = _currentUser.UserId;
@@ -77,6 +92,11 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
         }
     }
 
+    /// <summary>
+    /// Single submission attempt: loads (or creates) the student's mastery row for
+    /// the concept, applies the BKT update, increments attempt counters, persists,
+    /// and publishes the mastery-updated event.
+    /// </summary>
     private async Task<ApiResponse<SubmitAnswerResultDto>> TrySubmitAsync(
         string userId,
         Question question,

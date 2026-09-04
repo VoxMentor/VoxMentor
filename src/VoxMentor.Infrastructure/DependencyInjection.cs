@@ -15,6 +15,11 @@ namespace VoxMentor.Infrastructure;
 
 public static class DependencyInjection
 {
+    /// <summary>
+    /// Registers Infrastructure-layer services: Npgsql DbContext, ASP.NET Identity,
+    /// JWT authentication (access token from cookie), and the current-user and
+    /// mastery-event adapters used by the Application layer.
+    /// </summary>
     public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
     {
         var rawConnectionString = configuration.GetConnectionString("DefaultConnection");
@@ -91,6 +96,12 @@ public static class DependencyInjection
         return services;
     }
 
+    /// <summary>
+    /// Converts a Heroku-style <c>postgres://user:pass@host:port/db</c> URL into
+    /// the key/value Npgsql connection-string format; passes through other formats
+    /// unchanged.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The connection string is missing or empty.</exception>
     private static string ParseConnectionString(string? connectionString)
     {
         if (string.IsNullOrWhiteSpace(connectionString))

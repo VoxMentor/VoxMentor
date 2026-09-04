@@ -13,6 +13,7 @@ namespace VoxMentor.Infrastructure.Migrations
     [DbContext(typeof(ApplicationDbContext))]
     partial class ApplicationDbContextModelSnapshot : ModelSnapshot
     {
+        /// <summary>Snapshot of the current model used to scaffold future migrations.</summary>
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618

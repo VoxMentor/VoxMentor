@@ -5,6 +5,10 @@ using VoxMentor.Application.Common.Interfaces;
 
 namespace VoxMentor.Infrastructure.Services;
 
+/// <summary>
+/// Resolves the current user from JWT claims in the HTTP context
+/// (<c>sub</c>, falling back to <c>NameIdentifier</c>).
+/// </summary>
 public class CurrentUserService : ICurrentUserService
 {
     private readonly IHttpContextAccessor _httpContextAccessor;
@@ -14,6 +18,7 @@ public class CurrentUserService : ICurrentUserService
         _httpContextAccessor = httpContextAccessor;
     }
 
+    /// <inheritdoc />
     public string? UserId =>
         _httpContextAccessor.HttpContext?.User?.FindFirstValue(JwtRegisteredClaimNames.Sub)
         ?? _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);

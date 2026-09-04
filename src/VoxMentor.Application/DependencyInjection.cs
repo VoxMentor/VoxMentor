@@ -8,6 +8,10 @@ namespace VoxMentor.Application;
 
 public static class DependencyInjection
 {
+    /// <summary>
+    /// Registers Application-layer services: FluentValidation validators from the
+    /// assembly, the BKT engine, and the MediatR pipeline with validation behavior.
+    /// </summary>
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
         var assembly = typeof(DependencyInjection).Assembly;

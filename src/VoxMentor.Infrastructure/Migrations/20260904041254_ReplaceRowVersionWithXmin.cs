@@ -11,6 +11,7 @@ namespace VoxMentor.Infrastructure.Migrations
         // PostgreSQL system column — it cannot be created or renamed to. Npgsql maps
         // the uint RowVersion directly to the built-in xmin, so Up only drops the
         // obsolete bytea column.
+        /// <summary>Drops the obsolete bytea RowVersion column; uint RowVersion now maps to the xmin system column.</summary>
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -22,6 +23,7 @@ namespace VoxMentor.Infrastructure.Migrations
         // Non-reversible: recreating RowVersion as a bytea column would restore a
         // concurrency token that PostgreSQL never updates (the original bug). Rollback
         // to AddStudentMasteryRowVersion requires manual SQL and is intentionally blocked.
+        /// <summary>Throws <see cref="NotSupportedException"/> — this migration is intentionally non-reversible.</summary>
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {

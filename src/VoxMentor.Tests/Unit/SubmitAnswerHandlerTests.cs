@@ -6,6 +6,11 @@ using VoxMentor.Domain.Entities;
 
 namespace VoxMentor.Tests.Unit;
 
+/// <summary>
+/// Unit tests for <see cref="SubmitAnswerHandler"/> covering correct/incorrect
+/// answers, missing questions, unauthenticated users, validation, and
+/// concurrent-submission retry handling.
+/// </summary>
 public class SubmitAnswerHandlerTests
 {
     private sealed class FakeCurrentUserService : ICurrentUserService
@@ -24,6 +29,7 @@ public class SubmitAnswerHandlerTests
         }
     }
 
+    /// <summary>Creates an InMemory database context, optionally shared by name for cross-context tests.</summary>
     private static Infrastructure.Persistence.ApplicationDbContext CreateDb(string? sharedName = null)
     {
         var options = new DbContextOptionsBuilder<Infrastructure.Persistence.ApplicationDbContext>()
@@ -32,6 +38,7 @@ public class SubmitAnswerHandlerTests
         return new Infrastructure.Persistence.ApplicationDbContext(options);
     }
 
+    /// <summary>Seeds a single practice question with a default (or given) concept.</summary>
     private static async Task<Question> SeedQuestionAsync(Infrastructure.Persistence.ApplicationDbContext db, Guid? conceptId = null)
     {
         var question = new Question
@@ -46,6 +53,7 @@ public class SubmitAnswerHandlerTests
         return question;
     }
 
+    /// <summary>Builds a handler over the given context with optional user/publisher fakes.</summary>
     private static SubmitAnswerHandler CreateHandler(
         Infrastructure.Persistence.ApplicationDbContext db,
         FakeCurrentUserService? user = null,
@@ -133,6 +141,10 @@ public class SubmitAnswerHandlerTests
         Assert.False(result.IsValid);
     }
 
+    /// <summary>
+    /// Decorator over <see cref="IApplicationDbContext"/> that injects a fault on
+    /// the Nth SaveChangesAsync call to test retry paths deterministically.
+    /// </summary>
     private sealed class FlakyDbContext : IApplicationDbContext
     {
         private readonly IApplicationDbContext _inner;
@@ -156,6 +168,7 @@ public class SubmitAnswerHandlerTests
         public DbSet<AuditLog> AuditLogs => _inner.AuditLogs;
         public DbSet<BktParameters> BktParameters => _inner.BktParameters;
 
+        /// <summary>Throws the injected fault (if any) before delegating the save.</summary>
         public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
             var fault = _fault(++_saves);
