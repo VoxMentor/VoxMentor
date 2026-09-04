@@ -19,16 +19,16 @@ namespace VoxMentor.Infrastructure.Migrations
                 table: "StudentMasteries");
         }
 
+        // Non-reversible: recreating RowVersion as a bytea column would restore a
+        // concurrency token that PostgreSQL never updates (the original bug). Rollback
+        // to AddStudentMasteryRowVersion requires manual SQL and is intentionally blocked.
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<byte[]>(
-                name: "RowVersion",
-                table: "StudentMasteries",
-                type: "bytea",
-                rowVersion: true,
-                nullable: false,
-                defaultValue: new byte[0]);
+            throw new NotSupportedException(
+                $"Migration {nameof(ReplaceRowVersionWithXmin)} is not reversible. " +
+                "Reverting would restore a bytea RowVersion token that PostgreSQL does not auto-update. " +
+                "Roll back manually via SQL if strictly required.");
         }
     }
 }
