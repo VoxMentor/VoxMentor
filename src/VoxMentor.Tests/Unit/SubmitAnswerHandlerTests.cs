@@ -252,11 +252,21 @@ public class SubmitAnswerHandlerTests
         var publisher1 = new FakeEventPublisher();
         var publisher2 = new FakeEventPublisher();
 
-        var task1 = CreateHandler(db1, publisher: publisher1)
-            .Handle(new SubmitAnswerCommand(questionId, true), CancellationToken.None);
-        var task2 = CreateHandler(db2, publisher: publisher2)
-            .Handle(new SubmitAnswerCommand(questionId, false), CancellationToken.None);
-        var responses = await Task.WhenAll(task1, task2);
+        // Force genuine overlap: both handlers read the shared initial state and
+        // reach SaveChangesAsync before either persists, so the loser must take
+        // the concurrency retry path instead of overwriting the winner's update.
+        var saveBarrier = new AsyncBarrier(participants: 2);
+        var handler1 = new SubmitAnswerHandler(
+            new SaveBarrierDbContext(db1, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher1);
+        var handler2 = new SubmitAnswerHandler(
+            new SaveBarrierDbContext(db2, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher2);
+
+        var task1 = handler1.Handle(new SubmitAnswerCommand(questionId, true), CancellationToken.None);
+        var task2 = handler2.Handle(new SubmitAnswerCommand(questionId, false), CancellationToken.None);
+
+        var responses = await Task.WhenAll(
+            task1.WaitAsync(TimeSpan.FromSeconds(30)),
+            task2.WaitAsync(TimeSpan.FromSeconds(30)));
 
         Assert.All(responses, r => Assert.True(r.Success));
 
@@ -265,5 +275,66 @@ public class SubmitAnswerHandlerTests
         Assert.Equal(1, stored.CorrectAttempts);
         Assert.Equal(1, stored.IncorrectAttempts);
         Assert.Equal(2, publisher1.PublishedCount + publisher2.PublishedCount);
+    }
+
+    /// <summary>
+    /// Async barrier for a fixed number of participants: each caller registers
+    /// arrival and resumes only once every participant has arrived. Single-phase
+    /// (single-use); signals after release pass through immediately.
+    /// </summary>
+    private sealed class AsyncBarrier
+    {
+        private readonly int _participants;
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _arrived;
+
+        public AsyncBarrier(int participants) => _participants = participants;
+
+        /// <summary>Registers arrival and completes once all participants have arrived.</summary>
+        public Task SignalAndWaitAsync()
+        {
+            if (Interlocked.Increment(ref _arrived) == _participants)
+            {
+                _release.TrySetResult();
+            }
+            return _release.Task;
+        }
+    }
+
+    /// <summary>
+    /// Decorator that holds <see cref="SaveChangesAsync"/> at a shared barrier so
+    /// concurrent handlers are forced to overlap at the save boundary (both having
+    /// read the same initial state) before either persists.
+    /// </summary>
+    private sealed class SaveBarrierDbContext : IApplicationDbContext
+    {
+        private readonly IApplicationDbContext _inner;
+        private readonly AsyncBarrier _barrier;
+
+        public SaveBarrierDbContext(IApplicationDbContext inner, AsyncBarrier barrier)
+        {
+            _inner = inner;
+            _barrier = barrier;
+        }
+
+        public DbSet<ApplicationUser> Users => _inner.Users;
+        public DbSet<RefreshToken> RefreshTokens => _inner.RefreshTokens;
+        public DbSet<Concept> Concepts => _inner.Concepts;
+        public DbSet<Prerequisite> Prerequisites => _inner.Prerequisites;
+        public DbSet<Question> Questions => _inner.Questions;
+        public DbSet<StudentMastery> StudentMasteries => _inner.StudentMasteries;
+        public DbSet<CodeSubmission> CodeSubmissions => _inner.CodeSubmissions;
+        public DbSet<MockInterview> MockInterviews => _inner.MockInterviews;
+        public DbSet<AuditLog> AuditLogs => _inner.AuditLogs;
+        public DbSet<BktParameters> BktParameters => _inner.BktParameters;
+
+        /// <summary>Waits until all barrier participants reach the save boundary, then saves.</summary>
+        public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            await _barrier.SignalAndWaitAsync();
+            return await _inner.SaveChangesAsync(cancellationToken);
+        }
+
+        public void ClearChangeTracker() => _inner.ClearChangeTracker();
     }
 }
