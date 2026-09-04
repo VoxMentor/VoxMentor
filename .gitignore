@@ -81,3 +81,8 @@ Desktop.ini
 
 # ===== Project specific =====
 autosetup/
+
+# ===== OpenCode (local-only, never commit) =====
+.opencode/
+opencode.local.json
+opencode.local.jsonc
