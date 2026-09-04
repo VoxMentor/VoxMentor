@@ -5,6 +5,10 @@ using VoxMentor.Domain.Entities;
 
 namespace VoxMentor.Infrastructure.Persistence;
 
+/// <summary>
+/// EF Core context for all VoxMentor entities, including Identity stores.
+/// Configures keys, unique indexes, and concurrency tokens.
+/// </summary>
 public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplicationDbContext
 {
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
@@ -22,6 +26,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<AuditLog> AuditLogs { get; set; } = null!;
     public DbSet<BktParameters> BktParameters { get; set; } = null!;
 
+    /// <inheritdoc />
+    public void ClearChangeTracker() => ChangeTracker.Clear();
+
+    /// <summary>
+    /// Configures entity keys, constraints, and the StudentMastery xmin
+    /// concurrency token.
+    /// </summary>
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -69,6 +80,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.UserId, e.ConceptId }).IsUnique();
+            entity.Property(e => e.RowVersion).IsRowVersion();
         });
 
         builder.Entity<CodeSubmission>(entity =>
