@@ -79,9 +79,10 @@ VoxMentor/
 | **PROJECT-STRUCTURE.md** | Where every folder and file lives |
 | **SETUP.md** | How to run the project locally (step-by-step) |
 | **ARCHITECTURE.md** | Deep technical design + 10 architecture decisions (ADRs) |
-| **API.md** | All 30 REST endpoints + 3 SignalR hubs (reference) |
+| **API.md** | All 31 REST endpoints + 3 SignalR hubs (reference) |
 | **WEEK1-PLAN.md** | Week 1 task plan (scaffold + auth + DB) |
-| **WEEK2-PLAN.md** | Week 2 task plan (BKT + code execution + AI eval) |
+| **WEEK2-PLAN.md** | Week 2 task plan (backend endpoints: practice + admin API) |
+| **WEEK3-PLAN.md** | Week 3 task plan (AI Tutor RAG + voice scaffold + deferred dashboard UI) |
 | **CHANGELOG.md** | What changed each version (v1.0.0 → v1.5.0) |
 
 ## Development Timeline
