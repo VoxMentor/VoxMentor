@@ -12,16 +12,23 @@ namespace VoxMentor.Tests.Unit;
 /// </summary>
 public class OllamaCodeEvaluatorTests
 {
-    /// <summary>HttpMessageHandler stub that returns a fixed chat response body.</summary>
+    /// <summary>HttpMessageHandler stub that records the request and returns a fixed chat response body.</summary>
     private sealed class StubHandler : HttpMessageHandler
     {
         private readonly Func<HttpResponseMessage> _respond;
+        private string? _requestBody;
 
         public StubHandler(Func<HttpResponseMessage> respond) => _respond = respond;
 
-        protected override Task<HttpResponseMessage> SendAsync(
+        /// <summary>The JSON request body last sent to Ollama, for wire-contract assertions.</summary>
+        public string RequestBody => _requestBody ?? throw new InvalidOperationException("No request was sent");
+
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
-            => Task.FromResult(_respond());
+        {
+            _requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return _respond();
+        }
     }
 
     private static HttpResponseMessage ChatResponse(string content) => new(HttpStatusCode.OK)
@@ -63,6 +70,54 @@ public class OllamaCodeEvaluatorTests
         Assert.Contains("codeStyle", system);
         Assert.Contains("Python", user);
         Assert.Contains("return a + b;", user);
+    }
+
+    /// <summary>
+    /// Regression test: the request must serialize with camelCase keys so the
+    /// format schema matches the camelCase names ParseEvaluation expects.
+    /// A shared snake_case policy would rewrite timeComplexity/bigO to
+    /// time_complexity/big_o and silently break every real evaluation.
+    /// </summary>
+    [Fact]
+    public async Task EvaluateAsync_RequestSchemaUsesCamelCaseKeys()
+    {
+        var handler = new StubHandler(() => ChatResponse(SampleJson));
+        var evaluator = CreateEvaluator(handler);
+
+        await evaluator.EvaluateAsync("return a + b;", "Python");
+
+        using var request = JsonDocument.Parse(handler.RequestBody);
+        var root = request.RootElement;
+
+        // Envelope
+        Assert.Equal("llama3.2:3b", root.GetProperty("model").GetString());
+        Assert.False(root.GetProperty("stream").GetBoolean());
+        Assert.Equal(0, root.GetProperty("options").GetProperty("temperature").GetInt32());
+        Assert.Equal(2, root.GetProperty("messages").GetArrayLength());
+        Assert.Equal("system", root.GetProperty("messages")[0].GetProperty("role").GetString());
+        Assert.Equal("user", root.GetProperty("messages")[1].GetProperty("role").GetString());
+
+        // Schema keys must stay camelCase (serialization + parse contract)
+        var schemaProperties = root.GetProperty("format").GetProperty("properties");
+        Assert.Equal(
+            new[] { "correctness", "timeComplexity", "spaceComplexity", "codeStyle" },
+            schemaProperties.EnumerateObject().Select(p => p.Name));
+        var complexityProperties = schemaProperties
+            .GetProperty("timeComplexity").GetProperty("properties");
+        Assert.Equal(
+            new[] { "bigO", "isOptimal", "feedback" },
+            complexityProperties.EnumerateObject().Select(p => p.Name));
+
+        // required arrays must reference existing (camelCase) property names
+        var required = root.GetProperty("format").GetProperty("required");
+        Assert.Equal(
+            new[] { "correctness", "timeComplexity", "spaceComplexity", "codeStyle" },
+            required.EnumerateArray().Select(v => v.GetString()));
+        var innerRequired = schemaProperties
+            .GetProperty("timeComplexity").GetProperty("required");
+        Assert.Equal(
+            new[] { "bigO", "isOptimal" },
+            innerRequired.EnumerateArray().Select(v => v.GetString()));
     }
 
     [Fact]
@@ -114,6 +169,51 @@ public class OllamaCodeEvaluatorTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => evaluator.EvaluateAsync("print('hi')", "Python"));
+    }
+
+    /// <summary>
+    /// The model may emit fractional scores despite the integer schema;
+    /// the documented contract says malformed dimensions fall back safely
+    /// instead of throwing FormatException.
+    /// </summary>
+    [Fact]
+    public async Task EvaluateAsync_FractionalScore_FallsBackToDefault()
+    {
+        var fractional = """
+            {
+              "correctness": { "score": 8.5, "feedback": "Good." },
+              "timeComplexity": { "bigO": "O(n)", "isOptimal": true },
+              "spaceComplexity": { "bigO": "O(1)", "isOptimal": true },
+              "codeStyle": { "score": 7, "feedback": "Fine." }
+            }
+            """;
+        var evaluator = CreateEvaluator(new StubHandler(() => ChatResponse(fractional)));
+
+        var evaluation = await evaluator.EvaluateAsync("print('hi')", "Python");
+
+        Assert.Equal(1, evaluation.Correctness.Score);
+        Assert.Equal("Good.", evaluation.Correctness.Feedback);
+        Assert.Equal(7, evaluation.CodeStyle.Score);
+    }
+
+    /// <summary>Out-of-range scores are clamped into the documented 1-10 scale.</summary>
+    [Fact]
+    public async Task EvaluateAsync_OutOfRangeScore_IsClamped()
+    {
+        var outOfRange = """
+            {
+              "correctness": { "score": 15, "feedback": "Overly enthusiastic." },
+              "timeComplexity": { "bigO": "O(n)", "isOptimal": true },
+              "spaceComplexity": { "bigO": "O(1)", "isOptimal": true },
+              "codeStyle": { "score": -2, "feedback": "Harsh." }
+            }
+            """;
+        var evaluator = CreateEvaluator(new StubHandler(() => ChatResponse(outOfRange)));
+
+        var evaluation = await evaluator.EvaluateAsync("print('hi')", "Python");
+
+        Assert.Equal(10, evaluation.Correctness.Score);
+        Assert.Equal(1, evaluation.CodeStyle.Score);
     }
 
     [Fact]

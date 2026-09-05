@@ -18,11 +18,26 @@ public class OllamaCodeEvaluator : ICodeEvaluator
     private readonly string _baseUrl;
     private readonly string _model;
 
+    /// <summary>
+    /// Bounds the evaluation call so a hung Ollama endpoint cannot stall the
+    /// caller (llama3.2:3b on CPU can take tens of seconds; HttpClient's
+    /// default is 100s).
+    /// </summary>
+    private static readonly TimeSpan EvaluationTimeout = TimeSpan.FromSeconds(60);
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         PropertyNameCaseInsensitive = true
     };
+
+    /// <summary>
+    /// camelCase policy for the request payload so the JSON schema sent in
+    /// <c>format</c> keeps the exact key names that <see cref="ParseEvaluation"/>
+    /// and the prompt reference (a shared snake_case policy would rewrite
+    /// <c>timeComplexity</c> to <c>time_complexity</c> and break the contract).
+    /// </summary>
+    private static readonly JsonSerializerOptions RequestJsonOptions = new(JsonSerializerDefaults.Web);
 
     public OllamaCodeEvaluator(HttpClient http, IConfiguration config)
     {
@@ -48,10 +63,14 @@ public class OllamaCodeEvaluator : ICodeEvaluator
             options = new { temperature = 0 }
         };
 
-        var response = await _http.PostAsJsonAsync($"{_baseUrl}/api/chat", request, JsonOptions, cancellationToken);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(EvaluationTimeout);
+
+        var response = await _http.PostAsJsonAsync(
+            $"{_baseUrl}/api/chat", request, RequestJsonOptions, timeoutCts.Token);
         response.EnsureSuccessStatusCode();
 
-        var chat = await response.Content.ReadFromJsonAsync<OllamaChatResponse>(JsonOptions, cancellationToken);
+        var chat = await response.Content.ReadFromJsonAsync<OllamaChatResponse>(JsonOptions, timeoutCts.Token);
 
         if (string.IsNullOrWhiteSpace(chat?.Message?.Content))
             throw new InvalidOperationException("Ollama returned an empty evaluation response");
@@ -124,9 +143,15 @@ public class OllamaCodeEvaluator : ICodeEvaluator
         if (!content.TryGetProperty(name, out var node) || node.ValueKind != JsonValueKind.Object)
             return new DimensionScore(defaultScore, 10, string.Empty);
 
-        var score = node.TryGetProperty("score", out var scoreNode) && scoreNode.ValueKind == JsonValueKind.Number
-            ? scoreNode.GetInt32()
-            : defaultScore;
+        var score = defaultScore;
+        if (node.TryGetProperty("score", out var scoreNode) && scoreNode.ValueKind == JsonValueKind.Number)
+        {
+            // The model may emit fractional (8.5) or out-of-range scores despite
+            // the schema; GetInt32 would throw on those, so parse defensively
+            // and clamp into the documented 1-10 scale.
+            if (scoreNode.TryGetInt32(out var parsed))
+                score = Math.Clamp(parsed, 1, 10);
+        }
         var feedback = node.TryGetProperty("feedback", out var feedbackNode) && feedbackNode.ValueKind == JsonValueKind.String
             ? feedbackNode.GetString() ?? string.Empty
             : string.Empty;
