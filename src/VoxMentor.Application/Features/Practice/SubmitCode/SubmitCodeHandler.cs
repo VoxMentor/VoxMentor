@@ -123,7 +123,7 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
             TestCasesPassed = passedCount,
             TestCasesTotal = testCases.Count,
             ExecutionTimeMs = executionResults.Count != 0
-                ? (int?)executionResults.Max(r => r.ExecutionTimeMs ?? 0)
+                ? (int?)executionResults.Sum(r => r.ExecutionTimeMs ?? 0)
                 : null,
             MemoryUsageKb = executionResults.Count != 0
                 ? executionResults.Max(r => r.MemoryUsageKb ?? 0) is { } kb && kb > 0 ? kb : null
@@ -143,16 +143,15 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
         {
             (previousMastery, newMastery) =
                 await GetCurrentMasteryAsync(userId, question.ConceptId, cancellationToken);
+            await _db.SaveChangesAsync(cancellationToken);
         }
         else
         {
-            var bkt = await ApplyBktUpdateAsync(userId, question.ConceptId, isCorrect.Value, cancellationToken);
+            var bkt = await ApplyBktUpdateAsync(userId, question.ConceptId, isCorrect.Value, submission, cancellationToken);
             previousMastery = bkt.Previous;
             newMastery = bkt.New;
             updatedMastery = bkt.Mastery;
         }
-
-        await _db.SaveChangesAsync(cancellationToken);
 
         // Publish mastery event AFTER save to prevent stale data on subscribers when
         // the transaction rolls back. Matches the SubmitAnswerHandler pattern.
@@ -170,7 +169,9 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
             submission.ExecutionTimeMs,
             submission.MemoryUsageKb,
             evaluation,
-            [.. executionResults.Select((r, i) => new CodeTestCaseResultDto(i, r.Stdin, r.Expected, r.Actual, r.Passed))],
+            [.. executionResults
+                .Take(testCases.Count - question.HiddenTestCaseCount)
+                .Select((r, i) => new CodeTestCaseResultDto(i, r.Stdin, r.Expected, r.Actual, r.Passed))],
             previousMastery,
             newMastery,
             newMastery - previousMastery);
@@ -222,10 +223,11 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
     /// <summary>Result of a BKT mastery update.</summary>
     private sealed record BktResult(float Previous, float New, StudentMastery Mastery);
 
-    /// <summary>Applies the BKT mastery update for the concept with bounded retries on
-    /// write races (same semantics as the answer-submission pipeline).</summary>
+    /// <summary>Applies the BKT mastery update and persists both the submission
+    /// and mastery atomically, with bounded retries on write races (same
+    /// semantics as the answer-submission pipeline).</summary>
     private async Task<BktResult> ApplyBktUpdateAsync(
-        string userId, Guid conceptId, bool isCorrect, CancellationToken cancellationToken)
+        string userId, Guid conceptId, bool isCorrect, CodeSubmission submission, CancellationToken cancellationToken)
     {
         var parameters = await _db.BktParameters
             .FirstOrDefaultAsync(p => p.ConceptId == conceptId, cancellationToken)
@@ -260,6 +262,11 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
                 mastery.LastPracticedAt = DateTime.UtcNow;
                 mastery.UpdatedAt = DateTime.UtcNow;
 
+                // Re-attach submission after ClearChangeTracker on retry.
+                if (_db.Entry(submission).State == EntityState.Detached)
+                    _db.CodeSubmissions.Add(submission);
+
+                await _db.SaveChangesAsync(cancellationToken);
                 return new BktResult(previousMastery, newMastery, mastery);
             }
             catch (DbUpdateConcurrencyException) when (attempt < maxAttempts - 1)

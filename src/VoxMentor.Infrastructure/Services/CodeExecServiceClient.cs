@@ -93,7 +93,7 @@ public class CodeExecServiceClient : ICodeExecService
             }
             response.EnsureSuccessStatusCode();
 
-            var body = await response.Content.ReadFromJsonAsync<ExecuteResponse>(JsonOptions, cancellationToken);
+            var body = await response.Content.ReadFromJsonAsync<ExecuteResponse>(JsonOptions, timeoutCts.Token);
             if (body is null)
             {
                 throw new InvalidOperationException("The code execution service returned an empty response.");

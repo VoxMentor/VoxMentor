@@ -32,7 +32,7 @@ public class CodeSubmission
     /// <summary>Total number of test cases executed.</summary>
     public int TestCasesTotal { get; set; }
 
-    /// <summary>Execution time in milliseconds (max across cases).</summary>
+    /// <summary>Execution time in milliseconds (total across cases).</summary>
     public int? ExecutionTimeMs { get; set; }
 
     /// <summary>Peak memory usage in kilobytes.</summary>

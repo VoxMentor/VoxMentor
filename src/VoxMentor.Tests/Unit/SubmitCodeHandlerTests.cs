@@ -49,10 +49,12 @@ public class SubmitCodeHandlerTests
     private sealed class FakeEventPublisher : IMasteryEventPublisher
     {
         public int PublishedCount { get; private set; }
+        public Action<StudentMastery>? OnPublish { get; set; }
 
         public Task PublishMasteryUpdatedAsync(StudentMastery mastery, float previousMastery, CancellationToken cancellationToken = default)
         {
             PublishedCount++;
+            OnPublish?.Invoke(mastery);
             return Task.CompletedTask;
         }
     }
@@ -304,7 +306,7 @@ public class SubmitCodeHandlerTests
             new SubmitCodeCommand(question.Id, "print('ok')", "python"), CancellationToken.None);
 
         var submission = await db.CodeSubmissions.SingleAsync();
-        Assert.Equal(30, submission.ExecutionTimeMs);
+        Assert.Equal(42, submission.ExecutionTimeMs);
         Assert.Equal(4096, submission.MemoryUsageKb);
     }
 
@@ -332,18 +334,75 @@ public class SubmitCodeHandlerTests
         var publisher = new FakeEventPublisher();
         var handler = CreateHandler(db, exec: exec, publisher: publisher);
 
+        // Verify the submission is already persisted at the moment the event fires.
+        publisher.OnPublish = _ =>
+        {
+            var submission = db.CodeSubmissions.SingleOrDefault();
+            Assert.NotNull(submission);
+        };
+
         var response = await handler.Handle(
             new SubmitCodeCommand(question.Id, "print('ok')", "python"), CancellationToken.None);
 
         Assert.True(response.Success);
         Assert.Equal(1, publisher.PublishedCount);
-        var submission = await db.CodeSubmissions.SingleAsync();
-        Assert.NotNull(submission);
+        var savedSubmission = await db.CodeSubmissions.SingleAsync();
+        Assert.NotNull(savedSubmission);
     }
 
     [Fact]
     public void SupportedLanguages_IncludesC()
     {
         Assert.Contains("c", SubmitCodeValidator.SupportedLanguages);
+    }
+
+    [Fact]
+    public async Task Handle_HiddenTestCases_ExcludesDetailsFromResponse()
+    {
+        await using var db = CreateDb();
+        var question = await SeedQuestionAsync(db, ["1 2\n|3", "3 4\n|7", "5 6\n|11", "7 8\n|15"]);
+        question.HiddenTestCaseCount = 2;
+        await db.SaveChangesAsync();
+
+        var exec = new FakeCodeExecService
+        {
+            Respond = _ => [Case(true), Case(true), Case(true), Case(false, actual: "16")]
+        };
+        var handler = CreateHandler(db, exec: exec);
+
+        var response = await handler.Handle(
+            new SubmitCodeCommand(question.Id, "print(sum(map(int,input().split())))", "python"), CancellationToken.None);
+
+        Assert.True(response.Success);
+        // All 4 cases executed for correctness evaluation.
+        Assert.Equal(3, response.Data!.TestCasesPassed);
+        Assert.Equal(4, response.Data.TestCasesTotal);
+        Assert.False(response.Data.IsCorrect);
+        // Only 2 visible cases returned in TestCaseResults.
+        Assert.Equal(2, response.Data.TestCaseResults.Count);
+        Assert.Equal(0, response.Data.TestCaseResults[0].TestCaseIndex);
+        Assert.Equal(1, response.Data.TestCaseResults[1].TestCaseIndex);
+    }
+
+    [Fact]
+    public async Task Handle_NoHiddenCases_ReturnsAllDetails()
+    {
+        await using var db = CreateDb();
+        var question = await SeedQuestionAsync(db, ["1 2\n|3", "3 4\n|7"]);
+        // HiddenTestCaseCount defaults to 0.
+        var exec = new FakeCodeExecService
+        {
+            Respond = _ => [Case(true), Case(true)]
+        };
+        var handler = CreateHandler(db, exec: exec);
+
+        var response = await handler.Handle(
+            new SubmitCodeCommand(question.Id, "print(sum(map(int,input().split())))", "python"), CancellationToken.None);
+
+        Assert.True(response.Success);
+        Assert.Equal(2, response.Data!.TestCasesPassed);
+        Assert.Equal(2, response.Data.TestCasesTotal);
+        Assert.True(response.Data.IsCorrect);
+        Assert.Equal(2, response.Data.TestCaseResults.Count);
     }
 }
