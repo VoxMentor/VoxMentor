@@ -10,7 +10,10 @@ public class CodeSubmission
     public string Code { get; set; } = string.Empty;
     public string Language { get; set; } = string.Empty;
     public bool IsCorrect { get; set; }
+    public int TestCasesPassed { get; set; }
+    public int TestCasesTotal { get; set; }
     public int? ExecutionTimeMs { get; set; }
+    public int? MemoryUsageKb { get; set; }
     public float? PlagiarismScore { get; set; }
     public string? AiEvaluation { get; set; }
     public SubmissionStatus Status { get; set; } = SubmissionStatus.Pending;

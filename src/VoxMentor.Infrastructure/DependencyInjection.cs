@@ -57,6 +57,11 @@ public static class DependencyInjection
         services.AddSingleton<IRefreshTokenHasher, RefreshTokenHasher>();
         services.AddScoped<IHealthService, HealthService>();
         services.AddHttpClient<ICodeEvaluator, OllamaCodeEvaluator>();
+        services.AddHttpClient<ICodeExecService, CodeExecServiceClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddScoped<ICurrentTokenService, CurrentTokenService>();
 
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
