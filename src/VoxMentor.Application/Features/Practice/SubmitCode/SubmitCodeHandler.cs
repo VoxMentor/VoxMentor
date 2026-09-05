@@ -36,6 +36,7 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
             ["python"] = 71,
             ["java"] = 62,
             ["cpp"] = 54,
+            ["c"] = 50,
             ["javascript"] = 63,
             ["csharp"] = 51
         };
@@ -137,6 +138,7 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
 
         float previousMastery;
         float newMastery;
+        StudentMastery? updatedMastery = null;
         if (isCorrect is null)
         {
             (previousMastery, newMastery) =
@@ -144,11 +146,20 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
         }
         else
         {
-            (previousMastery, newMastery) =
-                await ApplyBktUpdateAsync(userId, question.ConceptId, isCorrect.Value, cancellationToken);
+            var bkt = await ApplyBktUpdateAsync(userId, question.ConceptId, isCorrect.Value, cancellationToken);
+            previousMastery = bkt.Previous;
+            newMastery = bkt.New;
+            updatedMastery = bkt.Mastery;
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        // Publish mastery event AFTER save to prevent stale data on subscribers when
+        // the transaction rolls back. Matches the SubmitAnswerHandler pattern.
+        if (updatedMastery is not null)
+        {
+            await _eventPublisher.PublishMasteryUpdatedAsync(updatedMastery, previousMastery, cancellationToken);
+        }
 
         var result = new SubmitCodeResultDto(
             submission.Id,
@@ -208,11 +219,12 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
             : SubmissionStatus.WrongAnswer;
     }
 
-    /// <summary>
-    /// Applies the BKT mastery update for the concept with bounded retries on
-    /// write races (same semantics as the answer-submission pipeline).
-    /// </summary>
-    private async Task<(float Previous, float New)> ApplyBktUpdateAsync(
+    /// <summary>Result of a BKT mastery update.</summary>
+    private sealed record BktResult(float Previous, float New, StudentMastery Mastery);
+
+    /// <summary>Applies the BKT mastery update for the concept with bounded retries on
+    /// write races (same semantics as the answer-submission pipeline).</summary>
+    private async Task<BktResult> ApplyBktUpdateAsync(
         string userId, Guid conceptId, bool isCorrect, CancellationToken cancellationToken)
     {
         var parameters = await _db.BktParameters
@@ -248,9 +260,7 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
                 mastery.LastPracticedAt = DateTime.UtcNow;
                 mastery.UpdatedAt = DateTime.UtcNow;
 
-                await _eventPublisher.PublishMasteryUpdatedAsync(mastery, previousMastery, cancellationToken);
-
-                return (previousMastery, newMastery);
+                return new BktResult(previousMastery, newMastery, mastery);
             }
             catch (DbUpdateConcurrencyException) when (attempt < maxAttempts - 1)
             {

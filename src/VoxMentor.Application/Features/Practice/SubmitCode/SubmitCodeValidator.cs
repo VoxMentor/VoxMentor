@@ -12,7 +12,7 @@ public class SubmitCodeValidator : AbstractValidator<SubmitCodeCommand>
     public static readonly IReadOnlySet<string> SupportedLanguages =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "python", "java", "cpp", "javascript", "csharp"
+            "python", "java", "cpp", "c", "javascript", "csharp"
         };
 
     private const int MaxCodeLength = 50_000;
@@ -25,7 +25,7 @@ public class SubmitCodeValidator : AbstractValidator<SubmitCodeCommand>
         RuleFor(x => x.Language)
             .NotEmpty().WithMessage("Language is required.")
             .Must(language => SupportedLanguages.Contains(language))
-            .WithMessage("Language must be one of: python, java, cpp, javascript, csharp.");
+            .WithMessage("Language must be one of: python, java, cpp, c, javascript, csharp.");
 
         RuleFor(x => x.Code)
             .NotEmpty().WithMessage("Code is required.")

@@ -28,6 +28,11 @@ public class CodeExecServiceClient : ICodeExecService
         PropertyNameCaseInsensitive = true
     };
 
+    /// <summary>Initialises a new instance of the <see cref="CodeExecServiceClient"/> class.</summary>
+    /// <param name="http">The HTTP client used to call the Code Execution microservice.</param>
+    /// <param name="config">Application configuration providing the service base URL.</param>
+    /// <param name="currentToken">Provides the user's access token for forwarding.</param>
+    /// <param name="logger">Logger for execution diagnostics.</param>
     public CodeExecServiceClient(
         HttpClient http,
         IConfiguration config,
@@ -40,9 +45,25 @@ public class CodeExecServiceClient : ICodeExecService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Executes the code against each test case by calling the Code Execution
+    /// microservice. A linked 60-second timeout caps total execution time
+    /// regardless of how many test cases are provided.
+    /// </summary>
+    /// <exception cref="UnauthorizedAccessException">
+    /// The service rejected the forwarded credentials.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// The service returned an empty response body.
+    /// </exception>
     public async Task<IReadOnlyList<CodeExecutionCaseResult>> ExecuteAsync(
         CodeExecutionRequest request, CancellationToken cancellationToken = default)
     {
+        // Cap total execution time across all test cases to prevent a single
+        // submission with many cases from monopolising CodeExecService capacity.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(60));
+
         var results = new List<CodeExecutionCaseResult>(request.TestCases.Count);
 
         foreach (var testCase in request.TestCases)
@@ -64,7 +85,7 @@ public class CodeExecServiceClient : ICodeExecService
                 requestMessage.Headers.Authorization = new("Bearer", token);
             }
 
-            using var response = await _http.SendAsync(requestMessage, cancellationToken);
+            using var response = await _http.SendAsync(requestMessage, timeoutCts.Token);
             if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
                 throw new UnauthorizedAccessException(
@@ -87,6 +108,7 @@ public class CodeExecServiceClient : ICodeExecService
         return results;
     }
 
+    /// <summary>Maps the service response to a <see cref="CodeExecutionCaseResult"/>.</summary>
     private static CodeExecutionCaseResult ToCaseResult(string stdin, ExecuteResponse body)
     {
         var caseResult = body.TestResults is { Count: > 0 } ? body.TestResults[0] : null;
@@ -102,6 +124,7 @@ public class CodeExecServiceClient : ICodeExecService
             body.MemoryUsageKb);
     }
 
+    /// <summary>JSON response from the Code Execution microservice.</summary>
     private sealed class ExecuteResponse
     {
         [JsonPropertyName("stdout")]
@@ -129,6 +152,7 @@ public class CodeExecServiceClient : ICodeExecService
         public List<ExecuteTestCaseResult>? TestResults { get; set; }
     }
 
+    /// <summary>Per-test-case result from the Code Execution microservice.</summary>
     private sealed class ExecuteTestCaseResult
     {
         [JsonPropertyName("testCaseIndex")]

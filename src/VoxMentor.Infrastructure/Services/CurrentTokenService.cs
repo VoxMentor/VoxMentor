@@ -12,6 +12,8 @@ public class CurrentTokenService : ICurrentTokenService
 {
     private readonly IHttpContextAccessor _httpContextAccessor;
 
+    /// <summary>Initialises a new instance of the <see cref="CurrentTokenService"/> class.</summary>
+    /// <param name="httpContextAccessor">Provides access to the current HTTP context.</param>
     public CurrentTokenService(IHttpContextAccessor httpContextAccessor)
     {
         _httpContextAccessor = httpContextAccessor;

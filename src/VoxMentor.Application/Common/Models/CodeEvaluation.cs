@@ -7,12 +7,16 @@ namespace VoxMentor.Application.Common.Models;
 /// </summary>
 public class CodeEvaluation
 {
+    /// <summary>Correctness assessment.</summary>
     public DimensionScore Correctness { get; set; } = new(1, 10, string.Empty);
 
+    /// <summary>Time complexity analysis.</summary>
     public ComplexityScore TimeComplexity { get; set; } = new(string.Empty, false);
 
+    /// <summary>Space complexity analysis.</summary>
     public ComplexityScore SpaceComplexity { get; set; } = new(string.Empty, false);
 
+    /// <summary>Code style assessment.</summary>
     public DimensionScore CodeStyle { get; set; } = new(1, 10, string.Empty);
 }
 

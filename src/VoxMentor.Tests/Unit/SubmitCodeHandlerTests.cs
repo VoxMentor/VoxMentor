@@ -307,4 +307,43 @@ public class SubmitCodeHandlerTests
         Assert.Equal(30, submission.ExecutionTimeMs);
         Assert.Equal(4096, submission.MemoryUsageKb);
     }
+
+    [Fact]
+    public async Task Handle_CLanguage_AcceptsSubmission()
+    {
+        await using var db = CreateDb();
+        var question = await SeedQuestionAsync(db, ["|hello"]);
+        var exec = new FakeCodeExecService { Respond = _ => [Case(true)] };
+        var handler = CreateHandler(db, exec: exec);
+
+        var response = await handler.Handle(
+            new SubmitCodeCommand(question.Id, "#include <stdio.h>", "c"), CancellationToken.None);
+
+        Assert.True(response.Success);
+        Assert.Equal(SubmissionStatus.Accepted.ToString(), response.Data!.Status);
+    }
+
+    [Fact]
+    public async Task Handle_CorrectAnswer_PublishesEventAfterSave()
+    {
+        await using var db = CreateDb();
+        var question = await SeedQuestionAsync(db, ["|ok"]);
+        var exec = new FakeCodeExecService { Respond = _ => [Case(true)] };
+        var publisher = new FakeEventPublisher();
+        var handler = CreateHandler(db, exec: exec, publisher: publisher);
+
+        var response = await handler.Handle(
+            new SubmitCodeCommand(question.Id, "print('ok')", "python"), CancellationToken.None);
+
+        Assert.True(response.Success);
+        Assert.Equal(1, publisher.PublishedCount);
+        var submission = await db.CodeSubmissions.SingleAsync();
+        Assert.NotNull(submission);
+    }
+
+    [Fact]
+    public void SupportedLanguages_IncludesC()
+    {
+        Assert.Contains("c", SubmitCodeValidator.SupportedLanguages);
+    }
 }
