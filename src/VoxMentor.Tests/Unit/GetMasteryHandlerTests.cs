@@ -67,6 +67,7 @@ public class GetMasteryHandlerTests
         await db.SaveChangesAsync();
     }
 
+    /// <summary>Builds a handler over the given context with an optional current-user fake.</summary>
     private static GetMasteryHandler CreateHandler(
         Infrastructure.Persistence.ApplicationDbContext db,
         FakeCurrentUserService? user = null)
@@ -74,6 +75,7 @@ public class GetMasteryHandlerTests
         return new GetMasteryHandler(db, user ?? new FakeCurrentUserService());
     }
 
+    /// <summary>Verifies that an unauthenticated request is rejected with UnauthorizedAccessException.</summary>
     [Fact]
     public async Task Handle_UnauthenticatedUser_Throws()
     {
@@ -84,6 +86,7 @@ public class GetMasteryHandlerTests
             handler.Handle(new GetMasteryQuery(), CancellationToken.None));
     }
 
+    /// <summary>Verifies an empty knowledge graph yields an all-zero empty profile.</summary>
     [Fact]
     public async Task Handle_NoConcepts_ReturnsEmptyProfile()
     {
@@ -100,6 +103,7 @@ public class GetMasteryHandlerTests
         Assert.Equal(0f, response.Data.OverallReadiness);
     }
 
+    /// <summary>Verifies never-practiced concepts report null mastery, zero attempts, and zero readiness.</summary>
     [Fact]
     public async Task Handle_NeverPracticed_ReportsNullMasteryAndZeroReadiness()
     {
@@ -124,6 +128,7 @@ public class GetMasteryHandlerTests
         Assert.Equal(0f, response.Data.OverallReadiness);
     }
 
+    /// <summary>Verifies a concept at 0.9 mastery counts as mastered and lifts readiness.</summary>
     [Fact]
     public async Task Handle_MasteredConcept_CountsAsMastered()
     {
@@ -142,6 +147,7 @@ public class GetMasteryHandlerTests
         Assert.Equal(0.9f, response.Data.OverallReadiness);
     }
 
+    /// <summary>Verifies mastery just below the 0.85 threshold (0.84) is not mastered.</summary>
     [Fact]
     public async Task Handle_MasteryBelowThreshold_NotMastered()
     {
@@ -158,6 +164,7 @@ public class GetMasteryHandlerTests
         Assert.Equal(0, response.Data.MasteredCount);
     }
 
+    /// <summary>Verifies the inclusive 0.85 threshold boundary counts as mastered.</summary>
     [Fact]
     public async Task Handle_ThresholdExactlyAtLimit_CountsAsMastered()
     {
@@ -172,6 +179,7 @@ public class GetMasteryHandlerTests
         Assert.Equal(1, response.Data.MasteredCount);
     }
 
+    /// <summary>Verifies readiness averages all concepts, counting unpracticed as zero.</summary>
     [Fact]
     public async Task Handle_MixedProfile_ComputesReadinessWithUnpracticedAsZero()
     {
@@ -190,6 +198,7 @@ public class GetMasteryHandlerTests
         Assert.Equal((0.9f + 0.4f + 0f) / 3f, response.Data.OverallReadiness);
     }
 
+    /// <summary>Verifies other users' mastery rows never leak into the caller's profile.</summary>
     [Fact]
     public async Task Handle_OtherUsersMastery_ExcludedFromProfile()
     {
@@ -206,6 +215,7 @@ public class GetMasteryHandlerTests
         Assert.Equal(0f, response.Data.OverallReadiness);
     }
 
+    /// <summary>Verifies concepts are ordered by category, then difficulty, then name.</summary>
     [Fact]
     public async Task Handle_ConceptsOrdered_ByCategoryThenDifficultyThenName()
     {

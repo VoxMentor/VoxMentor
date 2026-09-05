@@ -15,6 +15,7 @@ public class StudentController : ControllerBase
 {
     private readonly ISender _sender;
 
+    /// <summary>Initializes the controller with the MediatR sender.</summary>
     public StudentController(ISender sender)
     {
         _sender = sender;
@@ -28,6 +29,7 @@ public class StudentController : ControllerBase
     [Authorize(Roles = "Student")]
     [ProducesResponseType(typeof(ApiResponse<MasteryProfileDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> GetMastery(CancellationToken cancellationToken)
     {
         var response = await _sender.Send(new GetMasteryQuery(), cancellationToken);

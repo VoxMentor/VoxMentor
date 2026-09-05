@@ -18,6 +18,7 @@ public class GetMasteryHandler : IRequestHandler<GetMasteryQuery, ApiResponse<Ma
     private readonly IApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
 
+    /// <summary>Initializes the handler with the read-only context and current-user service.</summary>
     public GetMasteryHandler(IApplicationDbContext db, ICurrentUserService currentUser)
     {
         _db = db;
