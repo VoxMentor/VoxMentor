@@ -17,13 +17,20 @@ public class CodeExecutionService
         51   // C#
     };
 
+    /// <summary>Initializes the service with the Judge0 execution client.</summary>
     public CodeExecutionService(Judge0Client judge0Client)
     {
         _judge0Client = judge0Client;
     }
 
+    /// <summary>Whether the Judge0 language id is in the supported set.</summary>
     public bool IsLanguageSupported(int languageId) => SupportedLanguages.Contains(languageId);
 
+    /// <summary>
+    /// Executes the request via Judge0 and maps the result: stdout/stderr (with
+    /// compile-output fallback), invariant-culture time parsing, timeout flag,
+    /// and strict per-test-case output comparison when expected outputs are given.
+    /// </summary>
     public async Task<ExecutionResult> ExecuteAsync(
         ExecutionRequest request,
         CancellationToken cancellationToken = default)
@@ -74,13 +81,19 @@ public class CodeExecutionService
     /// <summary>
     /// Splits output into lines, removing at most one final line terminator while
     /// preserving interior blank lines and additional trailing newlines that are
-    /// part of the expected output (e.g. "ok\n\n" becomes ["ok", ""]).
+    /// part of the expected output (e.g. "ok\n\n" becomes ["ok", ""]. A single
+    /// bare newline ("\n") is one empty output line; empty input is zero lines.
     /// </summary>
     private static string[] NormalizeOutput(string output)
     {
         var normalized = output.Replace("\r\n", "\n");
-        if (normalized.EndsWith('\n'))
+        var hadNewline = normalized.EndsWith('\n');
+        if (hadNewline)
             normalized = normalized[..^1];
-        return normalized.Length == 0 ? Array.Empty<string>() : normalized.Split('\n');
+
+        if (normalized.Length == 0)
+            return hadNewline ? new[] { string.Empty } : Array.Empty<string>();
+
+        return normalized.Split('\n');
     }
 }

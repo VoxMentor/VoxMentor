@@ -11,11 +11,20 @@ public class ExecuteController : ControllerBase
 {
     private readonly CodeExecutionService _executionService;
 
+    /// <summary>Initializes the controller with the execution service.</summary>
     public ExecuteController(CodeExecutionService executionService)
     {
         _executionService = executionService;
     }
 
+    /// <summary>
+    /// Executes code in the sandbox: returns program output, errors, resource
+    /// usage, and per-test-case pass/fail when expected outputs are provided.
+    /// </summary>
+    /// <remarks>
+    /// 400 unsupported language, 401 unauthenticated, 503 Judge0 unreachable,
+    /// 504 execution timed out.
+    /// </remarks>
     [HttpPost]
     [Authorize(Roles = "Student")]
     [ProducesResponseType(typeof(ExecutionResult), StatusCodes.Status200OK)]

@@ -14,12 +14,19 @@ public class Judge0Client
         PropertyNameCaseInsensitive = true
     };
 
+    /// <summary>Initializes the client with the HTTP transport and the Judge0 base URL from configuration.</summary>
     public Judge0Client(HttpClient http, IConfiguration config)
     {
         _http = http;
         _baseUrl = config["Judge0:BaseUrl"] ?? "http://localhost:2358";
     }
 
+    /// <summary>
+    /// Submits code to Judge0 and polls until the execution finishes, or a
+    /// synthetic "Time Limit Exceeded" response after the 10-second budget.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Judge0 returned no submission token.</exception>
+    /// <exception cref="OperationCanceledException">The caller cancelled or the time budget elapsed.</exception>
     public async Task<Judge0Response> ExecuteAsync(
         string sourceCode, int languageId, string stdin = "",
         CancellationToken cancellationToken = default)
@@ -34,8 +41,12 @@ public class Judge0Client
             memory_limit = 256000
         };
 
+        // Disposing the CTS releases its CancelAfter timer (leak otherwise);
+        // the linked source bounds the POST to 10s even though HttpClient's
+        // default Timeout is 100s.
+        using var submitCts = CreateSubmitCancellationTokenSource(cancellationToken);
         var response = await _http.PostAsJsonAsync(
-            $"{_baseUrl}/submissions", request, JsonOptions, CreateSubmitCancellationToken(cancellationToken));
+            $"{_baseUrl}/submissions", request, JsonOptions, submitCts.Token);
         response.EnsureSuccessStatusCode();
 
         var submission = await response.Content.ReadFromJsonAsync<Judge0Submission>(JsonOptions, cancellationToken);
@@ -47,16 +58,22 @@ public class Judge0Client
     }
 
     /// <summary>
-    /// Bounds the submission request to 10 seconds so an unresponsive Judge0
-    /// endpoint cannot delay execution beyond the overall time budget.
+    /// Creates a linked token source that bounds the submission request to
+    /// 10 seconds so an unresponsive Judge0 endpoint cannot delay execution
+    /// beyond the overall time budget. The caller must dispose the source.
     /// </summary>
-    private static CancellationToken CreateSubmitCancellationToken(CancellationToken cancellationToken)
+    private static CancellationTokenSource CreateSubmitCancellationTokenSource(CancellationToken cancellationToken)
     {
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(TimeSpan.FromSeconds(10));
-        return cts.Token;
+        return cts;
     }
 
+    /// <summary>
+    /// Polls the submission result every 500ms until Judge0 reports a terminal
+    /// status. Distinguishes caller cancellation (rethrown) from the 10-second
+    /// polling timeout (returns a synthetic "Time Limit Exceeded" response).
+    /// </summary>
     private async Task<Judge0Response> PollResultAsync(string token, CancellationToken cancellationToken)
     {
         using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
