@@ -12,7 +12,6 @@ using VoxMentor.Infrastructure.Persistence;
 using VoxMentor.Infrastructure.Services;
 
 namespace VoxMentor.Infrastructure;
-
 public static class DependencyInjection
 {
     /// <summary>
@@ -57,6 +56,7 @@ public static class DependencyInjection
         services.AddSingleton<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddSingleton<IRefreshTokenHasher, RefreshTokenHasher>();
         services.AddScoped<IHealthService, HealthService>();
+        services.AddHttpClient<ICodeEvaluator, OllamaCodeEvaluator>();
 
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
