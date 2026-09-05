@@ -51,13 +51,13 @@ public class CodeExecutionService
 
             for (int i = 0; i < request.ExpectedOutputs.Length; i++)
             {
-                var expected = request.ExpectedOutputs[i].Trim();
+                var expected = request.ExpectedOutputs[i];
                 var actual = i < actualOutputs.Length ? actualOutputs[i] : null;
 
                 result.TestResults.Add(new TestCaseResult
                 {
                     TestCaseIndex = i,
-                    Expected = request.ExpectedOutputs[i].Trim(),
+                    Expected = expected,
                     Actual = actual ?? string.Empty,
                     Passed = actual != null
                         && string.Equals(expected, actual, StringComparison.Ordinal)
@@ -72,12 +72,15 @@ public class CodeExecutionService
     }
 
     /// <summary>
-    /// Splits output into lines, removing only the final line terminator while
-    /// preserving interior blank lines that are part of the expected output.
+    /// Splits output into lines, removing at most one final line terminator while
+    /// preserving interior blank lines and additional trailing newlines that are
+    /// part of the expected output (e.g. "ok\n\n" becomes ["ok", ""]).
     /// </summary>
     private static string[] NormalizeOutput(string output)
     {
-        var normalized = output.Replace("\r\n", "\n").TrimEnd('\n');
+        var normalized = output.Replace("\r\n", "\n");
+        if (normalized.EndsWith('\n'))
+            normalized = normalized[..^1];
         return normalized.Length == 0 ? Array.Empty<string>() : normalized.Split('\n');
     }
 }

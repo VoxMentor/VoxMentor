@@ -34,7 +34,8 @@ public class Judge0Client
             memory_limit = 256000
         };
 
-        var response = await _http.PostAsJsonAsync($"{_baseUrl}/submissions", request, JsonOptions, cancellationToken);
+        var response = await _http.PostAsJsonAsync(
+            $"{_baseUrl}/submissions", request, JsonOptions, CreateSubmitCancellationToken(cancellationToken));
         response.EnsureSuccessStatusCode();
 
         var submission = await response.Content.ReadFromJsonAsync<Judge0Submission>(JsonOptions, cancellationToken);
@@ -43,6 +44,17 @@ public class Judge0Client
             throw new InvalidOperationException("Judge0 returned null or empty submission token");
 
         return await PollResultAsync(submission.Token, cancellationToken);
+    }
+
+    /// <summary>
+    /// Bounds the submission request to 10 seconds so an unresponsive Judge0
+    /// endpoint cannot delay execution beyond the overall time budget.
+    /// </summary>
+    private static CancellationToken CreateSubmitCancellationToken(CancellationToken cancellationToken)
+    {
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(10));
+        return cts.Token;
     }
 
     private async Task<Judge0Response> PollResultAsync(string token, CancellationToken cancellationToken)
