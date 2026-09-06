@@ -16,11 +16,20 @@ namespace VoxMentor.Infrastructure.Migrations
                 type: "integer",
                 nullable: false,
                 defaultValue: 0);
+
+            migrationBuilder.AddCheckConstraint(
+                name: "CK_Questions_HiddenTestCaseCount_NonNegative",
+                table: "Questions",
+                sql: "\"HiddenTestCaseCount\" >= 0");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropCheckConstraint(
+                name: "CK_Questions_HiddenTestCaseCount_NonNegative",
+                table: "Questions");
+
             migrationBuilder.DropColumn(
                 name: "HiddenTestCaseCount",
                 table: "Questions");
