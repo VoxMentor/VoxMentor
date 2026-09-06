@@ -39,6 +39,9 @@ public class OllamaCodeEvaluator : ICodeEvaluator
     /// </summary>
     private static readonly JsonSerializerOptions RequestJsonOptions = new(JsonSerializerDefaults.Web);
 
+    /// <summary>Initialises a new instance of the <see cref="OllamaCodeEvaluator"/> class.</summary>
+    /// <param name="http">HTTP client for calling the Ollama API.</param>
+    /// <param name="config">Application configuration providing Ollama base URL and model name.</param>
     public OllamaCodeEvaluator(HttpClient http, IConfiguration config)
     {
         _http = http;
@@ -46,6 +49,14 @@ public class OllamaCodeEvaluator : ICodeEvaluator
         _model = config["Ollama:Model"] ?? "llama3.2:3b";
     }
 
+    /// <summary>
+    /// Sends the code to Ollama with a structured-output JSON schema and
+    /// parses the four-dimension evaluation. A 60-second timeout prevents
+    /// hung endpoints from blocking the caller.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Ollama returned an empty or unparseable response.
+    /// </exception>
     public async Task<CodeEvaluation> EvaluateAsync(string code, string language, CancellationToken cancellationToken = default)
     {
         var (systemPrompt, userPrompt) = BuildPrompt(code, language);
@@ -138,6 +149,7 @@ public class OllamaCodeEvaluator : ICodeEvaluator
         }
     }
 
+    /// <summary>Extracts a 1-10 dimension score from the JSON element, clamping to the valid range.</summary>
     private static DimensionScore ToDimension(JsonElement content, string name, int defaultScore)
     {
         if (!content.TryGetProperty(name, out var node) || node.ValueKind != JsonValueKind.Object)
@@ -159,6 +171,7 @@ public class OllamaCodeEvaluator : ICodeEvaluator
         return new DimensionScore(score, 10, feedback);
     }
 
+    /// <summary>Extracts a Big-O complexity score from the JSON element.</summary>
     private static ComplexityScore ToComplexity(JsonElement content, string name)
     {
         if (!content.TryGetProperty(name, out var node) || node.ValueKind != JsonValueKind.Object)

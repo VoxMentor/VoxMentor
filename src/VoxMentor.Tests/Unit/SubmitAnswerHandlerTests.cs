@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Features.Practice.SubmitAnswer;
 using VoxMentor.Application.Services;
@@ -178,6 +179,8 @@ public class SubmitAnswerHandlerTests
         }
 
         public void ClearChangeTracker() => _inner.ClearChangeTracker();
+
+        public EntityEntry<T> Entry<T>(T entity) where T : class => _inner.Entry(entity);
     }
 
     [Fact]
@@ -336,5 +339,7 @@ public class SubmitAnswerHandlerTests
         }
 
         public void ClearChangeTracker() => _inner.ClearChangeTracker();
+
+        public EntityEntry<T> Entry<T>(T entity) where T : class => _inner.Entry(entity);
     }
 }
