@@ -21,6 +21,11 @@ namespace VoxMentor.Infrastructure.Migrations
                 name: "CK_Questions_HiddenTestCaseCount_NonNegative",
                 table: "Questions",
                 sql: "\"HiddenTestCaseCount\" >= 0");
+
+            migrationBuilder.AddCheckConstraint(
+                name: "CK_Questions_HiddenTestCaseCount_UpperBound",
+                table: "Questions",
+                sql: "\"HiddenTestCaseCount\" <= cardinality(\"TestCases\")");
         }
 
         /// <inheritdoc />
@@ -28,6 +33,10 @@ namespace VoxMentor.Infrastructure.Migrations
         {
             migrationBuilder.DropCheckConstraint(
                 name: "CK_Questions_HiddenTestCaseCount_NonNegative",
+                table: "Questions");
+
+            migrationBuilder.DropCheckConstraint(
+                name: "CK_Questions_HiddenTestCaseCount_UpperBound",
                 table: "Questions");
 
             migrationBuilder.DropColumn(

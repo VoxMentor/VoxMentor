@@ -12,7 +12,7 @@ using VoxMentor.Infrastructure.Persistence;
 namespace VoxMentor.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260906062000_AddQuestionHiddenTestCaseCount")]
+    [Migration("20260906073447_AddQuestionHiddenTestCaseCount")]
     partial class AddQuestionHiddenTestCaseCount
     {
         /// <inheritdoc />
@@ -494,6 +494,8 @@ namespace VoxMentor.Infrastructure.Migrations
                     b.ToTable("Questions", t =>
                         {
                             t.HasCheckConstraint("CK_Questions_HiddenTestCaseCount_NonNegative", "\"HiddenTestCaseCount\" >= 0");
+
+                            t.HasCheckConstraint("CK_Questions_HiddenTestCaseCount_UpperBound", "\"HiddenTestCaseCount\" <= cardinality(\"TestCases\")");
                         });
                 });
 

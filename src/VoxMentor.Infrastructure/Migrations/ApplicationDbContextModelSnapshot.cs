@@ -491,6 +491,8 @@ namespace VoxMentor.Infrastructure.Migrations
                     b.ToTable("Questions", t =>
                         {
                             t.HasCheckConstraint("CK_Questions_HiddenTestCaseCount_NonNegative", "\"HiddenTestCaseCount\" >= 0");
+
+                            t.HasCheckConstraint("CK_Questions_HiddenTestCaseCount_UpperBound", "\"HiddenTestCaseCount\" <= cardinality(\"TestCases\")");
                         });
                 });
 
