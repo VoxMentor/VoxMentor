@@ -11,5 +11,9 @@ public class Question
     public string[] ExampleInputs { get; set; } = Array.Empty<string>();
     public string[] ExampleOutputs { get; set; } = Array.Empty<string>();
     public string[] StarterCode { get; set; } = Array.Empty<string>();
+
+    /// <summary>Number of trailing test cases hidden from students (aggregate counts still shown).</summary>
+    public int HiddenTestCaseCount { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

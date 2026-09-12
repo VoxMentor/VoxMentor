@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using VoxMentor.Domain.Entities;
 
 namespace VoxMentor.Application.Common.Interfaces;
@@ -27,4 +28,7 @@ public interface IApplicationDbContext
     /// after a concurrency conflict.
     /// </summary>
     void ClearChangeTracker();
+
+    /// <summary>Gets the <see cref="EntityEntry{TEntity}"/> tracking the given entity.</summary>
+    EntityEntry<T> Entry<T>(T entity) where T : class;
 }

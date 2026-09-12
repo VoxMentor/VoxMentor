@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using VoxMentor.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using VoxMentor.Infrastructure.Persistence;
 namespace VoxMentor.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260905155618_AddCodeSubmissionExecutionStats")]
+    partial class AddCodeSubmissionExecutionStats
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -470,9 +473,6 @@ namespace VoxMentor.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text[]");
 
-                    b.Property<int>("HiddenTestCaseCount")
-                        .HasColumnType("integer");
-
                     b.Property<string[]>("StarterCode")
                         .IsRequired()
                         .HasColumnType("text[]");
@@ -488,12 +488,7 @@ namespace VoxMentor.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Questions", t =>
-                        {
-                            t.HasCheckConstraint("CK_Questions_HiddenTestCaseCount_NonNegative", "\"HiddenTestCaseCount\" >= 0");
-
-                            t.HasCheckConstraint("CK_Questions_HiddenTestCaseCount_UpperBound", "\"HiddenTestCaseCount\" <= cardinality(\"TestCases\")");
-                        });
+                    b.ToTable("Questions");
                 });
 
             modelBuilder.Entity("VoxMentor.Domain.Entities.RefreshToken", b =>

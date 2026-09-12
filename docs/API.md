@@ -178,7 +178,7 @@ Errors: `404` JD not found / not owned by user.
 
 ---
 
-# 4. Practice & Learning — 🚧 To be built
+# 4. Practice & Learning — 🚧 Week 2 in progress (issues #52 questions, #53 mastery, #54 submit-code)
 
 ### GET /api/v1/student/next-question?jdId={jdId}
 Adaptive next question. Selection = BKT mastery gap × JD weight; question difficulty targets `1 + mastery×9` (eased after recent failure). `jdId` optional — without it the weakest concept is chosen.
@@ -414,7 +414,7 @@ Errors: `400` missing/unsupported file, `404` JD not found.
 
 ---
 
-# 8. Admin — 🚧 To be built (requires role `Admin`)
+# 8. Admin — 🚧 To be built (requires role `Admin`); question-bank endpoints are Week 2 in progress (issue #55)
 
 ### POST /api/v1/admin/concepts
 Create a DSA concept.
@@ -585,11 +585,11 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | Auth | 5 (register, login, refresh, logout, me) | ✅ Done |
 | Health | 3 (Core, Tutor, CodeExec) | ✅ Done |
 | JD Intelligence | 2 (upload, get) | 🚧 |
-| Practice/Learning | 4 (next-question, submit-code, mastery, readiness) | 🚧 |
+| Practice/Learning | 6 (questions list/get, next-question, submit-code, mastery, readiness) | 🚧 Week 2 (#52–#54) |
 | AI Coach | 2 REST (ask, session) + hub | 🚧 |
 | Mock Interviews | 5 REST (start, answer, complete, review, history) + hub | 🚧 |
 | Resume ATS | 1 (analyze) | 🚧 |
-| Admin | 5 (concepts, prerequisites, questions, textbook upload, textbook status) | 🚧 |
+| Admin | 5 (concepts, prerequisites, questions, textbook upload, textbook status) | 🚧 (questions: Week 2 #55) |
 | Voice Service | 3 (stt, tts, health) | 🚧 |
 | Gateway | YARP routing + rate limiting | 🚧 |
-| **Total** | **30 REST + 3 hubs** | 8 done / 22 to build |
+| **Total** | **31 REST + 3 hubs** | 8 done / 23 to build |

@@ -64,6 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Polly circuit breaker for AI Tutor Service
 - Textbook content embedded (CTCI + GFG articles)
 - Voice Service scaffold (Python FastAPI + Whisper + Piper)
+- Progress tracking UI (mastery bars, completion %) — deferred from Week 2
+- Dashboard mastery heatmap + recent activity — deferred from Week 2
 
 ### Changed
 - Vector search now uses pgvector cosine similarity operator (`<=>`)
@@ -76,10 +78,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - BKT Engine (pure C#, 4-parameter Bayesian Knowledge Tracing)
 - SubmitAnswerHandler (CQRS command, loads mastery → BKT update → persist → emit event)
-- Code Execution Service (microservice, Judge0 integration)
+- POST /api/v1/answer (AnswerController, Student role)
+- POST /api/v1/execute (Judge0 sandboxed execution)
+- POST /api/v1/student/submit-code (Judge0 → persist → AI eval → plagiarism → BKT pipeline)
+- GET /api/v1/questions, GET by id (hidden cases excluded), adaptive GET /api/v1/student/next-question
+- GET /api/v1/student/mastery + GET readiness (JD-weighted score, gaps)
+- Admin question-bank CRUD + 100 practice questions seeded
+- Knowledge-graph queries served over HTTP (prerequisites, eligible, almost-eligible)
 - AI Code Evaluation (Ollama analyzes correctness, complexity, style, edge cases)
 - Plagiarism Detection (CodeBERT embeddings + AST comparison via tree-sitter)
-- 100 practice questions seeded
+- Per-submission idempotency (MasteryApplied claim)
 - Hangfire nightly BKT parameter tuning job (EM algorithm)
 - Hangfire nightly spaced repetition decay job
 
