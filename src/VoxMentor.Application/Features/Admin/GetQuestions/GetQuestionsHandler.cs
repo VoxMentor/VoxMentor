@@ -28,9 +28,15 @@ public class GetQuestionsHandler : IRequestHandler<GetQuestionsQuery, ApiRespons
         var baseQuery = _db.Questions.AsNoTracking();
         var totalCount = await baseQuery.CountAsync(cancellationToken);
 
+        var offset = (long)(page - 1) * pageSize;
+        if (offset > int.MaxValue)
+            return ApiResponse<GetQuestionsResultDto>.SuccessResult(
+                new GetQuestionsResultDto(new List<QuestionDto>(), totalCount, page, pageSize));
+
         var questions = await baseQuery
             .OrderByDescending(q => q.CreatedAt)
-            .Skip((page - 1) * pageSize)
+            .ThenBy(q => q.Id)
+            .Skip((int)offset)
             .Take(pageSize)
             .Select(q => new QuestionDto(
                 q.Id,
