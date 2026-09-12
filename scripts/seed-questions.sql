@@ -10,7 +10,7 @@
 
 BEGIN;
 
-INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty", "TestCases", "ExampleInputs", "ExampleOutputs", "StarterCode", "CreatedAt") VALUES
+INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty", "TestCases", "ExampleInputs", "ExampleOutputs", "StarterCode", "HiddenTestCaseCount", "CreatedAt") VALUES
 
 -- ======================================================================
 -- Fundamentals (1-5): 2 questions each = 10 questions
@@ -25,7 +25,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['5 3'],
  ARRAY['3 5'],
  ARRAY['def swap(a, b):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000002', 'a0000001-0000-0000-0000-000000000001',
  'Type Checker',
@@ -35,7 +35,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['42'],
  ARRAY['int'],
  ARRAY['def check_type(val):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 2: Control Flow
 ('b0000001-0000-0000-0000-000000000003', 'a0000001-0000-0000-0000-000000000002',
@@ -46,7 +46,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['5'],
  ARRAY['["1","2","Fizz","4","Buzz"]'],
  ARRAY['def fizzbuzz(n):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000004', 'a0000001-0000-0000-0000-000000000002',
  'Grade Classifier',
@@ -56,7 +56,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['95'],
  ARRAY['A'],
  ARRAY['def classify(score):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 3: Functions
 ('b0000001-0000-0000-0000-000000000005', 'a0000001-0000-0000-0000-000000000003',
@@ -67,7 +67,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['5'],
  ARRAY['120'],
  ARRAY['def factorial(n):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000006', 'a0000001-0000-0000-0000-000000000003',
  'Fibonacci',
@@ -77,7 +77,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['6'],
  ARRAY['8'],
  ARRAY['def fibonacci(n):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 4: Time Complexity
 ('b0000001-0000-0000-0000-000000000007', 'a0000001-0000-0000-0000-000000000004',
@@ -88,7 +88,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[1,2,3,4,5] 3'],
  ARRAY['2'],
  ARRAY['def linear_search(arr, target):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000008', 'a0000001-0000-0000-0000-000000000004',
  'Nested Loop Analysis',
@@ -98,7 +98,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['4'],
  ARRAY['6'],
  ARRAY['def count_iterations(n):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 5: Space Complexity
 ('b0000001-0000-0000-0000-000000000009', 'a0000001-0000-0000-0000-000000000005',
@@ -109,7 +109,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[1,2,3,4,5]'],
  ARRAY['[5,4,3,2,1]'],
  ARRAY['def reverse_array(arr):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000010', 'a0000001-0000-0000-0000-000000000005',
  'Sum Without Extra Space',
@@ -119,7 +119,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[1,2,3,4,5]'],
  ARRAY['15'],
  ARRAY['def array_sum(arr):'],
- now()),
+ 1, 1, now()),
 
 -- ======================================================================
 -- Data Structures (6-13): 2 questions each = 16 questions
@@ -134,7 +134,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[3,7,2,9,1]'],
  ARRAY['9'],
  ARRAY['def find_max(arr):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000012', 'a0000001-0000-0000-0000-000000000006',
  'Remove Duplicates',
@@ -144,7 +144,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[1,1,2,3,3]'],
  ARRAY['3'],
  ARRAY['def remove_duplicates(arr):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 7: Strings
 ('b0000001-0000-0000-0000-000000000013', 'a0000001-0000-0000-0000-000000000007',
@@ -155,7 +155,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['hello'],
  ARRAY['olleh'],
  ARRAY['def reverse_string(s):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000014', 'a0000001-0000-0000-0000-000000000007',
  'Count Vowels',
@@ -165,7 +165,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['hello'],
  ARRAY['2'],
  ARRAY['def count_vowels(s):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 8: Hash Maps and Sets
 ('b0000001-0000-0000-0000-000000000015', 'a0000001-0000-0000-0000-000000000008',
@@ -176,7 +176,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[2,7,11,15] 9'],
  ARRAY['[0,1]'],
  ARRAY['def two_sum(nums, target):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000016', 'a0000001-0000-0000-0000-000000000008',
  'Frequency Counter',
@@ -186,7 +186,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['aab'],
  ARRAY['{"a":2,"b":1}'],
  ARRAY['def frequency(s):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 9: Singly Linked Lists
 ('b0000001-0000-0000-0000-000000000017', 'a0000001-0000-0000-0000-000000000009',
@@ -197,7 +197,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[1,2,3,4,5]'],
  ARRAY['[5,4,3,2,1]'],
  ARRAY['class ListNode:','    def __init__(self, val=0, next=None):','        self.val = val','        self.next = next','def reverse_list(head):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000018', 'a0000001-0000-0000-0000-000000000009',
  'Merge Two Sorted Lists',
@@ -207,7 +207,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[1,2,4] [1,3,4]'],
  ARRAY['[1,1,2,3,4,4]'],
  ARRAY['def merge_lists(l1, l2):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 10: Doubly Linked Lists
 ('b0000001-0000-0000-0000-000000000019', 'a0000001-0000-0000-0000-000000000010',
@@ -218,7 +218,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['put(1,1) put(2,2) get(1) put(3,3) get(2)'],
  ARRAY['1 -1'],
  ARRAY['class LRUCache:','    def __init__(self, capacity):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000020', 'a0000001-0000-0000-0000-000000000010',
  'Dequeue Implementation',
@@ -228,7 +228,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['add_rear(1) add_rear(2) remove_front() remove_rear()'],
  ARRAY['1 2'],
  ARRAY['class Deque:','    def __init__(self):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 11: Stacks
 ('b0000001-0000-0000-0000-000000000021', 'a0000001-0000-0000-0000-000000000011',
@@ -239,7 +239,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['()[]{}'],
  ARRAY['true'],
  ARRAY['def is_valid(s):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000022', 'a0000001-0000-0000-0000-000000000011',
  'Min Stack',
@@ -249,7 +249,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['push(-2) push(0) push(-3) getMin() pop() top() getMin()'],
  ARRAY['-3 0 -2'],
  ARRAY['class MinStack:','    def __init__(self):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 12: Queues
 ('b0000001-0000-0000-0000-000000000023', 'a0000001-0000-0000-0000-000000000012',
@@ -260,7 +260,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['enqueue(1) enqueue(2) dequeue() enqueue(3) dequeue() dequeue()'],
  ARRAY['1 2 3'],
  ARRAY['class QueueFromStacks:','    def __init__(self):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000024', 'a0000001-0000-0000-0000-000000000012',
  'BFS Level Order',
@@ -270,7 +270,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[3,9,20,null,null,15,7]'],
  ARRAY['[[3],[9,20],[15,7]]'],
  ARRAY['def level_order(root):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 13: Deque
 ('b0000001-0000-0000-0000-000000000025', 'a0000001-0000-0000-0000-000000000013',
@@ -281,7 +281,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[1,3,-1,-3,5,3,6,7] 3'],
  ARRAY['[3,3,5,5,6,7]'],
  ARRAY['def sliding_max(nums, k):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000026', 'a0000001-0000-0000-0000-000000000013',
  'Palindrome Deque',
@@ -291,7 +291,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['racecar'],
  ARRAY['true'],
  ARRAY['def is_palindrome(s):'],
- now()),
+ 1, 1, now()),
 
 -- ======================================================================
 -- Algorithms: Recursion (14)
@@ -305,7 +305,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['2 3'],
  ARRAY['8'],
  ARRAY['def power(x, n):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000028', 'a0000001-0000-0000-0000-000000000014',
  'String Permutations',
@@ -315,7 +315,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['abc'],
  ARRAY['["abc","acb","bac","bca","cab","cba"]'],
  ARRAY['def permutations(s):'],
- now()),
+ 1, 1, now()),
 
 -- ======================================================================
 -- Searching (15)
@@ -329,7 +329,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[1,2,3,4,5,6,7] 4'],
  ARRAY['3'],
  ARRAY['def binary_search(arr, target):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000030', 'a0000001-0000-0000-0000-000000000015',
  'First Bad Version',
@@ -339,7 +339,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['5 with bad=4'],
  ARRAY['4'],
  ARRAY['def first_bad_version(n, is_bad):'],
- now()),
+ 1, 1, now()),
 
 -- ======================================================================
 -- Techniques (16-18)
@@ -354,7 +354,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[2,7,11,15] 9'],
  ARRAY['[1,2]'],
  ARRAY['def two_sum_sorted(numbers, target):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000032', 'a0000001-0000-0000-0000-000000000016',
  'Container With Most Water',
@@ -364,7 +364,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[1,8,6,2,5,4,8,3,7]'],
  ARRAY['49'],
  ARRAY['def max_area(height):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 17: Sliding Window
 ('b0000001-0000-0000-0000-000000000033', 'a0000001-0000-0000-0000-000000000017',
@@ -375,7 +375,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[2,1,5,1,3,2] 3'],
  ARRAY['9'],
  ARRAY['def max_sum_subarray(arr, k):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000034', 'a0000001-0000-0000-0000-000000000017',
  'Longest Substring Without Repeating',
@@ -385,7 +385,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['abcabcbb'],
  ARRAY['3'],
  ARRAY['def length_of_longest_substring(s):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 18: Prefix Sum
 ('b0000001-0000-0000-0000-000000000035', 'a0000001-0000-0000-0000-000000000018',
@@ -396,7 +396,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[1,2,3,4,5] queries=[[0,2],[1,3]]'],
  ARRAY['[6,9]'],
  ARRAY['class NumArray:','    def __init__(self, nums):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000036', 'a0000001-0000-0000-0000-000000000018',
  'Subarray Sum Equals K',
@@ -406,7 +406,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[1,1,1] 2'],
  ARRAY['2'],
  ARRAY['def subarray_sum(nums, k):'],
- now()),
+ 1, 1, now()),
 
 -- ======================================================================
 -- Sorting (19-24)
@@ -421,7 +421,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[64,34,25,12,22,11,90]'],
  ARRAY['[11,12,22,25,34,64,90]'],
  ARRAY['def bubble_sort(arr):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000038', 'a0000001-0000-0000-0000-000000000019',
  'Sort Colors',
@@ -431,7 +431,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[2,0,2,1,1,0]'],
  ARRAY['[0,0,1,1,2,2]'],
  ARRAY['def sort_colors(nums):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 20: Selection Sort
 ('b0000001-0000-0000-0000-000000000039', 'a0000001-0000-0000-0000-000000000020',
@@ -442,7 +442,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[64,25,12,22,11]'],
  ARRAY['[11,12,22,25,64]'],
  ARRAY['def selection_sort(arr):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000040', 'a0000001-0000-0000-0000-000000000020',
  'Kth Smallest Element',
@@ -452,7 +452,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[7,10,4,3,20,15] 3'],
  ARRAY['7'],
  ARRAY['def kth_smallest(arr, k):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 21: Insertion Sort
 ('b0000001-0000-0000-0000-000000000041', 'a0000001-0000-0000-0000-000000000021',
@@ -463,7 +463,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[12,11,13,5,6]'],
  ARRAY['[5,6,11,12,13]'],
  ARRAY['def insertion_sort(arr):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000042', 'a0000001-0000-0000-0000-000000000021',
  'Insert into Sorted List',
@@ -473,7 +473,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[1,3,5,7] 4'],
  ARRAY['[1,3,4,5,7]'],
  ARRAY['def insert_sorted(arr, val):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 22: Merge Sort
 ('b0000001-0000-0000-0000-000000000043', 'a0000001-0000-0000-0000-000000000022',
@@ -484,7 +484,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[38,27,43,3,9,82,10]'],
  ARRAY['[3,9,10,27,38,43,82]'],
  ARRAY['def merge_sort(arr):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000044', 'a0000001-0000-0000-0000-000000000022',
  'Merge Sorted Arrays',
@@ -494,7 +494,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[1,3,5] [2,4,6]'],
  ARRAY['[1,2,3,4,5,6]'],
  ARRAY['def merge(a, b):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 23: Quick Sort
 ('b0000001-0000-0000-0000-000000000045', 'a0000001-0000-0000-0000-000000000023',
@@ -505,7 +505,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[10,7,8,9,1,5]'],
  ARRAY['[1,5,7,8,9,10]'],
  ARRAY['def quick_sort(arr):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000046', 'a0000001-0000-0000-0000-000000000023',
  'Kth Largest Element',
@@ -515,7 +515,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[3,2,1,5,6,4] 2'],
  ARRAY['5'],
  ARRAY['def kth_largest(arr, k):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 24: Counting Sort
 ('b0000001-0000-0000-0000-000000000047', 'a0000001-0000-0000-0000-000000000024',
@@ -526,7 +526,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[4,2,2,8,3,3,1]'],
  ARRAY['[1,2,2,3,3,4,8]'],
  ARRAY['def counting_sort(arr):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000048', 'a0000001-0000-0000-0000-000000000024',
  'Sort Characters By Frequency',
@@ -536,7 +536,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['tree'],
  ARRAY['eert'],
  ARRAY['def frequency_sort(s):'],
- now()),
+ 1, 1, now()),
 
 -- ======================================================================
 -- Trees (25-30)
@@ -551,7 +551,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[3,9,20,null,null,15,7]'],
  ARRAY['3'],
  ARRAY['def max_depth(root):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000050', 'a0000001-0000-0000-0000-000000000025',
  'Symmetric Tree',
@@ -561,7 +561,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[1,2,2,3,4,4,3]'],
  ARRAY['true'],
  ARRAY['def is_symmetric(root):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 26: Binary Search Trees
 ('b0000001-0000-0000-0000-000000000051', 'a0000001-0000-0000-0000-000000000026',
@@ -572,7 +572,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[2,1,3]'],
  ARRAY['true'],
  ARRAY['def is_valid_bst(root):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000052', 'a0000001-0000-0000-0000-000000000026',
  'Search in BST',
@@ -582,7 +582,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[4,2,7,1,3] 2'],
  ARRAY['true'],
  ARRAY['def search_bst(root, val):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 27: Tree Traversals
 ('b0000001-0000-0000-0000-000000000053', 'a0000001-0000-0000-0000-000000000027',
@@ -593,7 +593,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[1,null,2,3]'],
  ARRAY['[1,3,2]'],
  ARRAY['def inorder(root):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000054', 'a0000001-0000-0000-0000-000000000027',
  'Construct from Traversals',
@@ -603,7 +603,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[3,9,20,15,7] [9,3,15,20,7]'],
  ARRAY['[3,9,20,null,null,15,7]'],
  ARRAY['def build_tree(preorder, inorder):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 28: Heap Data Structure
 ('b0000001-0000-0000-0000-000000000055', 'a0000001-0000-0000-0000-000000000028',
@@ -614,7 +614,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[3,1,2]'],
  ARRAY['[1,3,2]'],
  ARRAY['def build_min_heap(arr):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000056', 'a0000001-0000-0000-0000-000000000028',
  'Heap Sort',
@@ -624,7 +624,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[12,11,13,5,6,7]'],
  ARRAY['[5,6,7,11,12,13]'],
  ARRAY['def heap_sort(arr):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 29: Priority Queues
 ('b0000001-0000-0000-0000-000000000057', 'a0000001-0000-0000-0000-000000000029',
@@ -635,7 +635,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[1,1,1,2,2,3] 2'],
  ARRAY['[1,2]'],
  ARRAY['def top_k_frequent(nums, k):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000058', 'a0000001-0000-0000-0000-000000000029',
  'Median of Data Stream',
@@ -645,7 +645,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['add(1) add(2) median() add(3) median()'],
  ARRAY['1.5 2'],
  ARRAY['class MedianFinder:','    def __init__(self):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 30: Trie
 ('b0000001-0000-0000-0000-000000000059', 'a0000001-0000-0000-0000-000000000030',
@@ -656,17 +656,17 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['insert("apple") search("apple") search("app") startsWith("app")'],
  ARRAY['true false true'],
  ARRAY['class Trie:','    def __init__(self):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000060', 'a0000001-0000-0000-0000-000000000030',
  'Word Search II',
  'Find all words from a dictionary that exist in a 2D character board.',
  4,
- ARRAY['{"input":"board=[[\"o\",\"a\",\"a\",\"n\"],[\"e\",\"t\",\"a\",\"e\"],[\"i\",\"h\",\"k\",\"r\"],[\"i\",\"f\",\"l\",\"v\"]] words=[\"oath\",\"pea\",\"eat\",\"rain\"]","expected":"[\"eat\",\"oath\"]","hidden":false}','{"input":"board=[[\"a\",\"b\"]][\"ab\"]","expected":"[\"ab\"]","hidden":true}'],
+ ARRAY['{"input":"board=[[\"o\",\"a\",\"a\",\"n\"],[\"e\",\"t\",\"a\",\"e\"],[\"i\",\"h\",\"k\",\"r\"],[\"i\",\"f\",\"l\",\"v\"]] words=[\"oath\",\"pea\",\"eat\",\"rain\"]","expected":"[\"eat\",\"oath\"]","hidden":false}','{"input":"board=[[\"a\",\"b\"]] words=[\"ab\"]","expected":"[\"ab\"]","hidden":true}'],
  ARRAY['board=[["o","a","a","n"],["e","t","a","e"],["i","h","k","r"],["i","f","l","v"]] words=["oath","pea","eat","rain"]'],
  ARRAY['["eat","oath"]'],
  ARRAY['def find_words(board, words):'],
- now()),
+ 1, 1, now()),
 
 -- ======================================================================
 -- Graphs (31-44): 2 questions each = 28 questions
@@ -681,7 +681,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['add(0) add(1) edge(0,1) neighbors(0)'],
  ARRAY['[1]'],
  ARRAY['class Graph:','    def __init__(self):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000062', 'a0000001-0000-0000-0000-000000000031',
  'Adjacency Matrix Implementation',
@@ -691,7 +691,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['add(0,1) has(0,1) has(1,0)'],
  ARRAY['true true'],
  ARRAY['class GraphMatrix:','    def __init__(self, n):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 32: BFS
 ('b0000001-0000-0000-0000-000000000063', 'a0000001-0000-0000-0000-000000000032',
@@ -702,7 +702,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['adj={0:[1,2],1:[2],2:[]} start=0'],
  ARRAY['[0,1,2]'],
  ARRAY['def bfs(graph, start):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000064', 'a0000001-0000-0000-0000-000000000032',
  'Shortest Path Unweighted',
@@ -712,7 +712,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['adj={0:[1,3],1:[0,2],2:[1,3],3:[0,2]} start=0 end=2'],
  ARRAY['2'],
  ARRAY['def shortest_path(graph, start, end):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 33: DFS
 ('b0000001-0000-0000-0000-000000000065', 'a0000001-0000-0000-0000-000000000033',
@@ -723,7 +723,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['adj={0:[1,2],1:[2],2:[]} start=0'],
  ARRAY['[0,1,2]'],
  ARRAY['def dfs(graph, start):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000066', 'a0000001-0000-0000-0000-000000000033',
  'Number of Islands',
@@ -733,7 +733,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[["1","1","1","1","0"],["1","1","0","1","0"],["1","1","0","0","0"],["0","0","0","0","0"]]'],
  ARRAY['1'],
  ARRAY['def num_islands(grid):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 34: Topological Sort
 ('b0000001-0000-0000-0000-000000000067', 'a0000001-0000-0000-0000-000000000034',
@@ -744,7 +744,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['2 [[1,0]]'],
  ARRAY['true'],
  ARRAY['def can_finish(num, prerequisites):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000068', 'a0000001-0000-0000-0000-000000000034',
  'Topological Ordering',
@@ -754,7 +754,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['4 [[1,0],[2,0],[3,1],[3,2]]'],
  ARRAY['[0,1,2,3]'],
  ARRAY['def topo_sort(num, edges):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 35: Cycle Detection
 ('b0000001-0000-0000-0000-000000000069', 'a0000001-0000-0000-0000-000000000035',
@@ -765,7 +765,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['3 [[0,1],[1,2]]'],
  ARRAY['false'],
  ARRAY['def has_cycle(num, edges):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000070', 'a0000001-0000-0000-0000-000000000035',
  'Detect Cycle in Undirected Graph',
@@ -775,7 +775,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['4 [[0,1],[1,2],[2,3]]'],
  ARRAY['false'],
  ARRAY['def has_cycle_undirected(num, edges):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 36: Union-Find
 ('b0000001-0000-0000-0000-000000000071', 'a0000001-0000-0000-0000-000000000036',
@@ -786,7 +786,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['union(0,1) union(2,3) find(0)==find(1) find(0)==find(2)'],
  ARRAY['true false'],
  ARRAY['class UnionFind:','    def __init__(self, n):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000072', 'a0000001-0000-0000-0000-000000000036',
  'Number of Connected Components',
@@ -796,7 +796,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['5 [[0,1],[1,2],[3,4]]'],
  ARRAY['2'],
  ARRAY['def count_components(n, edges):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 37: Dijkstra's Algorithm
 ('b0000001-0000-0000-0000-000000000073', 'a0000001-0000-0000-0000-000000000037',
@@ -807,17 +807,17 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['4 [[0,1,1],[0,2,4],[1,2,2],[2,3,1]] src=0'],
  ARRAY['[0,1,3,4]'],
  ARRAY['def dijkstra(n, edges, src):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000074', 'a0000001-0000-0000-0000-000000000037',
  'Network Delay Time',
  'Find time for all nodes to receive a signal sent from a source.',
  4,
- ARRAY['{"input":"5 [[2,1,1],[2,3,1],[3,4,1]] 2","expected":"2","hidden":false}','{"input":"3 [[1,2,1]] 1","expected":"1","hidden":true}'],
+ ARRAY['{"input":"5 [[2,1,1],[2,3,1],[3,4,1]] 2","expected":"2","hidden":false}','{"input":"3 [[1,2,1]] 1","expected":"-1","hidden":true}'],
  ARRAY['5 [[2,1,1],[2,3,1],[3,4,1]] 2'],
  ARRAY['2'],
  ARRAY['def network_delay(times, n, k):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 38: Bellman-Ford
 ('b0000001-0000-0000-0000-000000000075', 'a0000001-0000-0000-0000-000000000038',
@@ -828,7 +828,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['5 [[1,2,1],[2,3,1],[1,3,4]] src=1'],
  ARRAY['[inf,0,1,2,inf]'],
  ARRAY['def bellman_ford(n, edges, src):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000076', 'a0000001-0000-0000-0000-000000000038',
  'Negative Cycle Detection',
@@ -838,7 +838,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['3 [[0,1,1],[1,2,2],[2,0,-4]]'],
  ARRAY['true'],
  ARRAY['def has_negative_cycle(n, edges):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 39: Floyd-Warshall
 ('b0000001-0000-0000-0000-000000000077', 'a0000001-0000-0000-0000-000000000039',
@@ -849,7 +849,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['4 [[0,1,3],[1,2,1],[2,3,2]]'],
  ARRAY['[[0,3,4,6],[inf,0,1,3],[inf,inf,0,2],[inf,inf,inf,0]]'],
  ARRAY['def floyd_warshall(n, edges):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000078', 'a0000001-0000-0000-0000-000000000039',
  'Find Negative Cycle via Floyd',
@@ -859,7 +859,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['3 [[0,1,1],[1,2,-3],[2,0,1]]'],
  ARRAY['true'],
  ARRAY['def has_negative_cycle_floyd(n, edges):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 40: Kruskal's Algorithm
 ('b0000001-0000-0000-0000-000000000079', 'a0000001-0000-0000-0000-000000000040',
@@ -870,7 +870,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['4 [[0,1,10],[0,2,6],[0,3,5],[1,3,15],[2,3,4]]'],
  ARRAY['19'],
  ARRAY['def kruskal(n, edges):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000080', 'a0000001-0000-0000-0000-000000000040',
  'MST Edge List',
@@ -880,7 +880,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['4 [[0,1,1],[1,2,2],[2,3,3],[0,3,5]]'],
  ARRAY['[[0,1,1],[1,2,2],[2,3,3]]'],
  ARRAY['def mst_edges(n, edges):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 41: Prim's Algorithm
 ('b0000001-0000-0000-0000-000000000081', 'a0000001-0000-0000-0000-000000000041',
@@ -891,7 +891,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['5 [[0,1,2],[0,3,6],[1,2,3],[1,3,8],[1,4,5],[2,4,7],[3,4,9]]'],
  ARRAY['16'],
  ARRAY['def prim(n, edges):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000082', 'a0000001-0000-0000-0000-000000000041',
  'Prim with Priority Queue',
@@ -901,7 +901,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['3 [[0,1,1],[1,2,2],[0,2,4]]'],
  ARRAY['3'],
  ARRAY['def prim_heap(n, edges):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 42: Weighted Graphs
 ('b0000001-0000-0000-0000-000000000083', 'a0000001-0000-0000-0000-000000000042',
@@ -912,7 +912,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['4 [[0,1,2],[1,2,1],[2,3,3]] start=0 end=3'],
  ARRAY['6'],
  ARRAY['def weighted_shortest(n, edges, start, end):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000084', 'a0000001-0000-0000-0000-000000000042',
  'Cheapest Flights Within K Stops',
@@ -922,7 +922,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['3 [[0,1,100],[1,2,100],[0,2,500]] 0 2 1'],
  ARRAY['200'],
  ARRAY['def find_cheapest(n, flights, src, dst, k):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 43: Shortest Path Algorithms
 ('b0000001-0000-0000-0000-000000000085', 'a0000001-0000-0000-0000-000000000043',
@@ -933,7 +933,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['3 [[0,1,0.5],[1,2,0.5],[0,2,0.2]] 0 2'],
  ARRAY['0.25'],
  ARRAY['def max_probability(n, edges, src, dst):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000086', 'a0000001-0000-0000-0000-000000000043',
  'Cheapest Path with Exact Stops',
@@ -943,7 +943,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['4 [[0,1,100],[1,2,100],[2,0,100],[1,3,600],[2,3,200]] 0 3 2'],
  ARRAY['700'],
  ARRAY['def cheapest_with_stops(n, edges, src, dst, k):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 44: Minimum Spanning Tree
 ('b0000001-0000-0000-0000-000000000087', 'a0000001-0000-0000-0000-000000000044',
@@ -954,7 +954,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['3 [[0,1,1],[1,2,2],[0,2,3]]'],
  ARRAY['3'],
  ARRAY['def min_cost_connect(n, edges):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000088', 'a0000001-0000-0000-0000-000000000044',
  'Critical Connections',
@@ -964,7 +964,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['4 [[0,1],[1,2],[2,0],[1,3]]'],
  ARRAY['[[1,3]]'],
  ARRAY['def critical_connections(n, connections):'],
- now()),
+ 1, 1, now()),
 
 -- ======================================================================
 -- Algorithms: Backtracking (45)
@@ -978,7 +978,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['4'],
  ARRAY['2'],
  ARRAY['def n_queens(n):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000090', 'a0000001-0000-0000-0000-000000000045',
  'Sudoku Solver',
@@ -988,7 +988,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[[5,3,0,0,7,0,0,0,0],[6,0,0,1,9,5,0,0,0],[0,9,8,0,0,0,0,6,0],[8,0,0,0,6,0,0,0,3],[4,0,0,8,0,3,0,0,1],[7,0,0,0,2,0,0,0,6],[0,6,0,0,0,0,2,8,0],[0,0,0,4,1,9,0,0,5],[0,0,0,0,8,0,0,7,9]]'],
  ARRAY['solved'],
  ARRAY['def solve_sudoku(board):'],
- now()),
+ 1, 1, now()),
 
 -- ======================================================================
 -- Dynamic Programming (46-49)
@@ -1003,7 +1003,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['5'],
  ARRAY['8'],
  ARRAY['def climb_stairs(n, memo={}):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000092', 'a0000001-0000-0000-0000-000000000046',
  'House Robber Memoized',
@@ -1013,7 +1013,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[2,7,9,3,1]'],
  ARRAY['12'],
  ARRAY['def rob(nums, memo={}):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 47: Tabulation
 ('b0000001-0000-0000-0000-000000000093', 'a0000001-0000-0000-0000-000000000047',
@@ -1024,7 +1024,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['10'],
  ARRAY['89'],
  ARRAY['def climb_stairs(n):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000094', 'a0000001-0000-0000-0000-000000000047',
  'Minimum Path Sum',
@@ -1034,7 +1034,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[[1,3,1],[1,5,1],[4,2,1]]'],
  ARRAY['7'],
  ARRAY['def min_path_sum(grid):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 48: Knapsack Problem
 ('b0000001-0000-0000-0000-000000000095', 'a0000001-0000-0000-0000-000000000048',
@@ -1045,7 +1045,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['weights=[1,2,3] values=[6,10,12] capacity=5'],
  ARRAY['22'],
  ARRAY['def knapsack(weights, values, capacity):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000096', 'a0000001-0000-0000-0000-000000000048',
  'Coin Change',
@@ -1055,7 +1055,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['coins=[1,5,10,25] amount=30'],
  ARRAY['2'],
  ARRAY['def coin_change(coins, amount):'],
- now()),
+ 1, 1, now()),
 
 -- Concept 49: Longest Common Subsequence
 ('b0000001-0000-0000-0000-000000000097', 'a0000001-0000-0000-0000-000000000049',
@@ -1066,7 +1066,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['abcde ace'],
  ARRAY['3'],
  ARRAY['def lcs(s1, s2):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000098', 'a0000001-0000-0000-0000-000000000049',
  'Edit Distance',
@@ -1076,7 +1076,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['horse ros'],
  ARRAY['3'],
  ARRAY['def edit_distance(word1, word2):'],
- now()),
+ 1, 1, now()),
 
 -- ======================================================================
 -- Algorithms: Greedy (50)
@@ -1086,11 +1086,11 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  'Activity Selection',
  'Given start and end times, select maximum non-overlapping activities.',
  3,
- ARRAY['{"input":"[[1,4],[3,5],[0,6],[5,7],[3,9],[5,9],[6,10],[8,11]]","expected":"4","hidden":false}','{"input":"[[1,2],[2,3],[3,4]]","expected":"3","hidden":true}'],
+ ARRAY['{"input":"[[1,4],[3,5],[0,6],[5,7],[3,9],[5,9],[6,10],[8,11]]","expected":"3","hidden":false}','{"input":"[[1,2],[2,3],[3,4]]","expected":"3","hidden":true}'],
  ARRAY['[[1,4],[3,5],[0,6],[5,7],[3,9],[5,9],[6,10],[8,11]]'],
- ARRAY['4'],
+ ARRAY['3'],
  ARRAY['def activity_selection(activities):'],
- now()),
+ 1, 1, now()),
 
 ('b0000001-0000-0000-0000-000000000100', 'a0000001-0000-0000-0000-000000000050',
  'Jump Game',
@@ -1100,7 +1100,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  ARRAY['[2,3,1,1,4]'],
  ARRAY['true'],
  ARRAY['def can_jump(nums):'],
- now())
+ 1, 1, now())
 
 ON CONFLICT ("Id") DO NOTHING;
 
