@@ -22,7 +22,20 @@ public class CreateQuestionValidator : AbstractValidator<CreateQuestionCommand>
         RuleFor(x => x.Difficulty)
             .InclusiveBetween(1, 10).WithMessage("Difficulty must be between 1 and 10.");
 
+        RuleFor(x => x.QuestionType)
+            .NotEmpty().WithMessage("QuestionType is required.")
+            .MaximumLength(50).WithMessage("QuestionType must not exceed 50 characters.");
+
         RuleFor(x => x.TestCases)
             .NotEmpty().WithMessage("At least one test case is required.");
+
+        RuleFor(x => x.TestCases)
+            .Must(testCases => TestCasePayload.Parse(testCases).Errors.Count == 0)
+            .WithMessage(x => string.Join(" ", TestCasePayload.Parse(x.TestCases).Errors));
+
+        RuleFor(x => x.Rubric!)
+            .Must(rubric => rubric.All(entry => !string.IsNullOrWhiteSpace(entry)))
+            .When(x => x.Rubric is not null)
+            .WithMessage("Rubric entries must not be empty.");
     }
 }

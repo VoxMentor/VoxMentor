@@ -46,6 +46,9 @@ public class CreateQuestionHandlerTests
         return new CreateQuestionHandler(db, user ?? new FakeCurrentUserService());
     }
 
+    private const string ValidCase = "{\"input\":\"[1,2] 3\",\"expected\":\"[0,1]\"}";
+    private const string ValidHiddenCase = "{\"input\":\"[3,4] 7\",\"expected\":\"[1,2]\",\"hidden\":true}";
+
     // ==================== Handler Tests ====================
 
     [Fact]
@@ -57,7 +60,7 @@ public class CreateQuestionHandlerTests
 
         var result = await handler.Handle(new CreateQuestionCommand(
             concept.Id, "Two Sum", "Find two numbers that add to target.", 2,
-            new[] { "{\"input\":\"[1,2] 3\",\"expected\":\"[0,1]\"}" },
+            new[] { ValidCase },
             new[] { "[1,2]" }, new[] { "[0,1]" }, null), CancellationToken.None);
 
         Assert.True(result.Success);
@@ -68,6 +71,45 @@ public class CreateQuestionHandlerTests
         var stored = await db.Questions.FirstAsync(q => q.Title == "Two Sum");
         Assert.Equal(concept.Id, stored.ConceptId);
         Assert.Single(stored.TestCases);
+        Assert.Equal("Code", stored.QuestionType);
+        Assert.Empty(stored.Rubric);
+        Assert.Equal(0, stored.HiddenTestCaseCount);
+    }
+
+    [Fact]
+    public async Task Handle_HiddenTestCase_PersistsHiddenCount()
+    {
+        using var db = CreateDb();
+        var concept = await SeedConceptAsync(db);
+        var handler = CreateHandler(db);
+
+        var result = await handler.Handle(new CreateQuestionCommand(
+            concept.Id, "Two Sum", "Find two numbers that add to target.", 2,
+            new[] { ValidCase, ValidHiddenCase },
+            null, null, null), CancellationToken.None);
+
+        Assert.True(result.Success);
+        var stored = await db.Questions.FirstAsync(q => q.Title == "Two Sum");
+        Assert.Equal(1, stored.HiddenTestCaseCount);
+    }
+
+    [Fact]
+    public async Task Handle_QuestionTypeAndRubric_Persisted()
+    {
+        using var db = CreateDb();
+        var concept = await SeedConceptAsync(db);
+        var handler = CreateHandler(db);
+
+        var result = await handler.Handle(new CreateQuestionCommand(
+            concept.Id, "MCQ Question", "Pick one.", 3,
+            new[] { ValidCase },
+            null, null, null,
+            "MCQ", new[] { "{\"criterion\":\"Handles edge cases\",\"points\":2}" }), CancellationToken.None);
+
+        Assert.True(result.Success);
+        var stored = await db.Questions.FirstAsync(q => q.Title == "MCQ Question");
+        Assert.Equal("MCQ", stored.QuestionType);
+        Assert.Single(stored.Rubric);
     }
 
     [Fact]
@@ -79,7 +121,7 @@ public class CreateQuestionHandlerTests
         await Assert.ThrowsAsync<Application.Common.Exceptions.NotFoundException>(
             () => handler.Handle(new CreateQuestionCommand(
                 Guid.NewGuid(), "Test", "Desc", 1,
-                new[] { "{}" }, null, null, null), CancellationToken.None));
+                new[] { ValidCase }, null, null, null), CancellationToken.None));
     }
 
     [Fact]
@@ -92,7 +134,7 @@ public class CreateQuestionHandlerTests
         await Assert.ThrowsAsync<UnauthorizedAccessException>(
             () => handler.Handle(new CreateQuestionCommand(
                 concept.Id, "Test", "Desc", 1,
-                new[] { "{}" }, null, null, null), CancellationToken.None));
+                new[] { ValidCase }, null, null, null), CancellationToken.None));
     }
 
     [Fact]
@@ -104,13 +146,27 @@ public class CreateQuestionHandlerTests
 
         var result = await handler.Handle(new CreateQuestionCommand(
             concept.Id, "Minimal", "Desc", 1,
-            new[] { "{}" }, null, null, null), CancellationToken.None);
+            new[] { ValidCase }, null, null, null), CancellationToken.None);
 
         Assert.True(result.Success);
         var stored = await db.Questions.FirstAsync(q => q.Title == "Minimal");
         Assert.Empty(stored.ExampleInputs);
         Assert.Empty(stored.ExampleOutputs);
         Assert.Empty(stored.StarterCode);
+        Assert.Empty(stored.Rubric);
+    }
+
+    [Fact]
+    public async Task Handle_InvalidTestCases_ThrowsValidationException()
+    {
+        using var db = CreateDb();
+        var concept = await SeedConceptAsync(db);
+        var handler = CreateHandler(db);
+
+        await Assert.ThrowsAsync<Application.Common.Exceptions.ValidationException>(
+            () => handler.Handle(new CreateQuestionCommand(
+                concept.Id, "Bad", "Desc", 1,
+                new[] { "{}" }, null, null, null), CancellationToken.None));
     }
 
     // ==================== Validator Tests ====================
@@ -121,7 +177,7 @@ public class CreateQuestionHandlerTests
         var validator = new CreateQuestionValidator();
         var result = validator.Validate(new CreateQuestionCommand(
             Guid.NewGuid(), "Test", "Description", 5,
-            new[] { "{}" }, null, null, null));
+            new[] { ValidCase, ValidHiddenCase }, null, null, null));
         Assert.True(result.IsValid);
     }
 
@@ -131,7 +187,7 @@ public class CreateQuestionHandlerTests
         var validator = new CreateQuestionValidator();
         var result = validator.Validate(new CreateQuestionCommand(
             Guid.Empty, "Test", "Description", 5,
-            new[] { "{}" }, null, null, null));
+            new[] { ValidCase }, null, null, null));
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.ConceptId));
     }
@@ -142,7 +198,7 @@ public class CreateQuestionHandlerTests
         var validator = new CreateQuestionValidator();
         var result = validator.Validate(new CreateQuestionCommand(
             Guid.NewGuid(), "", "Description", 5,
-            new[] { "{}" }, null, null, null));
+            new[] { ValidCase }, null, null, null));
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.Title));
     }
@@ -153,7 +209,7 @@ public class CreateQuestionHandlerTests
         var validator = new CreateQuestionValidator();
         var result = validator.Validate(new CreateQuestionCommand(
             Guid.NewGuid(), new string('a', 301), "Description", 5,
-            new[] { "{}" }, null, null, null));
+            new[] { ValidCase }, null, null, null));
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.Title));
     }
@@ -164,7 +220,7 @@ public class CreateQuestionHandlerTests
         var validator = new CreateQuestionValidator();
         var result = validator.Validate(new CreateQuestionCommand(
             Guid.NewGuid(), "Test", "Description", 0,
-            new[] { "{}" }, null, null, null));
+            new[] { ValidCase }, null, null, null));
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.Difficulty));
     }
@@ -175,7 +231,7 @@ public class CreateQuestionHandlerTests
         var validator = new CreateQuestionValidator();
         var result = validator.Validate(new CreateQuestionCommand(
             Guid.NewGuid(), "Test", "Description", 11,
-            new[] { "{}" }, null, null, null));
+            new[] { ValidCase }, null, null, null));
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.Difficulty));
     }
@@ -189,5 +245,93 @@ public class CreateQuestionHandlerTests
             Array.Empty<string>(), null, null, null));
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.TestCases));
+    }
+
+    [Fact]
+    public void Validator_EmptyTestCaseEntry_Fails()
+    {
+        var validator = new CreateQuestionValidator();
+        var result = validator.Validate(new CreateQuestionCommand(
+            Guid.NewGuid(), "Test", "Description", 5,
+            new[] { "" }, null, null, null));
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.TestCases));
+    }
+
+    [Fact]
+    public void Validator_TestCaseNotJsonObject_Fails()
+    {
+        var validator = new CreateQuestionValidator();
+        var result = validator.Validate(new CreateQuestionCommand(
+            Guid.NewGuid(), "Test", "Description", 5,
+            new[] { "\"just a string\"" }, null, null, null));
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.TestCases));
+    }
+
+    [Fact]
+    public void Validator_TestCaseMissingExpected_Fails()
+    {
+        var validator = new CreateQuestionValidator();
+        var result = validator.Validate(new CreateQuestionCommand(
+            Guid.NewGuid(), "Test", "Description", 5,
+            new[] { "{\"input\":\"1 2\"}" }, null, null, null));
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.TestCases));
+    }
+
+    [Fact]
+    public void Validator_TestCaseHiddenNotBoolean_Fails()
+    {
+        var validator = new CreateQuestionValidator();
+        var result = validator.Validate(new CreateQuestionCommand(
+            Guid.NewGuid(), "Test", "Description", 5,
+            new[] { "{\"input\":\"1\",\"expected\":\"2\",\"hidden\":\"yes\"}" }, null, null, null));
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.TestCases));
+    }
+
+    [Fact]
+    public void Validator_NonTrailingHiddenCase_Fails()
+    {
+        var validator = new CreateQuestionValidator();
+        var result = validator.Validate(new CreateQuestionCommand(
+            Guid.NewGuid(), "Test", "Description", 5,
+            new[] { ValidHiddenCase, ValidCase }, null, null, null));
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.TestCases));
+    }
+
+    [Fact]
+    public void Validator_EmptyQuestionType_Fails()
+    {
+        var validator = new CreateQuestionValidator();
+        var result = validator.Validate(new CreateQuestionCommand(
+            Guid.NewGuid(), "Test", "Description", 5,
+            new[] { ValidCase }, null, null, null, ""));
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.QuestionType));
+    }
+
+    [Fact]
+    public void Validator_QuestionTypeTooLong_Fails()
+    {
+        var validator = new CreateQuestionValidator();
+        var result = validator.Validate(new CreateQuestionCommand(
+            Guid.NewGuid(), "Test", "Description", 5,
+            new[] { ValidCase }, null, null, null, new string('a', 51)));
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.QuestionType));
+    }
+
+    [Fact]
+    public void Validator_EmptyRubricEntry_Fails()
+    {
+        var validator = new CreateQuestionValidator();
+        var result = validator.Validate(new CreateQuestionCommand(
+            Guid.NewGuid(), "Test", "Description", 5,
+            new[] { ValidCase }, null, null, null, "Code", new[] { " " }));
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.Rubric));
     }
 }

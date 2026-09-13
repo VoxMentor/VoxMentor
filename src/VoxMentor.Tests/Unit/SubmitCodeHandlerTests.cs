@@ -273,6 +273,44 @@ public class SubmitCodeHandlerTests
     }
 
     [Fact]
+    public void ParseTestCases_JsonObjectEntries_UsesInputAndExpected()
+    {
+        var parsed = SubmitCodeHandler.ParseTestCases([
+            "{\"input\":\"5 3\",\"expected\":\"3 5\",\"hidden\":false}",
+            "{\"input\":\"-1 7\",\"expected\":\"7 -1\",\"hidden\":true}"]);
+
+        Assert.Equal(2, parsed.Count);
+        Assert.Equal("5 3", parsed[0].Stdin);
+        Assert.Equal("3 5", parsed[0].ExpectedOutput);
+        Assert.Equal("-1 7", parsed[1].Stdin);
+        Assert.Equal("7 -1", parsed[1].ExpectedOutput);
+    }
+
+    [Fact]
+    public void ParseTestCases_JsonWithoutExpected_FallsBackToLegacyFormat()
+    {
+        var parsed = SubmitCodeHandler.ParseTestCases(["{\"input\":\"5 3\"}"]);
+
+        Assert.Single(parsed);
+        Assert.Equal(string.Empty, parsed[0].Stdin);
+        Assert.Equal("{\"input\":\"5 3\"}", parsed[0].ExpectedOutput);
+    }
+
+    [Fact]
+    public void ParseTestCases_MixedFormats_ParsesBoth()
+    {
+        var parsed = SubmitCodeHandler.ParseTestCases([
+            "{\"input\":\"[1,2]\",\"expected\":\"[0,1]\"}",
+            "3 7\n|10"]);
+
+        Assert.Equal(2, parsed.Count);
+        Assert.Equal("[1,2]", parsed[0].Stdin);
+        Assert.Equal("[0,1]", parsed[0].ExpectedOutput);
+        Assert.Equal("3 7\n", parsed[1].Stdin);
+        Assert.Equal("10", parsed[1].ExpectedOutput);
+    }
+
+    [Fact]
     public async Task Handle_RuntimeError_WhenExecServiceFailsAllCases()
     {
         await using var db = CreateDb();

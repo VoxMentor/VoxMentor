@@ -897,7 +897,7 @@ INSERT INTO "Questions" ("Id", "ConceptId", "Title", "Description", "Difficulty"
  'Prim with Priority Queue',
  'Implement Prim''s using a min-heap priority queue.',
  4,
- ARRAY['{"input":"3 [[0,1,1],[1,2,2],[0,2,4]]","expected":"3","hidden":false}','{"input":"4 [[0,1,3],[0,2,1],[2,1,1],[2,3,4]]","expected":"5","hidden":true}'],
+ ARRAY['{"input":"3 [[0,1,1],[1,2,2],[0,2,4]]","expected":"3","hidden":false}','{"input":"4 [[0,1,3],[0,2,1],[2,1,1],[2,3,4]]","expected":"6","hidden":true}'],
  ARRAY['3 [[0,1,1],[1,2,2],[0,2,4]]'],
  ARRAY['3'],
  ARRAY['def prim_heap(n, edges):'],
@@ -1108,18 +1108,22 @@ ON CONFLICT ("Id") DO NOTHING;
 -- Verification Queries (run after seeding)
 -- ======================================================================
 
--- Total question count (should be 100)
--- SELECT COUNT(*) AS total_questions FROM "Questions";
+-- Total seeded question count (should be 100; scoped to seed IDs, excludes pre-existing rows)
+-- SELECT COUNT(*) AS total_questions FROM "Questions" WHERE "Id"::text LIKE 'b0000001-%';
 
--- Questions per concept (should be 2 each)
--- SELECT "ConceptId", COUNT(*) AS cnt FROM "Questions" GROUP BY "ConceptId" HAVING COUNT(*) < 2;
+-- Seeded questions per concept (should be 2 each)
+-- SELECT "ConceptId", COUNT(*) AS cnt FROM "Questions" WHERE "Id"::text LIKE 'b0000001-%'
+-- GROUP BY "ConceptId" HAVING COUNT(*) < 2;
 
--- Questions with hidden test cases (second test case is hidden)
--- SELECT COUNT(*) AS questions_with_hidden FROM "Questions" WHERE array_length("TestCases", 1) > 1;
+-- Seeded questions with a hidden test case (each seed row has exactly one hidden case)
+-- SELECT COUNT(*) AS questions_with_hidden FROM "Questions" q
+-- WHERE q."Id"::text LIKE 'b0000001-%'
+-- AND EXISTS (SELECT 1 FROM unnest(q."TestCases") AS tc WHERE tc::jsonb ->> 'hidden' = 'true');
 
--- All 50 concepts should have questions
+-- All 50 seeded concepts should have questions
 -- SELECT c."Id", c."Name", COUNT(q."Id") AS question_count
 -- FROM "Concepts" c LEFT JOIN "Questions" q ON q."ConceptId" = c."Id"
+-- WHERE c."Id"::text LIKE 'a0000001-%'
 -- GROUP BY c."Id", c."Name" ORDER BY c."Id";
 
 COMMIT;

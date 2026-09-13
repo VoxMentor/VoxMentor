@@ -37,17 +37,24 @@ public class CreateQuestionHandler : IRequestHandler<CreateQuestionCommand, ApiR
         if (!conceptExists)
             throw new NotFoundException($"Concept {request.ConceptId} was not found.");
 
+        var testCases = TestCasePayload.Parse(request.TestCases);
+        if (testCases.Errors.Count > 0)
+            throw new ValidationException(new Dictionary<string, string[]> { ["TestCases"] = [.. testCases.Errors] });
+
         var question = new Question
         {
             Id = Guid.NewGuid(),
             ConceptId = request.ConceptId,
             Title = request.Title,
             Description = request.Description,
+            QuestionType = request.QuestionType,
             Difficulty = request.Difficulty,
             TestCases = request.TestCases,
+            Rubric = request.Rubric ?? Array.Empty<string>(),
             ExampleInputs = request.ExampleInputs ?? Array.Empty<string>(),
             ExampleOutputs = request.ExampleOutputs ?? Array.Empty<string>(),
-            StarterCode = request.StarterCode ?? Array.Empty<string>()
+            StarterCode = request.StarterCode ?? Array.Empty<string>(),
+            HiddenTestCaseCount = testCases.HiddenCount
         };
 
         _db.Questions.Add(question);
