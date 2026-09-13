@@ -16,18 +16,29 @@ public static class TestCasePayload
     public sealed record Result(int HiddenCount, IReadOnlyList<string> Errors);
 
     /// <summary>
-    /// Validates every entry and counts trailing hidden cases. An entry that is
-    /// not a JSON object, or missing/typing-wrong "input"/"expected"/"hidden",
-    /// produces an error. A non-hidden case after a hidden one produces an error.
+    /// Validates every entry and counts trailing hidden cases. A null array is
+    /// treated as empty (the NotEmpty rule reports it); a null element, an
+    /// entry that is not a JSON object, or a missing/typing-wrong
+    /// "input"/"expected"/"hidden" produces an error. A non-hidden case after
+    /// a hidden one produces an error.
     /// </summary>
-    public static Result Parse(string[] testCases)
+    public static Result Parse(string[]? testCases)
     {
         var errors = new List<string>();
         var hiddenCount = 0;
         var seenHidden = false;
 
+        if (testCases is null)
+            return new Result(0, errors);
+
         for (var i = 0; i < testCases.Length; i++)
         {
+            if (testCases[i] is null)
+            {
+                errors.Add($"Test case {i} must not be null.");
+                continue;
+            }
+
             JsonDocument doc;
             try
             {

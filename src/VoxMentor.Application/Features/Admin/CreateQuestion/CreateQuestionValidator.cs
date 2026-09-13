@@ -34,8 +34,8 @@ public class CreateQuestionValidator : AbstractValidator<CreateQuestionCommand>
             .WithMessage(x => string.Join(" ", TestCasePayload.Parse(x.TestCases).Errors));
 
         RuleFor(x => x.Rubric!)
-            .Must(rubric => rubric.All(entry => !string.IsNullOrWhiteSpace(entry)))
+            .Must(rubric => RubricPayload.Parse(rubric).IsValid)
             .When(x => x.Rubric is not null)
-            .WithMessage("Rubric entries must not be empty.");
+            .WithMessage(x => string.Join(" ", RubricPayload.Parse(x.Rubric).Errors));
     }
 }

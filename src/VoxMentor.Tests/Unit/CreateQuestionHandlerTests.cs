@@ -325,13 +325,86 @@ public class CreateQuestionHandlerTests
     }
 
     [Fact]
-    public void Validator_EmptyRubricEntry_Fails()
+    public void Validator_RubricNotJson_Fails()
     {
         var validator = new CreateQuestionValidator();
         var result = validator.Validate(new CreateQuestionCommand(
             Guid.NewGuid(), "Test", "Description", 5,
-            new[] { ValidCase }, null, null, null, "Code", new[] { " " }));
+            new[] { ValidCase }, null, null, null, "Code", new[] { "invalid" }));
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.Rubric));
+    }
+
+    [Fact]
+    public void Validator_RubricMissingCriterion_Fails()
+    {
+        var validator = new CreateQuestionValidator();
+        var result = validator.Validate(new CreateQuestionCommand(
+            Guid.NewGuid(), "Test", "Description", 5,
+            new[] { ValidCase }, null, null, null, "Code",
+            new[] { "{\"points\":2}" }));
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.Rubric));
+    }
+
+    [Fact]
+    public void Validator_RubricNonNumericPoints_Fails()
+    {
+        var validator = new CreateQuestionValidator();
+        var result = validator.Validate(new CreateQuestionCommand(
+            Guid.NewGuid(), "Test", "Description", 5,
+            new[] { ValidCase }, null, null, null, "Code",
+            new[] { "{\"criterion\":\"Handles edge cases\",\"points\":\"many\"}" }));
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.Rubric));
+    }
+
+    [Fact]
+    public void Validator_ValidRubric_Passes()
+    {
+        var validator = new CreateQuestionValidator();
+        var result = validator.Validate(new CreateQuestionCommand(
+            Guid.NewGuid(), "Test", "Description", 5,
+            new[] { ValidCase }, null, null, null, "Code",
+            new[] { "{\"criterion\":\"Handles edge cases\",\"points\":2}" }));
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void Validator_NullTestCaseElement_Fails()
+    {
+        var validator = new CreateQuestionValidator();
+        var result = validator.Validate(new CreateQuestionCommand(
+            Guid.NewGuid(), "Test", "Description", 5,
+            new string?[] { null }!, null, null, null));
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.TestCases));
+    }
+
+    [Fact]
+    public async Task Handle_NullTestCaseElement_ThrowsValidationException()
+    {
+        using var db = CreateDb();
+        var concept = await SeedConceptAsync(db);
+        var handler = CreateHandler(db);
+
+        await Assert.ThrowsAsync<Application.Common.Exceptions.ValidationException>(
+            () => handler.Handle(new CreateQuestionCommand(
+                concept.Id, "Bad", "Desc", 1,
+                new string?[] { null }!, null, null, null), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Handle_InvalidRubric_ThrowsValidationException()
+    {
+        using var db = CreateDb();
+        var concept = await SeedConceptAsync(db);
+        var handler = CreateHandler(db);
+
+        await Assert.ThrowsAsync<Application.Common.Exceptions.ValidationException>(
+            () => handler.Handle(new CreateQuestionCommand(
+                concept.Id, "Bad", "Desc", 1,
+                new[] { ValidCase }, null, null, null, "Code", new[] { "invalid" }),
+                CancellationToken.None));
     }
 }

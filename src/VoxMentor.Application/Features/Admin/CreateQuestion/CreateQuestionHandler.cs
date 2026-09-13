@@ -41,6 +41,10 @@ public class CreateQuestionHandler : IRequestHandler<CreateQuestionCommand, ApiR
         if (testCases.Errors.Count > 0)
             throw new ValidationException(new Dictionary<string, string[]> { ["TestCases"] = [.. testCases.Errors] });
 
+        var rubric = RubricPayload.Parse(request.Rubric);
+        if (!rubric.IsValid)
+            throw new ValidationException(new Dictionary<string, string[]> { ["Rubric"] = [.. rubric.Errors] });
+
         var question = new Question
         {
             Id = Guid.NewGuid(),
