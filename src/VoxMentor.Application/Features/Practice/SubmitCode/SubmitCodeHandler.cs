@@ -180,15 +180,23 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
     }
 
     /// <summary>
-    /// Parses the question's raw test cases. Each entry is
-    /// "<c>stdin|expected</c>"; entries without the delimiter are treated as
-    /// output-only cases (empty stdin).
+    /// Parses the question's raw test cases. Entries are either JSON objects
+    /// with string "input"/"expected" fields ({"input":...,"expected":...,"hidden":...},
+    /// the format the admin API and seed scripts write) or the legacy
+    /// "<c>stdin|expected</c>" string; legacy entries without the delimiter are
+    /// treated as output-only cases (empty stdin).
     /// </summary>
     public static IReadOnlyList<CodeExecutionTestCase> ParseTestCases(string[] testCases)
     {
         var parsed = new List<CodeExecutionTestCase>(testCases.Length);
         foreach (var testCase in testCases)
         {
+            if (TryParseJsonTestCase(testCase, out var jsonCase))
+            {
+                parsed.Add(jsonCase);
+                continue;
+            }
+
             var separatorIndex = testCase.IndexOf(TestCaseDelimiter, StringComparison.Ordinal);
             if (separatorIndex < 0)
             {
@@ -202,6 +210,38 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
             }
         }
         return parsed;
+    }
+
+    /// <summary>
+    /// Recognizes JSON-object test cases. An entry that is a JSON object with a
+    /// string "expected" property is treated as JSON regardless of "input";
+    /// anything else falls back to the legacy delimiter format.
+    /// </summary>
+    private static bool TryParseJsonTestCase(string testCase, out CodeExecutionTestCase result)
+    {
+        result = new CodeExecutionTestCase(string.Empty, string.Empty);
+        if (string.IsNullOrWhiteSpace(testCase) || testCase.TrimStart()[0] != '{')
+            return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(testCase);
+            if (doc.RootElement.ValueKind is not JsonValueKind.Object
+                || !doc.RootElement.TryGetProperty("expected", out var expected)
+                || expected.ValueKind is not JsonValueKind.String)
+                return false;
+
+            var input = doc.RootElement.TryGetProperty("input", out var inputValue)
+                && inputValue.ValueKind is JsonValueKind.String
+                    ? inputValue.GetString()
+                    : string.Empty;
+            result = new CodeExecutionTestCase(input ?? string.Empty, expected.GetString() ?? string.Empty);
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static SubmissionStatus DeriveStatus(
