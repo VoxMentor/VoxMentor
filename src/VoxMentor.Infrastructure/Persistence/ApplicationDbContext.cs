@@ -128,6 +128,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.JobDescriptionId, e.SkillName }).IsUnique();
             entity.Property(e => e.SkillName).IsRequired().HasMaxLength(100);
+            entity.ToTable(t => t.HasCheckConstraint(
+                "CK_JdSkillWeights_Weight_Range",
+                "\"Weight\" >= 0 AND \"Weight\" <= 1"));
 
             entity.HasOne<JobDescription>()
                 .WithMany()
