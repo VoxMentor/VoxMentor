@@ -29,11 +29,6 @@ public class GetNextQuestionHandler : IRequestHandler<GetNextQuestionQuery, ApiR
         if (string.IsNullOrEmpty(userId))
             throw new UnauthorizedAccessException("User must be authenticated to get the next question.");
 
-        // JD-weighted path: JobDescriptions table doesn't exist yet (issue #3).
-        // Accept jdId but 404 if provided.
-        if (request.JdId.HasValue)
-            throw new NotFoundException("Job description support is coming in a future release.");
-
         var concepts = await _db.Concepts
             .AsNoTracking()
             .ToListAsync(cancellationToken);

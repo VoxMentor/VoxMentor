@@ -226,18 +226,6 @@ public class GetNextQuestionHandlerTests
     }
 
     [Fact]
-    public async Task Handle_JdIdProvided_ThrowsNotFound()
-    {
-        using var db = CreateDb();
-        var concept = await SeedConceptAsync(db);
-        await SeedQuestionAsync(db, concept.Id);
-        var handler = CreateHandler(db);
-
-        await Assert.ThrowsAsync<NotFoundException>(
-            () => handler.Handle(new GetNextQuestionQuery(JdId: Guid.NewGuid()), CancellationToken.None));
-    }
-
-    [Fact]
     public async Task Handle_VisibleTestCases_ExcludesHidden()
     {
         using var db = CreateDb();

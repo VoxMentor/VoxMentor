@@ -44,6 +44,7 @@ public class GetQuestionsHandler : IRequestHandler<GetQuestionsQuery, ApiRespons
         var questions = await baseQuery
             .OrderBy(q => q.Difficulty)
             .ThenBy(q => q.Title)
+            .ThenBy(q => q.Id)
             .Skip((int)offset)
             .Take(pageSize)
             .Join(

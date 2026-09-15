@@ -67,12 +67,11 @@ public class StudentController : ControllerBase
     [Authorize(Roles = "Student")]
     [ProducesResponseType(typeof(ApiResponse<NextQuestionDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetNextQuestion(
-        [FromQuery] Guid? jdId,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> GetNextQuestion(CancellationToken cancellationToken)
     {
-        var response = await _sender.Send(new GetNextQuestionQuery(jdId), cancellationToken);
+        var response = await _sender.Send(new GetNextQuestionQuery(), cancellationToken);
         return Ok(response);
     }
 }
