@@ -46,7 +46,8 @@ public class GetReadinessHandlerTests
         Infrastructure.Persistence.ApplicationDbContext db,
         string userId,
         string company = "Amazon",
-        int estimatedWeeks = 6)
+        int estimatedWeeks = 6,
+        DateTime? createdAt = null)
     {
         var jd = new JobDescription
         {
@@ -56,7 +57,8 @@ public class GetReadinessHandlerTests
             Role = "SDE-1",
             RawText = $"{company} is hiring...",
             Difficulty = "Medium-Hard",
-            EstimatedWeeks = estimatedWeeks
+            EstimatedWeeks = estimatedWeeks,
+            CreatedAt = createdAt ?? DateTime.UtcNow
         };
         db.JobDescriptions.Add(jd);
         await db.SaveChangesAsync();
@@ -209,8 +211,8 @@ public class GetReadinessHandlerTests
     {
         await using var db = CreateDb();
         var concept = await SeedConceptAsync(db, "DP");
-        var oldJd = await SeedJdAsync(db, "user-1", "OldCorp", estimatedWeeks: 2);
-        var newJd = await SeedJdAsync(db, "user-1", "NewCorp", estimatedWeeks: 8);
+        var oldJd = await SeedJdAsync(db, "user-1", "OldCorp", estimatedWeeks: 2, createdAt: new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var newJd = await SeedJdAsync(db, "user-1", "NewCorp", estimatedWeeks: 8, createdAt: new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc));
         await SeedSkillWeightAsync(db, oldJd.Id, "DP", 0.5f);
         await SeedSkillWeightAsync(db, newJd.Id, "DP", 0.7f);
         await SeedMasteryAsync(db, "user-1", concept.Id, 0.4f);
