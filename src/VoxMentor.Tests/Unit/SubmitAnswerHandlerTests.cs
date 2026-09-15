@@ -168,6 +168,8 @@ public class SubmitAnswerHandlerTests
         public DbSet<MockInterview> MockInterviews => _inner.MockInterviews;
         public DbSet<AuditLog> AuditLogs => _inner.AuditLogs;
         public DbSet<BktParameters> BktParameters => _inner.BktParameters;
+        public DbSet<JobDescription> JobDescriptions => _inner.JobDescriptions;
+        public DbSet<JdSkillWeight> JdSkillWeights => _inner.JdSkillWeights;
 
         /// <summary>Throws the injected fault (if any) before delegating the save.</summary>
         public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -330,6 +332,8 @@ public class SubmitAnswerHandlerTests
         public DbSet<MockInterview> MockInterviews => _inner.MockInterviews;
         public DbSet<AuditLog> AuditLogs => _inner.AuditLogs;
         public DbSet<BktParameters> BktParameters => _inner.BktParameters;
+        public DbSet<JobDescription> JobDescriptions => _inner.JobDescriptions;
+        public DbSet<JdSkillWeight> JdSkillWeights => _inner.JdSkillWeights;
 
         /// <summary>Waits until all barrier participants reach the save boundary, then saves.</summary>
         public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

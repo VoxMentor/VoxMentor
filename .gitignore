@@ -81,6 +81,7 @@ Desktop.ini
 
 # ===== Project specific =====
 autosetup/
+graphify-out/
 
 # ===== OpenCode (local-only, never commit) =====
 .opencode/
