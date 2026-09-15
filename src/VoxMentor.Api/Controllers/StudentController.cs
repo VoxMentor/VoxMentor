@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Features.Practice.GetMastery;
 using VoxMentor.Application.Features.Practice.GetNextQuestion;
+using VoxMentor.Application.Features.Practice.GetReadiness;
 using VoxMentor.Application.Features.Practice.SubmitCode;
 
 namespace VoxMentor.Api.Controllers;
@@ -72,6 +73,24 @@ public class StudentController : ControllerBase
     public async Task<IActionResult> GetNextQuestion(CancellationToken cancellationToken)
     {
         var response = await _sender.Send(new GetNextQuestionQuery(), cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Returns the JD-weighted readiness score with per-skill breakdown and
+    /// gap analysis. Defaults to the user's most recent job description.
+    /// </summary>
+    [HttpGet("readiness")]
+    [Authorize(Roles = "Student")]
+    [ProducesResponseType(typeof(ApiResponse<ReadinessDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetReadiness(
+        [FromQuery] Guid? jdId,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new GetReadinessQuery { JdId = jdId }, cancellationToken);
         return Ok(response);
     }
 }
