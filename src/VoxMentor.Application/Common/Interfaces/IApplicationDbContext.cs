@@ -20,6 +20,8 @@ public interface IApplicationDbContext
     DbSet<MockInterview> MockInterviews { get; }
     DbSet<AuditLog> AuditLogs { get; }
     DbSet<BktParameters> BktParameters { get; }
+    DbSet<JobDescription> JobDescriptions { get; }
+    DbSet<JdSkillWeight> JdSkillWeights { get; }
     /// <summary>Persists tracked changes and returns the number of affected rows.</summary>
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 
