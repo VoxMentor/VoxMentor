@@ -3,12 +3,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Features.Practice.GetMastery;
+using VoxMentor.Application.Features.Practice.GetNextQuestion;
 using VoxMentor.Application.Features.Practice.SubmitCode;
 
 namespace VoxMentor.Api.Controllers;
 
 /// <summary>
-/// Student-facing endpoints: mastery profile and code submissions.
+/// Student-facing endpoints: mastery profile, code submissions, and adaptive question selection.
 /// </summary>
 [ApiController]
 [Route("api/v1/student")]
@@ -56,5 +57,22 @@ public class StudentController : ControllerBase
     {
         var result = await _sender.Send(command, cancellationToken);
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Returns the next adaptive question for the student. Without jdId, targets
+    /// the weakest concept at difficulty 1 + mastery×9.
+    /// </summary>
+    [HttpGet("next-question")]
+    [Authorize(Roles = "Student")]
+    [ProducesResponseType(typeof(ApiResponse<NextQuestionDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetNextQuestion(
+        [FromQuery] Guid? jdId,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new GetNextQuestionQuery(jdId), cancellationToken);
+        return Ok(response);
     }
 }

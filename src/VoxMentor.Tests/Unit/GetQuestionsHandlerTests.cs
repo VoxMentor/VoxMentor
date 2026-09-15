@@ -1,34 +1,32 @@
 using Microsoft.EntityFrameworkCore;
-using VoxMentor.Application.Common.Interfaces;
-using VoxMentor.Application.Features.Admin.GetQuestions;
+using VoxMentor.Application.Features.Practice.GetQuestions;
 using VoxMentor.Domain.Entities;
 
 namespace VoxMentor.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="GetQuestionsHandler"/> covering pagination tie-breaker
-/// and integer overflow guard.
+/// Unit tests for <see cref="GetQuestionsHandler"/> covering pagination,
+/// concept/difficulty filters, and empty results.
 /// </summary>
 public class GetQuestionsHandlerTests
 {
-    private static Infrastructure.Persistence.ApplicationDbContext CreateDb(string? name = null)
+    private static Infrastructure.Persistence.ApplicationDbContext CreateDb()
     {
         var options = new DbContextOptionsBuilder<Infrastructure.Persistence.ApplicationDbContext>()
-            .UseInMemoryDatabase(name ?? Guid.NewGuid().ToString())
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         return new Infrastructure.Persistence.ApplicationDbContext(options);
     }
 
-    private static GetQuestionsHandler CreateHandler(Infrastructure.Persistence.ApplicationDbContext db)
-        => new(db);
-
-    private static async Task<Concept> SeedConceptAsync(Infrastructure.Persistence.ApplicationDbContext db)
+    private static async Task<Concept> SeedConceptAsync(
+        Infrastructure.Persistence.ApplicationDbContext db,
+        string name = "Arrays")
     {
         var concept = new Concept
         {
             Id = Guid.NewGuid(),
-            Name = "Arrays",
-            Description = "Contiguous indexed storage.",
+            Name = name,
+            Description = $"{name} desc",
             DifficultyLevel = 2,
             Category = "Data Structures"
         };
@@ -40,70 +38,113 @@ public class GetQuestionsHandlerTests
     private static async Task<Question> SeedQuestionAsync(
         Infrastructure.Persistence.ApplicationDbContext db,
         Guid conceptId,
-        string title,
-        DateTime createdAt)
+        string title = "Test Question",
+        int difficulty = 3,
+        int hiddenCount = 0)
     {
-        var q = new Question
+        var cases = new List<string>();
+        for (var i = 0; i < 3; i++)
+            cases.Add($"{{\"input\":\"{i}\",\"expected\":\"{i}\"}}");
+        for (var i = 0; i < hiddenCount; i++)
+            cases.Add($"{{\"input\":\"h{i}\",\"expected\":\"h{i}\",\"hidden\":true}}");
+
+        var question = new Question
         {
             Id = Guid.NewGuid(),
             ConceptId = conceptId,
             Title = title,
             Description = "Desc",
-            Difficulty = 2,
-            TestCases = new[] { "{\"input\":\"1\",\"expected\":\"1\"}" },
-            ExampleInputs = new[] { "1" },
-            ExampleOutputs = new[] { "1" },
-            StarterCode = Array.Empty<string>(),
-            CreatedAt = createdAt
+            QuestionType = "Code",
+            Difficulty = difficulty,
+            TestCases = cases.ToArray(),
+            HiddenTestCaseCount = hiddenCount
         };
-        db.Questions.Add(q);
+        db.Questions.Add(question);
         await db.SaveChangesAsync();
-        return q;
+        return question;
     }
 
-    // ==================== Tie-Breaker Test ====================
+    private static GetQuestionsHandler CreateHandler(Infrastructure.Persistence.ApplicationDbContext db)
+        => new(db);
 
     [Fact]
-    public async Task Handle_SameCreatedAt_OrdersByIdForStability()
+    public async Task Handle_ReturnsQuestions_WithConceptName()
+    {
+        using var db = CreateDb();
+        var concept = await SeedConceptAsync(db, "DP");
+        await SeedQuestionAsync(db, concept.Id, "Knapsack", 5);
+        var handler = CreateHandler(db);
+
+        var response = await handler.Handle(new GetQuestionsQuery(), CancellationToken.None);
+
+        Assert.True(response.Success);
+        var q = Assert.Single(response.Data!.Questions);
+        Assert.Equal("DP", q.ConceptName);
+        Assert.Equal("Knapsack", q.Title);
+        Assert.Equal(5, q.Difficulty);
+    }
+
+    [Fact]
+    public async Task Handle_ConceptFilter_ReturnsOnlyMatching()
+    {
+        using var db = CreateDb();
+        var c1 = await SeedConceptAsync(db, "Arrays");
+        var c2 = await SeedConceptAsync(db, "DP");
+        await SeedQuestionAsync(db, c1.Id, "Q1");
+        await SeedQuestionAsync(db, c2.Id, "Q2");
+        var handler = CreateHandler(db);
+
+        var response = await handler.Handle(
+            new GetQuestionsQuery(ConceptId: c1.Id), CancellationToken.None);
+
+        Assert.Single(response.Data!.Questions);
+        Assert.Equal("Q1", response.Data.Questions[0].Title);
+    }
+
+    [Fact]
+    public async Task Handle_DifficultyFilter_ReturnsOnlyMatching()
     {
         using var db = CreateDb();
         var concept = await SeedConceptAsync(db);
-
-        // Two questions with identical CreatedAt — order must be deterministic by Id
-        var fixedTime = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var q1 = await SeedQuestionAsync(db, concept.Id, "B-Question", fixedTime);
-        var q2 = await SeedQuestionAsync(db, concept.Id, "A-Question", fixedTime);
-
+        await SeedQuestionAsync(db, concept.Id, "Easy", difficulty: 2);
+        await SeedQuestionAsync(db, concept.Id, "Hard", difficulty: 8);
         var handler = CreateHandler(db);
-        var result = await handler.Handle(new GetQuestionsQuery(Page: 1, PageSize: 10), CancellationToken.None);
 
-        Assert.True(result.Success);
-        Assert.Equal(2, result.Data!.TotalCount);
-        // Both should be present
-        Assert.Contains(result.Data.Questions, q => q.Id == q1.Id);
-        Assert.Contains(result.Data.Questions, q => q.Id == q2.Id);
-        // Tie-breaker: same CreatedAt → ordered by Id ascending
-        Assert.True(result.Data.Questions[0].Id.CompareTo(result.Data.Questions[1].Id) < 0,
-            $"Expected Id {result.Data.Questions[0].Id} < {result.Data.Questions[1].Id}");
+        var response = await handler.Handle(
+            new GetQuestionsQuery(Difficulty: 2), CancellationToken.None);
+
+        Assert.Single(response.Data!.Questions);
+        Assert.Equal("Easy", response.Data.Questions[0].Title);
     }
 
-    // ==================== Overflow Guard Test ====================
-
     [Fact]
-    public async Task Handle_LargePageSize_ReturnsEmptyAndTotalCount()
+    public async Task Handle_Pagination_ReturnsCorrectPage()
     {
         using var db = CreateDb();
         var concept = await SeedConceptAsync(db);
-        await SeedQuestionAsync(db, concept.Id, "Q1", DateTime.UtcNow);
-
+        for (var i = 0; i < 5; i++)
+            await SeedQuestionAsync(db, concept.Id, $"Q{i + 1}", difficulty: i + 1);
         var handler = CreateHandler(db);
-        // PageSize 100 with Page 100_000_000 → offset = 9_999_999_900 which exceeds int.MaxValue
-        var result = await handler.Handle(new GetQuestionsQuery(Page: 100_000_000, PageSize: 100), CancellationToken.None);
 
-        Assert.True(result.Success);
-        Assert.Empty(result.Data!.Questions);
-        Assert.Equal(1, result.Data.TotalCount);
-        Assert.Equal(100_000_000, result.Data.Page);
-        Assert.Equal(100, result.Data.PageSize);
+        var page1 = await handler.Handle(new GetQuestionsQuery(Page: 1, PageSize: 2), CancellationToken.None);
+        var page2 = await handler.Handle(new GetQuestionsQuery(Page: 2, PageSize: 2), CancellationToken.None);
+
+        Assert.Equal(2, page1.Data!.Questions.Count);
+        Assert.Equal(2, page2.Data!.Questions.Count);
+        Assert.Equal(5, page1.Data.TotalCount);
+        Assert.NotEqual(page1.Data.Questions[0].Id, page2.Data.Questions[0].Id);
+    }
+
+    [Fact]
+    public async Task Handle_EmptyDb_ReturnsEmptyList()
+    {
+        using var db = CreateDb();
+        var handler = CreateHandler(db);
+
+        var response = await handler.Handle(new GetQuestionsQuery(), CancellationToken.None);
+
+        Assert.True(response.Success);
+        Assert.Empty(response.Data!.Questions);
+        Assert.Equal(0, response.Data.TotalCount);
     }
 }
