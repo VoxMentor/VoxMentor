@@ -1,4 +1,70 @@
 services:
+  db:
+    image: ankane/pgvector:v15
+    container_name: voxmentor-db
+    environment:
+      - POSTGRES_USER=voxmentor
+      - POSTGRES_PASSWORD=voxmentor
+      - POSTGRES_DB=voxmentor
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voxmentor"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: voxmentor-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama
+    container_name: voxmentor-ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  judge0:
+    image: judge0/judge0:latest
+    container_name: voxmentor-judge0
+    environment:
+      - SECRET_KEY=voxmentor-judge0-secret-key
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=voxmentor
+      - POSTGRES_PASSWORD=voxmentor
+      - POSTGRES_DB=judge0
+    ports:
+      - "127.0.0.1:2358:2358"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:2358/configs || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
   seq:
     image: datalust/seq:2024.3.3
     container_name: voxmentor-seq
@@ -16,7 +82,7 @@ services:
   #     context: .
   #     dockerfile: docker/Dockerfile.Gateway
   #   environment:
-  #     - ConnectionStrings__Hangfire=Host=db;Port=5432;...
+  #     - ConnectionStrings__Hangfire=Host=db;Port=5432;Database=voxmentor;Username=voxmentor;Password=voxmentor
   #     - ReverseProxy__Clusters__core-api__Destinations__d1__Address=http://api:5000/
   #     - ReverseProxy__Clusters__tutor-service__Destinations__d1__Address=http://tutor:5001/
   #     - ReverseProxy__Clusters__codeexec-service__Destinations__d1__Address=http://codeexec:5002/
@@ -27,4 +93,7 @@ services:
   #     - seq
 
 volumes:
+  postgres-data:
+  redis-data:
+  ollama-data:
   seq-data:
