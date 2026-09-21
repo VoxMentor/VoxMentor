@@ -41,6 +41,9 @@ public class CodeSubmission
     /// <summary>Plagiarism detection score (0-1), or null if not checked.</summary>
     public float? PlagiarismScore { get; set; }
 
+    /// <summary>768-dim embedding vector for plagiarism detection (pgvector).</summary>
+    public string? CodeEmbedding { get; set; }
+
     /// <summary>AI evaluation JSON from Ollama, or null if unavailable.</summary>
     public string? AiEvaluation { get; set; }
 

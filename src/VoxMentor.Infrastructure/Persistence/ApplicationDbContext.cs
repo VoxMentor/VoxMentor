@@ -92,6 +92,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         builder.Entity<CodeSubmission>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.CodeEmbedding)
+                .HasColumnType("vector(768)");
         });
 
         builder.Entity<MockInterview>(entity =>

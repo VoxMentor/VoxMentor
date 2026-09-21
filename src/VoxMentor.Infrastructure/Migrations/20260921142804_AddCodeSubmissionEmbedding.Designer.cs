@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using VoxMentor.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using VoxMentor.Infrastructure.Persistence;
 namespace VoxMentor.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260921142804_AddCodeSubmissionEmbedding")]
+    partial class AddCodeSubmissionEmbedding
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -350,9 +353,6 @@ namespace VoxMentor.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CodeEmbedding")
-                        .HasDatabaseName("IX_CodeSubmissions_CodeEmbedding");
-
                     b.ToTable("CodeSubmissions");
                 });
 
@@ -385,6 +385,80 @@ namespace VoxMentor.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Concepts");
+                });
+
+            modelBuilder.Entity("VoxMentor.Domain.Entities.JdSkillWeight", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsTechnical")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("JobDescriptionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SkillName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<float>("Weight")
+                        .HasColumnType("real");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobDescriptionId", "SkillName")
+                        .IsUnique();
+
+                    b.ToTable("JdSkillWeights", t =>
+                        {
+                            t.HasCheckConstraint("CK_JdSkillWeights_Weight_Range", "\"Weight\" >= 0 AND \"Weight\" <= 1");
+                        });
+                });
+
+            modelBuilder.Entity("VoxMentor.Domain.Entities.JobDescription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CompanyName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Difficulty")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int>("EstimatedWeeks")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RawText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("JobDescriptions");
                 });
 
             modelBuilder.Entity("VoxMentor.Domain.Entities.MockInterview", b =>
@@ -646,6 +720,15 @@ namespace VoxMentor.Infrastructure.Migrations
                     b.HasOne("VoxMentor.Domain.Entities.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("VoxMentor.Domain.Entities.JdSkillWeight", b =>
+                {
+                    b.HasOne("VoxMentor.Domain.Entities.JobDescription", null)
+                        .WithMany()
+                        .HasForeignKey("JobDescriptionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
