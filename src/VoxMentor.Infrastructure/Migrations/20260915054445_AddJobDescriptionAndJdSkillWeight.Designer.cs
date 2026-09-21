@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using VoxMentor.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using VoxMentor.Infrastructure.Persistence;
 namespace VoxMentor.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260915054445_AddJobDescriptionAndJdSkillWeight")]
+    partial class AddJobDescriptionAndJdSkillWeight
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -310,9 +313,6 @@ namespace VoxMentor.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("CodeEmbedding")
-                        .HasColumnType("vector(768)");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -349,9 +349,6 @@ namespace VoxMentor.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("CodeEmbedding")
-                        .HasDatabaseName("IX_CodeSubmissions_CodeEmbedding");
 
                     b.ToTable("CodeSubmissions");
                 });
@@ -415,10 +412,7 @@ namespace VoxMentor.Infrastructure.Migrations
                     b.HasIndex("JobDescriptionId", "SkillName")
                         .IsUnique();
 
-                    b.ToTable("JdSkillWeights", t =>
-                        {
-                            t.HasCheckConstraint("CK_JdSkillWeights_Weight_Range", "\"Weight\" >= 0 AND \"Weight\" <= 1");
-                        });
+                    b.ToTable("JdSkillWeights");
                 });
 
             modelBuilder.Entity("VoxMentor.Domain.Entities.JobDescription", b =>

@@ -25,6 +25,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<MockInterview> MockInterviews { get; set; } = null!;
     public DbSet<AuditLog> AuditLogs { get; set; } = null!;
     public DbSet<BktParameters> BktParameters { get; set; } = null!;
+    public DbSet<JobDescription> JobDescriptions { get; set; } = null!;
+    public DbSet<JdSkillWeight> JdSkillWeights { get; set; } = null!;
 
     /// <inheritdoc />
     public void ClearChangeTracker() => ChangeTracker.Clear();
@@ -111,6 +113,31 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.ConceptId).IsUnique();
+        });
+
+        builder.Entity<JobDescription>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.UserId).IsRequired();
+            entity.Property(e => e.CompanyName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Role).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.RawText).IsRequired();
+            entity.Property(e => e.Difficulty).HasMaxLength(50);
+        });
+
+        builder.Entity<JdSkillWeight>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.JobDescriptionId, e.SkillName }).IsUnique();
+            entity.Property(e => e.SkillName).IsRequired().HasMaxLength(100);
+            entity.ToTable(t => t.HasCheckConstraint(
+                "CK_JdSkillWeights_Weight_Range",
+                "\"Weight\" >= 0 AND \"Weight\" <= 1"));
+
+            entity.HasOne<JobDescription>()
+                .WithMany()
+                .HasForeignKey(e => e.JobDescriptionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
