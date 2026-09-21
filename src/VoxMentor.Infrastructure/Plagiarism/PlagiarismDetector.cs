@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using VoxMentor.Application.Common.Interfaces;
+using VoxMentor.Infrastructure.Persistence;
 
 namespace VoxMentor.Infrastructure.Plagiarism;
 
@@ -17,12 +18,12 @@ namespace VoxMentor.Infrastructure.Plagiarism;
 public class PlagiarismDetector : IPlagiarismDetector
 {
     private readonly CodeEmbeddingService _embeddingService;
-    private readonly IApplicationDbContext _db;
+    private readonly ApplicationDbContext _db;
     private readonly ILogger<PlagiarismDetector> _logger;
 
     public PlagiarismDetector(
         CodeEmbeddingService embeddingService,
-        IApplicationDbContext db,
+        ApplicationDbContext db,
         ILogger<PlagiarismDetector> logger)
     {
         _embeddingService = embeddingService;
@@ -50,18 +51,18 @@ public class PlagiarismDetector : IPlagiarismDetector
         var embeddingJson = JsonSerializer.Serialize(embedding);
 
         // ponytail: raw SQL for pgvector cosine distance — EF Core doesn't natively translate <=>" operator.
-        // ponytail: embeddingJson is parameterized via NpgsqlParameter, safe from injection.
-        var similarSubmissions = await _db.CodeSubmissions
-            .FromSqlRaw("""
-                SELECT "Id", "UserId", "CodeEmbedding"::text AS "CodeEmbedding"
-                FROM "CodeSubmissions"
-                WHERE "QuestionId" = {0}
-                  AND "UserId" != {1}
-                  AND "CodeEmbedding" IS NOT NULL
-                ORDER BY "CodeEmbedding"::vector <=> {2}::vector
-                LIMIT 5
-                """, questionId, userId, embeddingJson)
-            .Select(s => new { s.Id, s.CodeEmbedding })
+        // ponytail: SqlQueryRaw with keyless DTO — EF Core requires all mapped columns for FromSqlRaw on实体 types.
+        var sql = @"
+            SELECT ""Id"", ""CodeEmbedding""::text AS ""CodeEmbedding""
+            FROM ""CodeSubmissions""
+            WHERE ""QuestionId"" = {0}
+              AND ""UserId"" != {1}
+              AND ""CodeEmbedding"" IS NOT NULL
+            ORDER BY ""CodeEmbedding""::vector <=> {2}::vector
+            LIMIT 5";
+
+        var similarSubmissions = await _db.Database
+            .SqlQueryRaw<SimilarSubmissionDto>(sql, questionId, userId, embeddingJson)
             .ToListAsync(cancellationToken);
 
         if (similarSubmissions.Count == 0)
@@ -123,4 +124,10 @@ public class PlagiarismDetector : IPlagiarismDetector
         var denominator = MathF.Sqrt(normA) * MathF.Sqrt(normB);
         return denominator == 0 ? 0 : dot / denominator;
     }
+
+    /// <summary>
+    /// Keyless DTO for pgvector cosine similarity query projections.
+    /// EF Core requires SqlQueryRaw to target a type, not a raw anonymous type.
+    /// </summary>
+    private sealed record SimilarSubmissionDto(Guid Id, string? CodeEmbedding);
 }

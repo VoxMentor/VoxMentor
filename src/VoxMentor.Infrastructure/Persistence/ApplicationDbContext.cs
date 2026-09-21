@@ -96,6 +96,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.HasKey(e => e.Id);
             entity.Property(e => e.CodeEmbedding)
                 .HasColumnType("vector(768)");
+            entity.HasIndex(e => e.CodeEmbedding)
+                .HasDatabaseName("IX_CodeSubmissions_CodeEmbedding")
+                .HasMethod("hnsw")
+                .HasOperators("vector_cosine_ops");
         });
 
         builder.Entity<MockInterview>(entity =>

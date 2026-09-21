@@ -61,10 +61,12 @@ public class CodeEmbeddingService
 
             var result = await response.Content.ReadFromJsonAsync<EmbedResponse>(JsonOptions, timeoutCts.Token);
 
-            if (result?.Embeddings is { Length: > 0 } embeddings)
-                return embeddings[0];
+            if (result?.Embeddings is { Length: > 0 } embeddings &&
+                embeddings[0] is { Length: 768 } emb &&
+                Array.TrueForAll(emb, float.IsFinite))
+                return emb;
 
-            _logger.LogWarning("Ollama embed returned empty result");
+            _logger.LogWarning("Ollama embed returned invalid result (wrong dimension or non-finite values)");
             return null;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
