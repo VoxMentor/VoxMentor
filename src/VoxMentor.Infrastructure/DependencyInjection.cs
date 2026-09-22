@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
+using Pgvector.EntityFrameworkCore;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Domain.Entities;
 using VoxMentor.Infrastructure.Authentication;
@@ -26,7 +27,7 @@ public static class DependencyInjection
         var connectionString = ParseConnectionString(rawConnectionString);
 
         services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseNpgsql(connectionString));
+            options.UseNpgsql(connectionString, o => o.UseVector()));
 
         services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
 
