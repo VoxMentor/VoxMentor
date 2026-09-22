@@ -487,8 +487,9 @@ public class SubmitCodeHandlerTests
         Assert.True(response.Success);
         var submission = await db.CodeSubmissions.SingleAsync();
         Assert.NotNull(submission.CodeEmbedding);
-        Assert.Contains("0.1", submission.CodeEmbedding);
-        Assert.Contains("0.4", submission.CodeEmbedding);
+        var arr = submission.CodeEmbedding!.ToArray();
+        Assert.Equal(0.1f, arr[0], precision: 4);
+        Assert.Equal(0.4f, arr[3], precision: 4);
     }
 
     [Fact]

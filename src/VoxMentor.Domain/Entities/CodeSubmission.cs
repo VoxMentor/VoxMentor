@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+using Pgvector;
 using VoxMentor.Domain.Enums;
 
 namespace VoxMentor.Domain.Entities;
@@ -42,7 +44,8 @@ public class CodeSubmission
     public float? PlagiarismScore { get; set; }
 
     /// <summary>768-dim embedding vector for plagiarism detection (pgvector).</summary>
-    public string? CodeEmbedding { get; set; }
+    [Column(TypeName = "vector(768)")]
+    public Vector? CodeEmbedding { get; set; }
 
     /// <summary>AI evaluation JSON from Ollama, or null if unavailable.</summary>
     public string? AiEvaluation { get; set; }

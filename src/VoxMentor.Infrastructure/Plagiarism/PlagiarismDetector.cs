@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Pgvector;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Infrastructure.Persistence;
 
@@ -48,9 +49,9 @@ public class PlagiarismDetector : IPlagiarismDetector
         }
 
         // Query pgvector for most similar prior submissions (same question, different user)
-        var embeddingJson = JsonSerializer.Serialize(embedding);
+        var embeddingVector = new Vector(embedding);
 
-        // ponytail: raw SQL for pgvector cosine distance — EF Core doesn't natively translate <=>" operator.
+        // ponytail: raw SQL for pgvector cosine distance — EF Core doesn't natively translate <=> operator.
         // ponytail: SqlQueryRaw with keyless DTO — EF Core requires all mapped columns for FromSqlRaw on entity types.
         var sql = @"
             SELECT ""Id"", ""CodeEmbedding""::text AS ""CodeEmbedding""
@@ -62,7 +63,7 @@ public class PlagiarismDetector : IPlagiarismDetector
             LIMIT 5";
 
         var similarSubmissions = await _db.Database
-            .SqlQueryRaw<SimilarSubmissionDto>(sql, questionId, userId, embeddingJson)
+            .SqlQueryRaw<SimilarSubmissionDto>(sql, questionId, userId, embeddingVector)
             .ToListAsync(cancellationToken);
 
         if (similarSubmissions.Count == 0)

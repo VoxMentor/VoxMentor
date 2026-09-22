@@ -313,7 +313,7 @@ namespace VoxMentor.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("CodeEmbedding")
+                    b.Property<Pgvector.Vector>("CodeEmbedding")
                         .HasColumnType("vector(768)");
 
                     b.Property<DateTime>("CreatedAt")

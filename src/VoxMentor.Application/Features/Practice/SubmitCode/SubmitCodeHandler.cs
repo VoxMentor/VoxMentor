@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Pgvector;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
@@ -148,7 +149,7 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
                 : null,
             PlagiarismScore = plagiarismResult?.Score,
             CodeEmbedding = plagiarismResult?.Embedding is not null
-                ? JsonSerializer.Serialize(plagiarismResult.Embedding)
+                ? new Vector(plagiarismResult.Embedding)
                 : null,
             Status = status,
             CreatedAt = DateTime.UtcNow
