@@ -51,7 +51,7 @@ public class PlagiarismDetector : IPlagiarismDetector
         var embeddingJson = JsonSerializer.Serialize(embedding);
 
         // ponytail: raw SQL for pgvector cosine distance — EF Core doesn't natively translate <=>" operator.
-        // ponytail: SqlQueryRaw with keyless DTO — EF Core requires all mapped columns for FromSqlRaw on实体 types.
+        // ponytail: SqlQueryRaw with keyless DTO — EF Core requires all mapped columns for FromSqlRaw on entity types.
         var sql = @"
             SELECT ""Id"", ""CodeEmbedding""::text AS ""CodeEmbedding""
             FROM ""CodeSubmissions""

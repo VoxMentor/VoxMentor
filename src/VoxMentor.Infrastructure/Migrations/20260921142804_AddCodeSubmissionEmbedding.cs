@@ -10,8 +10,6 @@ namespace VoxMentor.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.Sql("CREATE EXTENSION IF NOT EXISTS vector;");
-
             migrationBuilder.AddColumn<string>(
                 name: "CodeEmbedding",
                 table: "CodeSubmissions",

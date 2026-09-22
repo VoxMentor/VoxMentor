@@ -38,6 +38,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+        builder.HasPostgresExtension("vector");
 
         builder.Entity<ApplicationUser>(entity =>
         {
