@@ -1,5 +1,8 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Pgvector;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Domain.Entities;
 
@@ -38,6 +41,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+        builder.HasPostgresExtension("vector");
 
         builder.Entity<ApplicationUser>(entity =>
         {
@@ -94,6 +98,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         builder.Entity<CodeSubmission>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.CodeEmbedding)
+                .HasColumnType("vector(768)")
+                .HasConversion<VectorToJsonConverter>();
+            entity.HasIndex(e => e.CodeEmbedding)
+                .HasDatabaseName("IX_CodeSubmissions_CodeEmbedding")
+                .HasMethod("hnsw")
+                .HasOperators("vector_cosine_ops");
         });
 
         builder.Entity<MockInterview>(entity =>
@@ -137,5 +148,31 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
                 .HasForeignKey(e => e.JobDescriptionId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+    }
+}
+
+/// <summary>
+/// Converts Pgvector Vector to/from JSON string for EF Core storage.
+/// ponytail: avoids expression-tree issues with optional args by using a concrete converter class.
+/// </summary>
+public class VectorToJsonConverter : ValueConverter<Vector?, string?>
+{
+    public VectorToJsonConverter()
+        : base(v => VectorToJson(v), s => JsonToVector(s))
+    {
+    }
+
+    private static string? VectorToJson(Vector? v)
+    {
+        if (v is null) return null;
+        var arr = new float[v.Memory.Span.Length];
+        v.Memory.Span.CopyTo(arr);
+        return JsonSerializer.Serialize(arr);
+    }
+
+    private static Vector? JsonToVector(string? s)
+    {
+        if (s is null) return null;
+        return new Vector(JsonSerializer.Deserialize<float[]>(s)!);
     }
 }

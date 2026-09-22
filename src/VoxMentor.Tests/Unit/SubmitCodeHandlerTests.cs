@@ -26,6 +26,14 @@ public class SubmitCodeHandlerTests
         public string? AccessToken => "test-token";
     }
 
+    private sealed class FakePlagiarismDetector : IPlagiarismDetector
+    {
+        public float ScoreToReturn { get; set; }
+        public float[]? EmbeddingToReturn { get; set; }
+        public Task<PlagiarismResult> DetectAsync(string code, string language, string userId, Guid questionId, CancellationToken ct = default)
+            => Task.FromResult(new PlagiarismResult(ScoreToReturn, EmbeddingToReturn));
+    }
+
     private sealed class FakeCodeExecService : ICodeExecService
     {
         public Func<CodeExecutionRequest, IReadOnlyList<CodeExecutionCaseResult>> Respond { get; set; }
@@ -86,7 +94,8 @@ public class SubmitCodeHandlerTests
         FakeCurrentUserService? user = null,
         FakeCodeExecService? exec = null,
         FakeCodeEvaluator? evaluator = null,
-        FakeEventPublisher? publisher = null)
+        FakeEventPublisher? publisher = null,
+        IPlagiarismDetector? plagiarism = null)
         => new(
             db,
             new BktEngine(),
@@ -95,6 +104,7 @@ public class SubmitCodeHandlerTests
             exec ?? new FakeCodeExecService(),
             evaluator ?? new FakeCodeEvaluator(),
             publisher ?? new FakeEventPublisher(),
+            plagiarism ?? new FakePlagiarismDetector(),
             NullLogger<SubmitCodeHandler>.Instance);
 
     private static CodeExecutionCaseResult Case(bool passed, string expected = "ok", string actual = "ok",
@@ -442,5 +452,67 @@ public class SubmitCodeHandlerTests
         Assert.Equal(2, response.Data.TestCasesTotal);
         Assert.True(response.Data.IsCorrect);
         Assert.Equal(2, response.Data.TestCaseResults.Count);
+    }
+
+    [Fact]
+    public async Task Handle_PlagiarismDetectorReturnsScore_StoresScoreOnSubmission()
+    {
+        await using var db = CreateDb();
+        var question = await SeedQuestionAsync(db, ["3 7\n|10"]);
+        var plagiarism = new FakePlagiarismDetector { ScoreToReturn = 0.85f };
+        var exec = new FakeCodeExecService { Respond = _ => [Case(true)] };
+        var handler = CreateHandler(db, exec: exec, plagiarism: plagiarism);
+
+        var response = await handler.Handle(
+            new SubmitCodeCommand(question.Id, "print(10)", "python"), CancellationToken.None);
+
+        Assert.True(response.Success);
+        var submission = await db.CodeSubmissions.SingleAsync();
+        Assert.Equal(0.85f, submission.PlagiarismScore!.Value, precision: 2);
+    }
+
+    [Fact]
+    public async Task Handle_PlagiarismDetectorReturnsEmbedding_StoresEmbeddingJsonOnSubmission()
+    {
+        await using var db = CreateDb();
+        var question = await SeedQuestionAsync(db, ["3 7\n|10"]);
+        var embedding = new float[] { 0.1f, 0.2f, 0.3f, 0.4f };
+        var plagiarism = new FakePlagiarismDetector { ScoreToReturn = 0.5f, EmbeddingToReturn = embedding };
+        var exec = new FakeCodeExecService { Respond = _ => [Case(true)] };
+        var handler = CreateHandler(db, exec: exec, plagiarism: plagiarism);
+
+        var response = await handler.Handle(
+            new SubmitCodeCommand(question.Id, "print(10)", "python"), CancellationToken.None);
+
+        Assert.True(response.Success);
+        var submission = await db.CodeSubmissions.SingleAsync();
+        Assert.NotNull(submission.CodeEmbedding);
+        var arr = submission.CodeEmbedding!.ToArray();
+        Assert.Equal(0.1f, arr[0], precision: 4);
+        Assert.Equal(0.4f, arr[3], precision: 4);
+    }
+
+    [Fact]
+    public async Task Handle_PlagiarismDetectorThrows_SubmissionStillSavedWithNullFields()
+    {
+        await using var db = CreateDb();
+        var question = await SeedQuestionAsync(db, ["3 7\n|10"]);
+        var plagiarism = new ThrowingPlagiarismDetector();
+        var exec = new FakeCodeExecService { Respond = _ => [Case(true)] };
+        var handler = CreateHandler(db, exec: exec, plagiarism: plagiarism);
+
+        var response = await handler.Handle(
+            new SubmitCodeCommand(question.Id, "print(10)", "python"), CancellationToken.None);
+
+        Assert.True(response.Success);
+        var submission = await db.CodeSubmissions.SingleAsync();
+        Assert.Null(submission.PlagiarismScore);
+        Assert.Null(submission.CodeEmbedding);
+    }
+
+    private sealed class ThrowingPlagiarismDetector : IPlagiarismDetector
+    {
+        public Task<PlagiarismResult> DetectAsync(string code, string language, string userId, Guid questionId, CancellationToken ct = default)
+            => throw new InvalidOperationException("Ollama is down");
     }
 }

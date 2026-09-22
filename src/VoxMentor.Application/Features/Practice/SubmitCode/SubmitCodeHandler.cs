@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Pgvector;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
@@ -48,6 +49,7 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
     private readonly ICodeExecService _codeExecService;
     private readonly ICodeEvaluator _codeEvaluator;
     private readonly IMasteryEventPublisher _eventPublisher;
+    private readonly IPlagiarismDetector _plagiarismDetector;
     private readonly ILogger<SubmitCodeHandler> _logger;
 
     public SubmitCodeHandler(
@@ -58,6 +60,7 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
         ICodeExecService codeExecService,
         ICodeEvaluator codeEvaluator,
         IMasteryEventPublisher eventPublisher,
+        IPlagiarismDetector plagiarismDetector,
         ILogger<SubmitCodeHandler> logger)
     {
         _db = db;
@@ -67,6 +70,7 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
         _codeExecService = codeExecService;
         _codeEvaluator = codeEvaluator;
         _eventPublisher = eventPublisher;
+        _plagiarismDetector = plagiarismDetector;
         _logger = logger;
     }
 
@@ -112,6 +116,18 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
             _logger.LogWarning(ex, "AI evaluation failed for submission to question {QuestionId}", request.QuestionId);
         }
 
+        // Plagiarism detection is supplementary: failure must not block submission.
+        PlagiarismResult? plagiarismResult = null;
+        try
+        {
+            plagiarismResult = await _plagiarismDetector.DetectAsync(
+                request.Code, request.Language, userId, question.Id, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Plagiarism detection failed for submission to question {QuestionId}", request.QuestionId);
+        }
+
         var submission = new CodeSubmission
         {
             Id = Guid.NewGuid(),
@@ -130,6 +146,10 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
                 : null,
             AiEvaluation = evaluation is not null
                 ? JsonSerializer.Serialize(evaluation, EvaluationJsonOptions)
+                : null,
+            PlagiarismScore = plagiarismResult?.Score,
+            CodeEmbedding = plagiarismResult?.Embedding is not null
+                ? new Vector(plagiarismResult.Embedding)
                 : null,
             Status = status,
             CreatedAt = DateTime.UtcNow

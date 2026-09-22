@@ -5,10 +5,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
+using Pgvector.EntityFrameworkCore;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Domain.Entities;
 using VoxMentor.Infrastructure.Authentication;
 using VoxMentor.Infrastructure.Persistence;
+using VoxMentor.Infrastructure.Plagiarism;
 using VoxMentor.Infrastructure.Services;
 
 namespace VoxMentor.Infrastructure;
@@ -25,7 +27,7 @@ public static class DependencyInjection
         var connectionString = ParseConnectionString(rawConnectionString);
 
         services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseNpgsql(connectionString));
+            options.UseNpgsql(connectionString, o => o.UseVector()));
 
         services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
 
@@ -66,6 +68,10 @@ public static class DependencyInjection
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IMasteryEventPublisher, NullMasteryEventPublisher>();
+
+        // Plagiarism detection
+        services.AddHttpClient<CodeEmbeddingService>();
+        services.AddScoped<IPlagiarismDetector, PlagiarismDetector>();
 
         services.AddAuthentication(options =>
         {
