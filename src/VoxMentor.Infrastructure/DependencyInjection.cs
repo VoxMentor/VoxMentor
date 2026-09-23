@@ -11,6 +11,7 @@ using VoxMentor.Domain.Entities;
 using VoxMentor.Infrastructure.Authentication;
 using VoxMentor.Infrastructure.Persistence;
 using VoxMentor.Infrastructure.Plagiarism;
+using VoxMentor.Infrastructure.RateLimiting;
 using VoxMentor.Infrastructure.Services;
 
 namespace VoxMentor.Infrastructure;
@@ -72,6 +73,9 @@ public static class DependencyInjection
         // Plagiarism detection
         services.AddHttpClient<CodeEmbeddingService>();
         services.AddScoped<IPlagiarismDetector, PlagiarismDetector>();
+
+        // ponytail: in-memory sliding window; Redis when multi-instance
+        services.AddSingleton<IRateLimiter, InMemorySlidingWindowRateLimiter>();
 
         services.AddAuthentication(options =>
         {

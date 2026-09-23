@@ -30,6 +30,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<BktParameters> BktParameters { get; set; } = null!;
     public DbSet<JobDescription> JobDescriptions { get; set; } = null!;
     public DbSet<JdSkillWeight> JdSkillWeights { get; set; } = null!;
+    public DbSet<TutorSession> TutorSessions { get; set; } = null!;
 
     /// <inheritdoc />
     public void ClearChangeTracker() => ChangeTracker.Clear();
@@ -151,6 +152,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
                 .WithMany()
                 .HasForeignKey(e => e.JobDescriptionId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<TutorSession>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.UserId).IsRequired();
+            entity.Property(e => e.Question).IsRequired().HasMaxLength(2000);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
+            entity.HasIndex(e => new { e.UserId, e.CreatedAt });
         });
     }
 }
