@@ -33,24 +33,33 @@ public class InMemorySlidingWindowRateLimiter : IRateLimiter
         var now = _clock.GetUtcNow().UtcDateTime;
         PurgeExpired(now);
 
-        var window = _windows.GetOrAdd(key, _ => new Queue<DateTime>());
-        lock (window)
+        while (true)
         {
-            while (window.Count > 0 && now - window.Peek() >= _window)
+            var window = _windows.GetOrAdd(key, _ => new Queue<DateTime>());
+            lock (window)
             {
-                window.Dequeue();
+                // purged out from under us? retry with the queue currently mapped to key
+                if (!_windows.TryGetValue(key, out var mapped) || !ReferenceEquals(mapped, window))
+                {
+                    continue;
+                }
+
+                while (window.Count > 0 && now - window.Peek() >= _window)
+                {
+                    window.Dequeue();
+                }
+
+                if (window.Count >= _limit)
+                {
+                    var retry = (int)Math.Ceiling((window.Peek() + _window - now).TotalSeconds);
+                    throw new RateLimitException(retry);
+                }
+
+                window.Enqueue(now);
             }
 
-            if (window.Count >= _limit)
-            {
-                var retry = (int)Math.Ceiling((window.Peek() + _window - now).TotalSeconds);
-                throw new RateLimitException(retry);
-            }
-
-            window.Enqueue(now);
+            return Task.CompletedTask;
         }
-
-        return Task.CompletedTask;
     }
 
     private void PurgeExpired(DateTime now)

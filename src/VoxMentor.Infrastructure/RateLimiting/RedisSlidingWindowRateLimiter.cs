@@ -6,16 +6,18 @@ namespace VoxMentor.Infrastructure.RateLimiting;
 
 /// <summary>
 /// Cluster-safe sliding-window limiter: one sorted-set key per partition,
-/// prune + check + record done atomically in a single Lua script.
+/// prune + check + record done atomically in a single Lua script using Redis TIME
+/// so every API instance shares one clock.
 /// ponytail: fail-closed — Redis down surfaces as an error, not a silent bypass.
 /// </summary>
 public class RedisSlidingWindowRateLimiter : IRateLimiter
 {
     private const string Script = """
+        local time = redis.call('TIME')
+        local now = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
         local key = KEYS[1]
-        local now = tonumber(ARGV[1])
-        local window = tonumber(ARGV[2])
-        local limit = tonumber(ARGV[3])
+        local window = tonumber(ARGV[1])
+        local limit = tonumber(ARGV[2])
         redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
         local n = redis.call('ZCARD', key)
         if n >= limit then
@@ -24,7 +26,7 @@ public class RedisSlidingWindowRateLimiter : IRateLimiter
             if retry < 0 then retry = 0 end
             return {0, math.ceil(retry / 1000)}
         end
-        redis.call('ZADD', key, now, ARGV[4])
+        redis.call('ZADD', key, now, ARGV[3])
         redis.call('PEXPIRE', key, window)
         return {1, 0}
         """;
@@ -32,13 +34,11 @@ public class RedisSlidingWindowRateLimiter : IRateLimiter
     private readonly IConnectionMultiplexer _redis;
     private readonly int _limit;
     private readonly TimeSpan _window;
-    private readonly TimeProvider _clock;
 
     public RedisSlidingWindowRateLimiter(
         IConnectionMultiplexer redis,
         int limit = 10,
-        TimeSpan? window = null,
-        TimeProvider? clock = null)
+        TimeSpan? window = null)
     {
         if (limit <= 0)
         {
@@ -48,20 +48,17 @@ public class RedisSlidingWindowRateLimiter : IRateLimiter
         _redis = redis;
         _limit = limit;
         _window = window ?? TimeSpan.FromHours(1);
-        _clock = clock ?? TimeProvider.System;
     }
 
     public async Task CheckAsync(string key, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var now = _clock.GetUtcNow().ToUnixTimeMilliseconds();
         var db = _redis.GetDatabase();
         var result = await db.ScriptEvaluateAsync(
             Script,
             keys: new RedisKey[] { key },
             values: new RedisValue[]
             {
-                now,
                 (long)_window.TotalMilliseconds,
                 _limit,
                 Guid.NewGuid().ToString("N")
