@@ -183,6 +183,9 @@ public class SubmitAnswerHandlerTests
         public void ClearChangeTracker() => _inner.ClearChangeTracker();
 
         public EntityEntry<T> Entry<T>(T entity) where T : class => _inner.Entry(entity);
+
+        public IQueryable<T> SqlQueryRaw<T>(string sql, params object[] parameters) where T : class
+            => _inner.SqlQueryRaw<T>(sql, parameters);
     }
 
     [Fact]
@@ -345,5 +348,8 @@ public class SubmitAnswerHandlerTests
         public void ClearChangeTracker() => _inner.ClearChangeTracker();
 
         public EntityEntry<T> Entry<T>(T entity) where T : class => _inner.Entry(entity);
+
+        public IQueryable<T> SqlQueryRaw<T>(string sql, params object[] parameters) where T : class
+            => _inner.SqlQueryRaw<T>(sql, parameters);
     }
 }
