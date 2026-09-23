@@ -59,7 +59,7 @@ public class AskTutorHandler : IRequestHandler<AskTutorCommand, ApiResponse<AskT
         _db.TutorSessions.Add(session);
         await _db.SaveChangesAsync(cancellationToken);
 
-        var message = "Response is being generated. Stream via /hubs/tutor or poll GET /api/v1/tutor/sessions/{sessionId}.";
+        var message = $"Session saved as Pending. Answer generation is not available yet. Poll GET /api/v1/tutor/sessions/{session.Id}.";
         return ApiResponse<AskTutorResultDto>.SuccessResult(
             new AskTutorResultDto(session.Id, message),
             "Accepted");

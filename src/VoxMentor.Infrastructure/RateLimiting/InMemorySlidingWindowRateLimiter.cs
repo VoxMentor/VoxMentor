@@ -17,6 +17,11 @@ public class InMemorySlidingWindowRateLimiter : IRateLimiter
 
     public InMemorySlidingWindowRateLimiter(int limit = 10, TimeSpan? window = null, TimeProvider? clock = null)
     {
+        if (limit <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit), limit, "limit must be positive.");
+        }
+
         _limit = limit;
         _window = window ?? TimeSpan.FromHours(1);
         _clock = clock ?? TimeProvider.System;
@@ -24,7 +29,10 @@ public class InMemorySlidingWindowRateLimiter : IRateLimiter
 
     public Task CheckAsync(string key, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var now = _clock.GetUtcNow().UtcDateTime;
+        PurgeExpired(now);
+
         var window = _windows.GetOrAdd(key, _ => new Queue<DateTime>());
         lock (window)
         {
@@ -43,5 +51,29 @@ public class InMemorySlidingWindowRateLimiter : IRateLimiter
         }
 
         return Task.CompletedTask;
+    }
+
+    private void PurgeExpired(DateTime now)
+    {
+        // ponytail: O(keys) sweep per call; timer/background purge only if key count ever matters
+        foreach (var kv in _windows)
+        {
+            var q = kv.Value;
+            lock (q)
+            {
+                var pruned = false;
+                while (q.Count > 0 && now - q.Peek() >= _window)
+                {
+                    q.Dequeue();
+                    pruned = true;
+                }
+
+                // only drop fully-expired keys; fresh in-flight queues (pruned == false) stay
+                if (pruned && q.Count == 0)
+                {
+                    _windows.TryRemove(kv);
+                }
+            }
+        }
     }
 }

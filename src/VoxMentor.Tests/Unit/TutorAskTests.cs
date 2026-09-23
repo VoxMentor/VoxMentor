@@ -86,10 +86,39 @@ public class TutorAskTests
 
         Assert.NotNull(result.Data);
         Assert.NotEqual(Guid.Empty, result.Data!.SessionId);
+        Assert.DoesNotContain("being generated", result.Data.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Pending", result.Data.Message);
+        Assert.Contains(result.Data.SessionId.ToString(), result.Data.Message);
+        Assert.DoesNotContain("{sessionId}", result.Data.Message);
         var session = await db.TutorSessions.SingleAsync(s => s.Id == result.Data.SessionId);
         Assert.Equal(TutorSessionStatus.Pending, session.Status);
         Assert.Equal("user-1", session.UserId);
         Assert.Equal("Why is Kadane O(n)?", session.Question);
+    }
+
+    [Fact]
+    public void RateLimit_NonPositiveLimit_Throws()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new InMemorySlidingWindowRateLimiter(limit: 0));
+    }
+
+    [Fact]
+    public async Task RateLimit_ExpiredKeysArePurged()
+    {
+        var clock = new FakeClock();
+        var limiter = new InMemorySlidingWindowRateLimiter(limit: 2, clock: clock);
+
+        await limiter.CheckAsync("stale");
+        clock.Advance(TimeSpan.FromHours(2));
+        await limiter.CheckAsync("fresh");
+
+        var windows = (System.Collections.Concurrent.ConcurrentDictionary<string, Queue<DateTime>>)
+            typeof(InMemorySlidingWindowRateLimiter)
+                .GetField("_windows", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                .GetValue(limiter)!;
+
+        Assert.False(windows.ContainsKey("stale"));
+        Assert.True(windows.ContainsKey("fresh"));
     }
 
     [Fact]
