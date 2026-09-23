@@ -34,6 +34,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     /// <inheritdoc />
     public void ClearChangeTracker() => ChangeTracker.Clear();
 
+    /// <inheritdoc />
+    public IQueryable<T> SqlQueryRaw<T>(string sql, params object[] parameters) where T : class
+        => Database.SqlQueryRaw<T>(sql, parameters);
+
     /// <summary>
     /// Configures entity keys, constraints, and the StudentMastery xmin
     /// concurrency token.

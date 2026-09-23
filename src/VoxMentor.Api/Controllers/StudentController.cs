@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VoxMentor.Application.Common.Models;
+using VoxMentor.Application.Features.KnowledgeGraph.GetEligibleConcepts;
 using VoxMentor.Application.Features.Practice.GetMastery;
 using VoxMentor.Application.Features.Practice.GetNextQuestion;
 using VoxMentor.Application.Features.Practice.GetReadiness;
@@ -73,6 +74,21 @@ public class StudentController : ControllerBase
     public async Task<IActionResult> GetNextQuestion(CancellationToken cancellationToken)
     {
         var response = await _sender.Send(new GetNextQuestionQuery(), cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Returns eligible and almost-eligible concepts for the authenticated
+    /// student based on their mastery of prerequisites.
+    /// </summary>
+    [HttpGet("eligible")]
+    [Authorize(Roles = "Student")]
+    [ProducesResponseType(typeof(ApiResponse<EligibleConceptsDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetEligible(CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new GetEligibleConceptsQuery(), cancellationToken);
         return Ok(response);
     }
 

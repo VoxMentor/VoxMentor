@@ -33,4 +33,7 @@ public interface IApplicationDbContext
 
     /// <summary>Gets the <see cref="EntityEntry{TEntity}"/> tracking the given entity.</summary>
     EntityEntry<T> Entry<T>(T entity) where T : class;
+
+    /// <summary>Executes a parameterized raw SQL query returning unmapped DTOs.</summary>
+    IQueryable<T> SqlQueryRaw<T>(string sql, params object[] parameters) where T : class;
 }
