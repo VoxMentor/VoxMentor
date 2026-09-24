@@ -216,9 +216,11 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
     }
 
     /// <summary>
-    /// Rebuilds the original result from claim-time snapshots (falling back to
-    /// the current mastery row for pre-migration rows) without applying BKT or
-    /// publishing an event.
+    /// Rebuilds the replay result without applying BKT or publishing an event:
+    /// claim-time snapshots when available, otherwise current mastery (this
+    /// call changed nothing). Legacy claims whose snapshot predates the columns
+    /// are labeled as such so current standing is never passed off as the
+    /// original result.
     /// </summary>
     private async Task<ApiResponse<SubmitAnswerResultDto>> BuildReplayResultAsync(
         CodeSubmission submission,
@@ -246,23 +248,28 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
         }
         else
         {
-            // Legacy row claimed by migration backfill: no snapshot exists.
             var mastery = await _db.StudentMasteries
                 .AsNoTracking()
                 .FirstOrDefaultAsync(
                     m => m.UserId == submission.UserId && m.ConceptId == question.ConceptId,
                     cancellationToken);
-            var previousMastery = mastery?.MasteryProbability ?? 0f;
-            var newMastery = mastery?.MasteryProbability ?? previousMastery;
+            var current = mastery?.MasteryProbability ?? 0f;
             result = new SubmitAnswerResultDto(
                 question.Id,
                 question.ConceptId,
                 isCorrect,
-                previousMastery,
-                newMastery,
-                newMastery - previousMastery,
+                current,
+                current,
+                0f,
                 mastery?.CorrectAttempts ?? 0,
                 mastery?.IncorrectAttempts ?? 0);
+
+            if (submission.MasteryAppliedAt is not null)
+            {
+                // Claimed before snapshots existed (migration backfill): the
+                // original result is unrecoverable, so label it explicitly.
+                message = "Answer already recorded. Original mastery result unavailable; showing current mastery.";
+            }
         }
 
         return ApiResponse<SubmitAnswerResultDto>.SuccessResult(result, message);

@@ -513,6 +513,42 @@ public class SubmitAnswerHandlerTests
         Assert.Equal(1, mastery.IncorrectAttempts); // intervening answer did apply
     }
 
+    /// <summary>Migration-backfilled claim (no snapshot): replay must be labeled, not passed off as the original result.</summary>
+    [Fact]
+    public async Task Handle_LegacyClaimWithoutSnapshot_LabelsResultAsUnavailable()
+    {
+        using var db = CreateDb();
+        var question = await SeedQuestionAsync(db);
+        var submission = await SeedSubmissionAsync(db, question, isCorrect: true);
+        submission.MasteryAppliedAt = submission.CreatedAt;
+        db.StudentMasteries.Add(new StudentMastery
+        {
+            UserId = "user-1",
+            ConceptId = question.ConceptId,
+            MasteryProbability = 0.9f,
+            CorrectAttempts = 5
+        });
+        await db.SaveChangesAsync();
+
+        var publisher = new FakeEventPublisher();
+        var handler = CreateHandler(db, publisher: publisher);
+        var replay = await handler.Handle(
+            new SubmitAnswerCommand(question.Id, true, submission.Id), CancellationToken.None);
+
+        Assert.True(replay.Success);
+        Assert.Equal(
+            "Answer already recorded. Original mastery result unavailable; showing current mastery.",
+            replay.Message);
+        Assert.Equal(0.9f, replay.Data!.PreviousMastery);
+        Assert.Equal(0.9f, replay.Data.NewMastery);
+        Assert.Equal(0f, replay.Data.MasteryDelta);
+        Assert.Equal(0, publisher.PublishedCount);
+
+        var mastery = await db.StudentMasteries.SingleAsync();
+        Assert.Equal(5, mastery.CorrectAttempts);
+        Assert.Equal(0.9f, mastery.MasteryProbability);
+    }
+
     /// <summary>
     /// Async barrier for a fixed number of participants: each caller registers
     /// arrival and resumes only once every participant has arrived. Single-phase
