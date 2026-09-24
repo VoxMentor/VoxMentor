@@ -322,6 +322,13 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
                 mastery.LastPracticedAt = DateTime.UtcNow;
                 mastery.UpdatedAt = DateTime.UtcNow;
 
+                // Claim + mastery in one save = atomic; linked answer submissions replay instead of re-applying (#51).
+                submission.MasteryAppliedAt = DateTime.UtcNow;
+                submission.MasteryBefore = previousMastery;
+                submission.MasteryAfter = newMastery;
+                submission.CorrectAttemptsAfter = mastery.CorrectAttempts;
+                submission.IncorrectAttemptsAfter = mastery.IncorrectAttempts;
+
                 // Re-attach submission after ClearChangeTracker on retry.
                 if (_db.Entry(submission).State == EntityState.Detached)
                     _db.CodeSubmissions.Add(submission);

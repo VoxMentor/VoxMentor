@@ -6,7 +6,7 @@ namespace VoxMentor.Application.Features.Practice.SubmitAnswer;
 /// </summary>
 /// <param name="QuestionId">The question that was answered.</param>
 /// <param name="ConceptId">The concept the question belongs to.</param>
-/// <param name="IsCorrect">Whether the answer was correct.</param>
+/// <param name="IsCorrect">Whether the answer was correct; null when the linked submission is ungraded.</param>
 /// <param name="PreviousMastery">Mastery probability before applying this answer.</param>
 /// <param name="NewMastery">Mastery probability after applying this answer.</param>
 /// <param name="MasteryDelta"><paramref name="NewMastery"/> minus <paramref name="PreviousMastery"/>.</param>
@@ -15,7 +15,7 @@ namespace VoxMentor.Application.Features.Practice.SubmitAnswer;
 public record SubmitAnswerResultDto(
     Guid QuestionId,
     Guid ConceptId,
-    bool IsCorrect,
+    bool? IsCorrect,
     float PreviousMastery,
     float NewMastery,
     float MasteryDelta,

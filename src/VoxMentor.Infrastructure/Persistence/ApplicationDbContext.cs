@@ -103,6 +103,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         builder.Entity<CodeSubmission>(entity =>
         {
             entity.HasKey(e => e.Id);
+            // Write-once claim: concurrency token so a stale duplicate save fails
+            // (WHERE MasteryAppliedAt IS NULL) instead of double-applying mastery.
+            entity.Property(e => e.MasteryAppliedAt).IsConcurrencyToken();
             entity.Property(e => e.CodeEmbedding)
                 .HasColumnType("vector(768)")
                 .HasConversion<VectorToJsonConverter>();

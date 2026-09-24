@@ -4,6 +4,7 @@ using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Features.Practice.SubmitAnswer;
 using VoxMentor.Application.Services;
 using VoxMentor.Domain.Entities;
+using VoxMentor.Domain.Enums;
 
 namespace VoxMentor.Tests.Unit;
 
@@ -52,6 +53,31 @@ public class SubmitAnswerHandlerTests
         db.Questions.Add(question);
         await db.SaveChangesAsync();
         return question;
+    }
+
+    /// <summary>Seeds a graded code submission for the given question.</summary>
+    private static async Task<CodeSubmission> SeedSubmissionAsync(
+        Infrastructure.Persistence.ApplicationDbContext db,
+        Question question,
+        string userId = "user-1",
+        bool isCorrect = true,
+        SubmissionStatus status = SubmissionStatus.Accepted)
+    {
+        var submission = new CodeSubmission
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            QuestionId = question.Id,
+            Code = "print(10)",
+            Language = "python",
+            IsCorrect = isCorrect,
+            TestCasesPassed = isCorrect ? 1 : 0,
+            TestCasesTotal = 1,
+            Status = status
+        };
+        db.CodeSubmissions.Add(submission);
+        await db.SaveChangesAsync();
+        return submission;
     }
 
     /// <summary>Builds a handler over the given context with optional user/publisher fakes.</summary>
@@ -140,6 +166,126 @@ public class SubmitAnswerHandlerTests
         var validator = new SubmitAnswerValidator();
         var result = validator.Validate(new SubmitAnswerCommand(Guid.Empty, true));
         Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public async Task Handle_WithCodeSubmissionId_DerivesCorrectnessAndClaims()
+    {
+        using var db = CreateDb();
+        var question = await SeedQuestionAsync(db);
+        // Submission says incorrect; command's IsCorrect (true) must be ignored.
+        var submission = await SeedSubmissionAsync(db, question, isCorrect: false);
+        var publisher = new FakeEventPublisher();
+        var handler = CreateHandler(db, publisher: publisher);
+
+        var response = await handler.Handle(
+            new SubmitAnswerCommand(question.Id, true, submission.Id), CancellationToken.None);
+
+        Assert.True(response.Success);
+        Assert.False(response.Data!.IsCorrect is true);
+        Assert.Equal(0, response.Data.CorrectAttempts);
+        Assert.Equal(1, response.Data.IncorrectAttempts);
+        Assert.Equal(1, publisher.PublishedCount);
+
+        var stored = await db.CodeSubmissions.SingleAsync();
+        Assert.NotNull(stored.MasteryAppliedAt);
+        Assert.NotNull(stored.MasteryBefore);
+        Assert.NotNull(stored.MasteryAfter);
+        Assert.Equal(response.Data.PreviousMastery, stored.MasteryBefore!.Value);
+        Assert.Equal(response.Data.NewMastery, stored.MasteryAfter!.Value);
+        Assert.Equal(response.Data.CorrectAttempts, stored.CorrectAttemptsAfter);
+        Assert.Equal(response.Data.IncorrectAttempts, stored.IncorrectAttemptsAfter);
+    }
+
+    [Fact]
+    public async Task Handle_DuplicateCodeSubmissionId_AppliesOnceAndReturnsOriginalResult()
+    {
+        using var db = CreateDb();
+        var question = await SeedQuestionAsync(db);
+        var submission = await SeedSubmissionAsync(db, question, isCorrect: true);
+        var publisher = new FakeEventPublisher();
+        var handler = CreateHandler(db, publisher: publisher);
+
+        var first = await handler.Handle(
+            new SubmitAnswerCommand(question.Id, false, submission.Id), CancellationToken.None);
+        var firstAppliedAt = (await db.CodeSubmissions.SingleAsync()).MasteryAppliedAt;
+
+        var second = await handler.Handle(
+            new SubmitAnswerCommand(question.Id, false, submission.Id), CancellationToken.None);
+
+        Assert.True(first.Success);
+        Assert.True(second.Success);
+        Assert.Equal(first.Data, second.Data);
+        Assert.True(first.Data!.IsCorrect is true);
+
+        var stored = await db.CodeSubmissions.SingleAsync();
+        Assert.Equal(firstAppliedAt, stored.MasteryAppliedAt);
+        Assert.Equal(1, publisher.PublishedCount);
+
+        var mastery = await db.StudentMasteries.SingleAsync();
+        Assert.Equal(1, mastery.CorrectAttempts);
+        Assert.Equal(0, mastery.IncorrectAttempts);
+    }
+
+    [Fact]
+    public async Task Handle_CodeSubmissionOwnedByOtherUser_ThrowsNotFound()
+    {
+        using var db = CreateDb();
+        var question = await SeedQuestionAsync(db);
+        var submission = await SeedSubmissionAsync(db, question, userId: "user-2");
+        var handler = CreateHandler(db);
+
+        await Assert.ThrowsAsync<Application.Common.Exceptions.NotFoundException>(
+            () => handler.Handle(new SubmitAnswerCommand(question.Id, true, submission.Id), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Handle_CodeSubmissionForDifferentQuestion_ThrowsValidation()
+    {
+        using var db = CreateDb();
+        var question = await SeedQuestionAsync(db);
+        var otherQuestion = await SeedQuestionAsync(db);
+        var submission = await SeedSubmissionAsync(db, otherQuestion);
+        var handler = CreateHandler(db);
+
+        await Assert.ThrowsAsync<Application.Common.Exceptions.ValidationException>(
+            () => handler.Handle(new SubmitAnswerCommand(question.Id, true, submission.Id), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Handle_UnknownCodeSubmission_ThrowsNotFound()
+    {
+        using var db = CreateDb();
+        var question = await SeedQuestionAsync(db);
+        var handler = CreateHandler(db);
+
+        await Assert.ThrowsAsync<Application.Common.Exceptions.NotFoundException>(
+            () => handler.Handle(new SubmitAnswerCommand(question.Id, true, Guid.NewGuid()), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Handle_PendingCodeSubmission_DoesNotApplyMastery()
+    {
+        using var db = CreateDb();
+        var question = await SeedQuestionAsync(db);
+        var submission = await SeedSubmissionAsync(
+            db, question, isCorrect: false, status: SubmissionStatus.Pending);
+        var publisher = new FakeEventPublisher();
+        var handler = CreateHandler(db, publisher: publisher);
+
+        var response = await handler.Handle(
+            new SubmitAnswerCommand(question.Id, true, submission.Id), CancellationToken.None);
+
+        Assert.True(response.Success);
+        Assert.Null(response.Data!.IsCorrect);
+        Assert.Equal(
+            "Submission has no test results. Mastery unchanged.",
+            response.Message);
+        Assert.Equal(0, response.Data.CorrectAttempts);
+        Assert.Equal(0, response.Data.IncorrectAttempts);
+        Assert.Equal(0, publisher.PublishedCount);
+        Assert.Empty(db.StudentMasteries);
+        Assert.Null((await db.CodeSubmissions.SingleAsync()).MasteryAppliedAt);
     }
 
     /// <summary>
@@ -284,6 +430,87 @@ public class SubmitAnswerHandlerTests
         Assert.Equal(1, stored.CorrectAttempts);
         Assert.Equal(1, stored.IncorrectAttempts);
         Assert.Equal(2, publisher1.PublishedCount + publisher2.PublishedCount);
+    }
+
+    [Fact]
+    public async Task Handle_ConcurrentSameCodeSubmission_ExactlyOneAppliesMastery()
+    {
+        var storeName = Guid.NewGuid().ToString();
+        Guid questionId;
+        Guid submissionId;
+        using (var seedDb = CreateDb(storeName))
+        {
+            var question = await SeedQuestionAsync(seedDb);
+            var submission = await SeedSubmissionAsync(seedDb, question);
+            questionId = question.Id;
+            submissionId = submission.Id;
+            seedDb.StudentMasteries.Add(new StudentMastery
+            {
+                UserId = "user-1",
+                ConceptId = question.ConceptId,
+                MasteryProbability = 0.5f
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        using var db1 = CreateDb(storeName);
+        using var db2 = CreateDb(storeName);
+        var publisher1 = new FakeEventPublisher();
+        var publisher2 = new FakeEventPublisher();
+
+        // Force overlap at the save boundary: both handlers pass the unclaimed
+        // check, then race the mastery write + claim. Exactly one may win.
+        var saveBarrier = new AsyncBarrier(participants: 2);
+        var handler1 = new SubmitAnswerHandler(
+            new SaveBarrierDbContext(db1, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher1);
+        var handler2 = new SubmitAnswerHandler(
+            new SaveBarrierDbContext(db2, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher2);
+
+        var task1 = handler1.Handle(new SubmitAnswerCommand(questionId, true, submissionId), CancellationToken.None);
+        var task2 = handler2.Handle(new SubmitAnswerCommand(questionId, true, submissionId), CancellationToken.None);
+
+        var responses = await Task.WhenAll(
+            task1.WaitAsync(TimeSpan.FromSeconds(30)),
+            task2.WaitAsync(TimeSpan.FromSeconds(30)));
+
+        Assert.All(responses, r => Assert.True(r.Success));
+        Assert.Equal(responses[0].Data, responses[1].Data);
+
+        using var verifyDb = CreateDb(storeName);
+        var mastery = await verifyDb.StudentMasteries.SingleAsync();
+        Assert.Equal(1, mastery.CorrectAttempts);
+        Assert.Equal(0, mastery.IncorrectAttempts);
+
+        var stored = await verifyDb.CodeSubmissions.SingleAsync();
+        Assert.NotNull(stored.MasteryAppliedAt);
+        Assert.NotNull(stored.MasteryAfter);
+        Assert.Equal(1, publisher1.PublishedCount + publisher2.PublishedCount);
+    }
+
+    [Fact]
+    public async Task Handle_ReplayAfterInterveningAnswer_ReturnsOriginalSnapshot()
+    {
+        using var db = CreateDb();
+        var question = await SeedQuestionAsync(db);
+        var submission = await SeedSubmissionAsync(db, question, isCorrect: true);
+        var publisher = new FakeEventPublisher();
+        var handler = CreateHandler(db, publisher: publisher);
+
+        var first = await handler.Handle(
+            new SubmitAnswerCommand(question.Id, true, submission.Id), CancellationToken.None);
+
+        // An unrelated answer on the same concept lands before the duplicate replays.
+        await handler.Handle(
+            new SubmitAnswerCommand(question.Id, false), CancellationToken.None);
+        var publishesAfterIntervening = publisher.PublishedCount;
+
+        var replay = await handler.Handle(
+            new SubmitAnswerCommand(question.Id, true, submission.Id), CancellationToken.None);
+
+        Assert.Equal(first.Data, replay.Data);
+        Assert.Equal(publishesAfterIntervening, publisher.PublishedCount); // replay published nothing
+        var mastery = await db.StudentMasteries.SingleAsync();
+        Assert.Equal(1, mastery.IncorrectAttempts); // intervening answer did apply
     }
 
     /// <summary>
