@@ -22,6 +22,7 @@ public interface IApplicationDbContext
     DbSet<BktParameters> BktParameters { get; }
     DbSet<JobDescription> JobDescriptions { get; }
     DbSet<JdSkillWeight> JdSkillWeights { get; }
+    DbSet<TutorSession> TutorSessions { get; }
     /// <summary>Persists tracked changes and returns the number of affected rows.</summary>
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 

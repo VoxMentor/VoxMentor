@@ -24,3 +24,15 @@ public class NotFoundException : Exception
     {
     }
 }
+
+public class RateLimitException : Exception
+{
+    /// <summary>Seconds until the client may retry.</summary>
+    public int RetryAfterSeconds { get; }
+
+    public RateLimitException(int retryAfterSeconds)
+        : base("Rate limit exceeded. Please retry later.")
+    {
+        RetryAfterSeconds = Math.Max(1, retryAfterSeconds);
+    }
+}

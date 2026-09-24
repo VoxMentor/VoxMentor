@@ -6,11 +6,13 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using Pgvector.EntityFrameworkCore;
+using StackExchange.Redis;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Domain.Entities;
 using VoxMentor.Infrastructure.Authentication;
 using VoxMentor.Infrastructure.Persistence;
 using VoxMentor.Infrastructure.Plagiarism;
+using VoxMentor.Infrastructure.RateLimiting;
 using VoxMentor.Infrastructure.Services;
 
 namespace VoxMentor.Infrastructure;
@@ -72,6 +74,22 @@ public static class DependencyInjection
         // Plagiarism detection
         services.AddHttpClient<CodeEmbeddingService>();
         services.AddScoped<IPlagiarismDetector, PlagiarismDetector>();
+
+        // ponytail: Redis sliding window — shared across API instances, keys expire via PEXPIRE.
+        // Fail-closed: Redis down → error, not silent bypass. InMemory impl stays for unit tests only.
+        var redisConnectionString = configuration.GetConnectionString("Redis");
+        if (string.IsNullOrWhiteSpace(redisConnectionString))
+        {
+            redisConnectionString = "localhost:6379";
+        }
+
+        services.AddSingleton<IConnectionMultiplexer>(_ =>
+        {
+            var options = ConfigurationOptions.Parse(redisConnectionString);
+            options.AbortOnConnectFail = false;
+            return ConnectionMultiplexer.Connect(options);
+        });
+        services.AddSingleton<IRateLimiter, RedisSlidingWindowRateLimiter>();
 
         services.AddAuthentication(options =>
         {

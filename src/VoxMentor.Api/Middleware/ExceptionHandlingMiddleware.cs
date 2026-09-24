@@ -26,7 +26,8 @@ public class ExceptionHandlingMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An unhandled exception occurred: {Message}", ex.Message);
+            var logLevel = ex is RateLimitException ? LogLevel.Warning : LogLevel.Error;
+            _logger.Log(logLevel, ex, "Request failed: {Message}", ex.Message);
             await HandleExceptionAsync(context, ex, _env.IsDevelopment());
         }
     }
@@ -57,6 +58,11 @@ public class ExceptionHandlingMiddleware
             case NotFoundException notFoundException:
                 statusCode = HttpStatusCode.NotFound;
                 message = notFoundException.Message;
+                break;
+            case RateLimitException rateLimitException:
+                statusCode = HttpStatusCode.TooManyRequests;
+                message = rateLimitException.Message;
+                context.Response.Headers.RetryAfter = rateLimitException.RetryAfterSeconds.ToString();
                 break;
         }
 
