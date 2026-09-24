@@ -5,14 +5,19 @@ namespace VoxMentor.Application.Features.Practice.GetQuestions;
 
 /// <summary>
 /// Retrieves a paginated, filterable list of practice questions for students.
+/// Bound from the query string as a class (flat keys: conceptId, difficulty, page, pageSize).
 /// </summary>
-/// <param name="ConceptId">Optional concept filter.</param>
-/// <param name="Difficulty">Optional difficulty filter (1-10).</param>
-/// <param name="Page">1-indexed page number.</param>
-/// <param name="PageSize">Number of items per page (max 100).</param>
-public record GetQuestionsQuery(
-    Guid? ConceptId = null,
-    int? Difficulty = null,
-    int Page = 1,
-    int PageSize = 20
-) : IRequest<ApiResponse<GetQuestionsResultDto>>;
+public class GetQuestionsQuery : IRequest<ApiResponse<GetQuestionsResultDto>>
+{
+    /// <summary>Optional concept filter.</summary>
+    public Guid? ConceptId { get; set; }
+
+    /// <summary>Optional difficulty filter (1-10).</summary>
+    public int? Difficulty { get; set; }
+
+    /// <summary>1-indexed page number.</summary>
+    public int Page { get; set; } = 1;
+
+    /// <summary>Number of items per page (max 100).</summary>
+    public int PageSize { get; set; } = 20;
+}
