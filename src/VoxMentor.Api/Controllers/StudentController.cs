@@ -103,10 +103,10 @@ public class StudentController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetReadiness(
-        [FromQuery] Guid? jdId,
+        [FromQuery] GetReadinessQuery query,
         CancellationToken cancellationToken)
     {
-        var response = await _sender.Send(new GetReadinessQuery { JdId = jdId }, cancellationToken);
+        var response = await _sender.Send(query, cancellationToken);
         return Ok(response);
     }
 }
