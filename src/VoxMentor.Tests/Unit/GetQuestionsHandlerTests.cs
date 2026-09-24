@@ -95,7 +95,7 @@ public class GetQuestionsHandlerTests
         var handler = CreateHandler(db);
 
         var response = await handler.Handle(
-            new GetQuestionsQuery(ConceptId: c1.Id), CancellationToken.None);
+            new GetQuestionsQuery { ConceptId = c1.Id }, CancellationToken.None);
 
         Assert.Single(response.Data!.Questions);
         Assert.Equal("Q1", response.Data.Questions[0].Title);
@@ -111,7 +111,7 @@ public class GetQuestionsHandlerTests
         var handler = CreateHandler(db);
 
         var response = await handler.Handle(
-            new GetQuestionsQuery(Difficulty: 2), CancellationToken.None);
+            new GetQuestionsQuery { Difficulty = 2 }, CancellationToken.None);
 
         Assert.Single(response.Data!.Questions);
         Assert.Equal("Easy", response.Data.Questions[0].Title);
@@ -126,8 +126,8 @@ public class GetQuestionsHandlerTests
             await SeedQuestionAsync(db, concept.Id, $"Q{i + 1}", difficulty: i + 1);
         var handler = CreateHandler(db);
 
-        var page1 = await handler.Handle(new GetQuestionsQuery(Page: 1, PageSize: 2), CancellationToken.None);
-        var page2 = await handler.Handle(new GetQuestionsQuery(Page: 2, PageSize: 2), CancellationToken.None);
+        var page1 = await handler.Handle(new GetQuestionsQuery { Page = 1, PageSize = 2 }, CancellationToken.None);
+        var page2 = await handler.Handle(new GetQuestionsQuery { Page = 2, PageSize = 2 }, CancellationToken.None);
 
         Assert.Equal(2, page1.Data!.Questions.Count);
         Assert.Equal(2, page2.Data!.Questions.Count);

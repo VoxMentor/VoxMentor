@@ -30,14 +30,10 @@ public class QuestionsController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<GetQuestionsResultDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> GetQuestions(
-        [FromQuery] Guid? conceptId,
-        [FromQuery] int? difficulty,
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20,
+        [FromQuery] GetQuestionsQuery query,
         CancellationToken cancellationToken = default)
     {
-        var response = await _sender.Send(
-            new GetQuestionsQuery(conceptId, difficulty, page, pageSize), cancellationToken);
+        var response = await _sender.Send(query, cancellationToken);
         return Ok(response);
     }
 
