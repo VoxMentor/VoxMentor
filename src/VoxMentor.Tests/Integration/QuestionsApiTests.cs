@@ -104,6 +104,45 @@ public class QuestionsApiTests : IClassFixture<CustomWebApplicationFactory>
         var cookie = await LoginAsStudentAsync();
         var (concept, _) = await SeedAsync(difficulty: 7);
 
+        // Noise rows so each filter is distinguishable: if conceptId or
+        // difficulty binding is dropped, TotalCount becomes 4+ and fails.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Questions.Add(new Question
+            {
+                Id = Guid.NewGuid(),
+                ConceptId = concept.Id,
+                Title = "WrongDifficulty",
+                Description = "Desc",
+                QuestionType = "Code",
+                Difficulty = 3,
+                TestCases = new[] { "{\"input\":\"0\",\"expected\":\"0\"}" },
+                HiddenTestCaseCount = 0
+            });
+            var otherConcept = new Concept
+            {
+                Id = Guid.NewGuid(),
+                Name = $"Other Concept {Guid.NewGuid():N}",
+                Description = "desc",
+                DifficultyLevel = 2,
+                Category = "Data Structures"
+            };
+            db.Concepts.Add(otherConcept);
+            db.Questions.Add(new Question
+            {
+                Id = Guid.NewGuid(),
+                ConceptId = otherConcept.Id,
+                Title = "WrongConcept",
+                Description = "Desc",
+                QuestionType = "Code",
+                Difficulty = 7,
+                TestCases = new[] { "{\"input\":\"0\",\"expected\":\"0\"}" },
+                HiddenTestCaseCount = 0
+            });
+            await db.SaveChangesAsync();
+        }
+
         var url = $"/api/v1/questions?conceptId={concept.Id}&difficulty=7&page=1&pageSize=1";
         var message = new HttpRequestMessage(HttpMethod.Get, url);
         message.Headers.Add("Cookie", cookie);
