@@ -399,6 +399,64 @@ public class SubmitCodeHandlerTests
     }
 
     [Fact]
+    public async Task Handle_CorrectAnswer_SetsMasteryClaimOnSubmission()
+    {
+        await using var db = CreateDb();
+        var question = await SeedQuestionAsync(db, ["|ok"]);
+        var exec = new FakeCodeExecService { Respond = _ => [Case(true)] };
+        var handler = CreateHandler(db, exec: exec);
+
+        var response = await handler.Handle(
+            new SubmitCodeCommand(question.Id, "print('ok')", "python"), CancellationToken.None);
+
+        Assert.True(response.Success);
+        var submission = await db.CodeSubmissions.SingleAsync();
+        Assert.NotNull(submission.MasteryAppliedAt);
+        Assert.NotNull(submission.MasteryBefore);
+        Assert.NotNull(submission.MasteryAfter);
+        Assert.Equal(response.Data!.PreviousMastery, submission.MasteryBefore!.Value);
+        Assert.Equal(response.Data.NewMastery, submission.MasteryAfter!.Value);
+        Assert.Equal(response.Data.TestCasesPassed > 0 ? 1 : 0, submission.CorrectAttemptsAfter);
+    }
+
+    [Fact]
+    public async Task Handle_CorrectAnswer_ThenLinkedAnswerSubmission_ReplaysWithoutSecondApply()
+    {
+        await using var db = CreateDb();
+        var question = await SeedQuestionAsync(db, ["|ok"]);
+        var exec = new FakeCodeExecService { Respond = _ => [Case(true)] };
+        var codePublisher = new FakeEventPublisher();
+        var codeHandler = CreateHandler(db, exec: exec, publisher: codePublisher);
+
+        var codeResponse = await codeHandler.Handle(
+            new SubmitCodeCommand(question.Id, "print('ok')", "python"), CancellationToken.None);
+
+        var masteryAfterCode = (await db.StudentMasteries.SingleAsync()).MasteryProbability;
+        var submissionId = codeResponse.Data!.SubmissionId;
+
+        // The #51 seam: linking a submission already graded (and claimed) by
+        // SubmitCode must replay, not apply BKT a second time.
+        var answerPublisher = new FakeEventPublisher();
+        var answerHandler = new Application.Features.Practice.SubmitAnswer.SubmitAnswerHandler(
+            db, new BktEngine(), new FakeCurrentUserService(), answerPublisher);
+        var replay = await answerHandler.Handle(
+            new Application.Features.Practice.SubmitAnswer.SubmitAnswerCommand(
+                question.Id, IsCorrect: false, CodeSubmissionId: submissionId),
+            CancellationToken.None);
+
+        Assert.True(replay.Success);
+        Assert.Equal("Answer already recorded.", replay.Message);
+        Assert.True(replay.Data!.IsCorrect is true);
+        Assert.Equal(1, codePublisher.PublishedCount);
+        Assert.Equal(0, answerPublisher.PublishedCount);
+
+        var mastery = await db.StudentMasteries.SingleAsync();
+        Assert.Equal(masteryAfterCode, mastery.MasteryProbability);
+        Assert.Equal(1, mastery.CorrectAttempts);
+        Assert.Equal(0, mastery.IncorrectAttempts);
+    }
+
+    [Fact]
     public void SupportedLanguages_IncludesC()
     {
         Assert.Contains("c", SubmitCodeValidator.SupportedLanguages);

@@ -8,8 +8,10 @@ namespace VoxMentor.Application.Features.Practice.SubmitAnswer;
 /// for the question's concept.
 /// </summary>
 /// <param name="QuestionId">The answered question.</param>
-/// <param name="IsCorrect">Whether the student's answer was correct.</param>
+/// <param name="IsCorrect">Whether the student's answer was correct. Ignored when <paramref name="CodeSubmissionId"/> is provided.</param>
+/// <param name="CodeSubmissionId">Linked code submission; derives correctness and applies mastery at most once per submission.</param>
 public record SubmitAnswerCommand(
     Guid QuestionId,
-    bool IsCorrect
+    bool IsCorrect,
+    Guid? CodeSubmissionId = null
 ) : IRequest<ApiResponse<SubmitAnswerResultDto>>;

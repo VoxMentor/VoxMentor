@@ -55,4 +55,19 @@ public class CodeSubmission
 
     /// <summary>UTC timestamp when the submission was created.</summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>UTC claim timestamp of this submission's BKT update; null = not applied (#51).</summary>
+    public DateTime? MasteryAppliedAt { get; set; }
+
+    /// <summary>Mastery before this submission's BKT update (replay snapshot).</summary>
+    public float? MasteryBefore { get; set; }
+
+    /// <summary>Mastery after this submission's BKT update (replay snapshot).</summary>
+    public float? MasteryAfter { get; set; }
+
+    /// <summary>Correct attempt total after this submission's BKT update (replay snapshot).</summary>
+    public int? CorrectAttemptsAfter { get; set; }
+
+    /// <summary>Incorrect attempt total after this submission's BKT update (replay snapshot).</summary>
+    public int? IncorrectAttemptsAfter { get; set; }
 }

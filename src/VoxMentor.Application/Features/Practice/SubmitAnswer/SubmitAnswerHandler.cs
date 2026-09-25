@@ -5,14 +5,17 @@ using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Services;
 using VoxMentor.Domain.Entities;
+using VoxMentor.Domain.Enums;
 
 namespace VoxMentor.Application.Features.Practice.SubmitAnswer;
 
 /// <summary>
 /// Processes answer submissions end-to-end: authenticates the user, loads the
 /// question and BKT parameters, updates mastery (creating it on first submit),
-/// persists attempt counters, and publishes a mastery-updated event. Handles
-/// concurrent submissions via bounded optimistic-concurrency retries.
+/// persists attempt counters, and publishes a mastery-updated event. Linked code
+/// submissions derive correctness from the graded row and apply mastery at most
+/// once (duplicates replay the original result). Handles concurrent submissions
+/// via bounded optimistic-concurrency retries.
 /// </summary>
 public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiResponse<SubmitAnswerResultDto>>
 {
@@ -40,7 +43,8 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
     /// <see cref="ConflictException"/> when retries are exhausted.
     /// </summary>
     /// <exception cref="UnauthorizedAccessException">No authenticated user.</exception>
-    /// <exception cref="NotFoundException">The question does not exist.</exception>
+    /// <exception cref="NotFoundException">The question or linked code submission does not exist (or belongs to another user).</exception>
+    /// <exception cref="ValidationException">The linked submission belongs to a different question.</exception>
     /// <exception cref="ConflictException">Retries were exhausted by concurrent submissions.</exception>
     public async Task<ApiResponse<SubmitAnswerResultDto>> Handle(SubmitAnswerCommand request, CancellationToken cancellationToken)
     {
@@ -57,6 +61,32 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
             throw new NotFoundException($"Question {request.QuestionId} was not found.");
         }
 
+        CodeSubmission? submission = null;
+        if (request.CodeSubmissionId is Guid submissionId)
+        {
+            submission = await _db.CodeSubmissions
+                .FirstOrDefaultAsync(s => s.Id == submissionId, cancellationToken);
+            if (submission is null || submission.UserId != userId)
+            {
+                // Missing and foreign submissions both 404 (no existence oracle).
+                throw new NotFoundException($"Code submission {submissionId} was not found.");
+            }
+            if (submission.QuestionId != request.QuestionId)
+            {
+                throw new ValidationException(new Dictionary<string, string[]>
+                {
+                    ["codeSubmissionId"] = ["The code submission does not belong to the given question."]
+                });
+            }
+            if (submission.Status == SubmissionStatus.Pending)
+            {
+                // No test results to derive correctness from: mirror the
+                // submit-code pipeline's no-BKT path instead of recording a
+                // bogus incorrect attempt.
+                return await BuildReplayResultAsync(submission, question, "Submission has no test results. Mastery unchanged.", cancellationToken);
+            }
+        }
+
         var parameters = await _db.BktParameters
             .FirstOrDefaultAsync(p => p.ConceptId == question.ConceptId, cancellationToken)
             ?? new BktParameters { ConceptId = question.ConceptId };
@@ -67,7 +97,7 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
         {
             try
             {
-                return await TrySubmitAsync(userId, question, parameters, request, cancellationToken);
+                return await TrySubmitAsync(userId, question, parameters, request, submission, cancellationToken);
             }
             catch (DbUpdateConcurrencyException) when (attempt < maxAttempts - 1)
             {
@@ -93,17 +123,48 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
     }
 
     /// <summary>
-    /// Single submission attempt: loads (or creates) the student's mastery row for
-    /// the concept, applies the BKT update, increments attempt counters, persists,
-    /// and publishes the mastery-updated event.
+    /// Single submission attempt: reloads the linked submission after a conflict,
+    /// applies the BKT update with an atomic claim in one save, and publishes the
+    /// mastery-updated event. Duplicates return the stored result instead.
     /// </summary>
     private async Task<ApiResponse<SubmitAnswerResultDto>> TrySubmitAsync(
         string userId,
         Question question,
         BktParameters parameters,
         SubmitAnswerCommand request,
+        CodeSubmission? submission,
         CancellationToken cancellationToken)
     {
+        // After ClearChangeTracker the submission is detached: reload it so a
+        // concurrent winner's claim is visible before we apply mastery again.
+        if (submission is not null && _db.Entry(submission).State == EntityState.Detached)
+        {
+            var reloaded = await _db.CodeSubmissions
+                .FirstOrDefaultAsync(s => s.Id == submission.Id, cancellationToken);
+            if (reloaded is null || reloaded.UserId != userId)
+            {
+                throw new NotFoundException($"Code submission {submission.Id} was not found.");
+            }
+            if (reloaded.QuestionId != question.Id)
+            {
+                throw new ValidationException(new Dictionary<string, string[]>
+                {
+                    ["codeSubmissionId"] = ["The code submission does not belong to the given question."]
+                });
+            }
+            if (reloaded.Status == SubmissionStatus.Pending)
+            {
+                return await BuildReplayResultAsync(reloaded, question, "Submission has no test results. Mastery unchanged.", cancellationToken);
+            }
+            submission = reloaded;
+        }
+        if (submission?.MasteryAppliedAt is not null)
+        {
+            return await BuildReplayResultAsync(submission, question, "Answer already recorded.", cancellationToken);
+        }
+
+        var isCorrect = submission?.IsCorrect ?? request.IsCorrect;
+
         var mastery = await _db.StudentMasteries
             .FirstOrDefaultAsync(m => m.UserId == userId && m.ConceptId == question.ConceptId, cancellationToken);
         if (mastery is null)
@@ -118,15 +179,25 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
         }
 
         var previousMastery = mastery.MasteryProbability;
-        var newMastery = _bktEngine.UpdateMastery(previousMastery, parameters, request.IsCorrect);
+        var newMastery = _bktEngine.UpdateMastery(previousMastery, parameters, isCorrect);
 
         mastery.MasteryProbability = newMastery;
-        if (request.IsCorrect)
+        if (isCorrect)
             mastery.CorrectAttempts++;
         else
             mastery.IncorrectAttempts++;
         mastery.LastPracticedAt = DateTime.UtcNow;
         mastery.UpdatedAt = DateTime.UtcNow;
+
+        // Claim + mastery in one save = atomic (#51).
+        if (submission is not null)
+        {
+            submission.MasteryAppliedAt = DateTime.UtcNow;
+            submission.MasteryBefore = previousMastery;
+            submission.MasteryAfter = newMastery;
+            submission.CorrectAttemptsAfter = mastery.CorrectAttempts;
+            submission.IncorrectAttemptsAfter = mastery.IncorrectAttempts;
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
         await _eventPublisher.PublishMasteryUpdatedAsync(mastery, previousMastery, cancellationToken);
@@ -134,7 +205,7 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
         var result = new SubmitAnswerResultDto(
             request.QuestionId,
             question.ConceptId,
-            request.IsCorrect,
+            isCorrect,
             previousMastery,
             newMastery,
             newMastery - previousMastery,
@@ -142,5 +213,65 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
             mastery.IncorrectAttempts);
 
         return ApiResponse<SubmitAnswerResultDto>.SuccessResult(result, "Answer recorded successfully.");
+    }
+
+    /// <summary>
+    /// Rebuilds the replay result without applying BKT or publishing an event:
+    /// claim-time snapshots when available, otherwise current mastery (this
+    /// call changed nothing). Legacy claims whose snapshot predates the columns
+    /// are labeled as such so current standing is never passed off as the
+    /// original result.
+    /// </summary>
+    private async Task<ApiResponse<SubmitAnswerResultDto>> BuildReplayResultAsync(
+        CodeSubmission submission,
+        Question question,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        var isCorrect = submission.Status == SubmissionStatus.Pending
+            ? (bool?)null
+            : submission.IsCorrect;
+
+        SubmitAnswerResultDto result;
+        if (submission.MasteryAfter is float after)
+        {
+            var before = submission.MasteryBefore ?? after;
+            result = new SubmitAnswerResultDto(
+                question.Id,
+                question.ConceptId,
+                isCorrect,
+                before,
+                after,
+                after - before,
+                submission.CorrectAttemptsAfter ?? 0,
+                submission.IncorrectAttemptsAfter ?? 0);
+        }
+        else
+        {
+            var mastery = await _db.StudentMasteries
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    m => m.UserId == submission.UserId && m.ConceptId == question.ConceptId,
+                    cancellationToken);
+            var current = mastery?.MasteryProbability ?? 0f;
+            result = new SubmitAnswerResultDto(
+                question.Id,
+                question.ConceptId,
+                isCorrect,
+                current,
+                current,
+                0f,
+                mastery?.CorrectAttempts ?? 0,
+                mastery?.IncorrectAttempts ?? 0);
+
+            if (submission.MasteryAppliedAt is not null)
+            {
+                // Claimed before snapshots existed (migration backfill): the
+                // original result is unrecoverable, so label it explicitly.
+                message = "Answer already recorded. Original mastery result unavailable; showing current mastery.";
+            }
+        }
+
+        return ApiResponse<SubmitAnswerResultDto>.SuccessResult(result, message);
     }
 }
