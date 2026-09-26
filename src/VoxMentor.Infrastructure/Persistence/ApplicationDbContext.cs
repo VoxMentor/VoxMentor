@@ -31,6 +31,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<JobDescription> JobDescriptions { get; set; } = null!;
     public DbSet<JdSkillWeight> JdSkillWeights { get; set; } = null!;
     public DbSet<TutorSession> TutorSessions { get; set; } = null!;
+    public DbSet<TextbookJob> TextbookJobs { get; set; } = null!;
+    public DbSet<TextbookChunk> TextbookChunks { get; set; } = null!;
 
     /// <inheritdoc />
     public void ClearChangeTracker() => ChangeTracker.Clear();
@@ -164,6 +166,38 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.Property(e => e.Question).IsRequired().HasMaxLength(2000);
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
             entity.HasIndex(e => new { e.UserId, e.CreatedAt });
+        });
+
+        builder.Entity<TextbookJob>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.FileName).IsRequired().HasMaxLength(260);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.Error).HasMaxLength(1000);
+        });
+
+        builder.Entity<TextbookChunk>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Content).IsRequired();
+            entity.Property(e => e.Source).IsRequired().HasMaxLength(260);
+            entity.Property(e => e.Embedding)
+                .HasColumnType("vector(768)");
+            // InMemory (tests) can't map Pgvector's Vector → string converter there.
+            // Npgsql maps Vector natively via UseVector(); converter on Npgsql would
+            // send varchar against a vector column (42804).
+            if (Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+            {
+                entity.Property(e => e.Embedding).HasConversion<VectorToJsonConverter>();
+            }
+            entity.HasIndex(e => e.JobId);
+            entity.HasIndex(e => e.ConceptId);
+            // ponytail: ivfflat per issue #70 spec; on the empty load table its
+            // centroids are untrained — REINDEX after #75 bulk-seeds if recall degrades.
+            entity.HasIndex(e => e.Embedding)
+                .HasDatabaseName("IX_TextbookChunks_Embedding")
+                .HasMethod("ivfflat")
+                .HasOperators("vector_cosine_ops");
         });
     }
 }
