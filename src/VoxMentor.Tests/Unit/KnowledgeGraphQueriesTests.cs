@@ -28,6 +28,8 @@ internal sealed class KnowledgeGraphTestDbContext : DbContext, IApplicationDbCon
     public DbSet<JobDescription> JobDescriptions => null!;
     public DbSet<JdSkillWeight> JdSkillWeights => null!;
     public DbSet<TutorSession> TutorSessions => null!;
+    public DbSet<TextbookJob> TextbookJobs => null!;
+    public DbSet<TextbookChunk> TextbookChunks => null!;
 
     public KnowledgeGraphTestDbContext(DbContextOptions<KnowledgeGraphTestDbContext> options)
         : base(options)
@@ -53,6 +55,8 @@ internal sealed class KnowledgeGraphTestDbContext : DbContext, IApplicationDbCon
         builder.Ignore<JobDescription>();
         builder.Ignore<JdSkillWeight>();
         builder.Ignore<TutorSession>();
+        builder.Ignore<TextbookJob>();
+        builder.Ignore<TextbookChunk>();
 
         builder.Entity<Concept>(e =>
         {

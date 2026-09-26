@@ -23,6 +23,8 @@ public interface IApplicationDbContext
     DbSet<JobDescription> JobDescriptions { get; }
     DbSet<JdSkillWeight> JdSkillWeights { get; }
     DbSet<TutorSession> TutorSessions { get; }
+    DbSet<TextbookJob> TextbookJobs { get; }
+    DbSet<TextbookChunk> TextbookChunks { get; }
     /// <summary>Persists tracked changes and returns the number of affected rows.</summary>
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 

@@ -21,6 +21,8 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     {
         builder.UseSetting("ConnectionStrings:DefaultConnection",
             "Host=localhost;Port=5432;Database=voxmentor-tests;Username=postgres;Password=postgres;Ssl Mode=VerifyFull;");
+        // Disable Hangfire storage — would dial localhost:5432 at server start.
+        builder.UseSetting("ConnectionStrings:Hangfire", "");
         builder.UseSetting("JwtSettings:Secret", "TestJwtSecretKeyThatIsAtLeast32BytesLong!!");
 
         builder.ConfigureServices(services =>
