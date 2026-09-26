@@ -132,5 +132,18 @@ public class UploadTextbookHandlerTests
         // create/delete files in the same shared staging dir in parallel.
         Assert.NotNull(queue.FilePath);
         Assert.False(File.Exists(queue.FilePath), "staged file must be deleted when enqueue fails");
+        Assert.Empty(await db.TextbookJobs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Upload_HangfireDisabledQueue_Throws_LeavesNoPendingRow()
+    {
+        var db = CreateDb();
+        var handler = new UploadTextbookHandler(db, new Infrastructure.Services.NullTextbookIngestionQueue());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => handler.Handle(Command(), CancellationToken.None));
+
+        Assert.Empty(await db.TextbookJobs.ToListAsync());
     }
 }

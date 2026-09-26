@@ -3,13 +3,14 @@ using VoxMentor.Application.Common.Interfaces;
 namespace VoxMentor.Infrastructure.Services;
 
 /// <summary>
-/// Used when Hangfire storage is disabled (integration tests, design-time DI).
-/// Enqueued jobs are dropped — status stays Pending.
+/// Registered when Hangfire storage is disabled (integration tests, bare
+/// deployments). Fails fast so uploads are rejected instead of returning 202
+/// with a Pending job that can never run; the handler's catch cleans up the
+/// staged file and the saved row.
 /// </summary>
 public sealed class NullTextbookIngestionQueue : ITextbookIngestionQueue
 {
     public void Enqueue(Guid jobId, string filePath)
-    {
-        // ponytail: intentional no-op; only registered when ConnectionStrings:Hangfire is empty
-    }
+        => throw new InvalidOperationException(
+            "Background ingestion is disabled (no Hangfire storage configured).");
 }

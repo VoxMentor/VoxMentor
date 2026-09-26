@@ -60,6 +60,10 @@ public class AdminController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    // Reject oversized requests before Kestrel/form buffering (defaults 30/128 MB)
+    // reach UploadTextbookValidator's 20 MiB rule; 1 MiB headroom for multipart framing.
+    [RequestSizeLimit(21 * 1024 * 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 21 * 1024 * 1024)]
     public async Task<IActionResult> UploadTextbook(
         IFormFile? file, [FromForm] Guid? conceptId, CancellationToken cancellationToken)
     {

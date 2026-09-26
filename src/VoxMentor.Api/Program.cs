@@ -32,7 +32,8 @@ if (hangfireEnabled)
 }
 else
 {
-    // No-op so design-time DI validation still resolves the queue.
+    // Fail-fast queue so design-time DI still resolves it; uploads 500 until
+    // a Hangfire connection string is configured.
     builder.Services.AddScoped<ITextbookIngestionQueue, NullTextbookIngestionQueue>();
 }
 

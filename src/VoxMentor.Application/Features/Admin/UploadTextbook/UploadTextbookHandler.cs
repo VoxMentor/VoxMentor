@@ -43,6 +43,8 @@ public class UploadTextbookHandler : IRequestHandler<UploadTextbookCommand, ApiR
         var extension = Path.GetExtension(request.FileName);
         var filePath = Path.Combine(directory, $"{jobId}{extension}");
 
+        TextbookJob? job = null;
+        var jobSaved = false;
         try
         {
             await using (request.Content)
@@ -51,7 +53,7 @@ public class UploadTextbookHandler : IRequestHandler<UploadTextbookCommand, ApiR
                 await request.Content.CopyToAsync(fileStream, cancellationToken);
             }
 
-            var job = new TextbookJob
+            job = new TextbookJob
             {
                 Id = jobId,
                 FileName = request.FileName,
@@ -60,11 +62,27 @@ public class UploadTextbookHandler : IRequestHandler<UploadTextbookCommand, ApiR
             };
             _db.TextbookJobs.Add(job);
             await _db.SaveChangesAsync(cancellationToken);
+            jobSaved = true;
 
             _queue.Enqueue(jobId, filePath);
         }
         catch
         {
+            // Enqueue failed after the row committed: remove it so the status
+            // endpoint can't poll a Pending job that will never run.
+            if (jobSaved && job is not null)
+            {
+                try
+                {
+                    _db.TextbookJobs.Remove(job);
+                    await _db.SaveChangesAsync(CancellationToken.None);
+                }
+                catch
+                {
+                    // best effort — preserve the original failure
+                }
+            }
+
             // Don't strand the staged file when anything after the write fails.
             try
             {
