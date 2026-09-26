@@ -78,7 +78,7 @@ public class AuthController : ControllerBase
         var command = new LogoutCommand(refreshToken);
         var response = await _sender.Send(command, cancellationToken);
 
-        Response.Cookies.Delete("access_token", new CookieOptions { Path = "/api/v1" });
+        Response.Cookies.Delete("access_token", new CookieOptions { Path = "/" });
         Response.Cookies.Delete("refresh_token", new CookieOptions { Path = "/api/v1/auth" });
 
         return Ok(response);
@@ -117,7 +117,9 @@ public class AuthController : ControllerBase
         var useSecure = !_env.IsDevelopment();
         var accessCookieOptions = new CookieOptions
         {
-            Path = "/api/v1",
+            // Path=/ so the browser attaches the cookie to /hubs/* requests
+            // (SignalR auth); refresh stays scoped to the auth endpoints.
+            Path = "/",
             HttpOnly = true,
             Secure = useSecure,
             SameSite = SameSiteMode.Lax,

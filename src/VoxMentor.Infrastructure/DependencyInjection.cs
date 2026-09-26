@@ -61,6 +61,12 @@ public static class DependencyInjection
         services.AddSingleton<IRefreshTokenHasher, RefreshTokenHasher>();
         services.AddScoped<IHealthService, HealthService>();
         services.AddHttpClient<ICodeEvaluator, OllamaCodeEvaluator>();
+        // Tutor streaming (#73): generous timeout — CPU-bound Ollama generations
+        // can outlive HttpClient's 100s default while the NDJSON body streams.
+        services.AddHttpClient<ITutorService, TutorService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(300);
+        });
         services.AddHttpClient<ICodeExecService, CodeExecServiceClient>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(30);
@@ -113,6 +119,19 @@ public static class DependencyInjection
             {
                 OnMessageReceived = context =>
                 {
+                    // SignalR browser clients can't set headers on WebSockets,
+                    // so hubs pass the JWT as ?access_token= (docs/API.md §10).
+                    // Scoped to /hubs so a leaked query token can't authenticate
+                    // regular API calls.
+                    if (context.Request.Path.StartsWithSegments("/hubs"))
+                    {
+                        var queryToken = context.Request.Query["access_token"].FirstOrDefault();
+                        if (!string.IsNullOrEmpty(queryToken))
+                        {
+                            context.Token = queryToken;
+                            return Task.CompletedTask;
+                        }
+                    }
                     if (context.Request.Cookies.TryGetValue("access_token", out var token))
                     {
                         context.Token = token;

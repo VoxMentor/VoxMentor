@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/lib/auth";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import TutorChat from "@/components/TutorChat";
 import Link from "next/link";
 
 export default function DashboardPage() {
@@ -120,6 +121,11 @@ export default function DashboardPage() {
                 </p>
               </button>
             ))}
+          </div>
+
+          {/* AI Tutor */}
+          <div className="mt-10">
+            <TutorChat />
           </div>
 
           {/* Concept List */}

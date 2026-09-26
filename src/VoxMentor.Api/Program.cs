@@ -3,6 +3,7 @@ using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
 using VoxMentor.Api.Hubs;
 using VoxMentor.Api.Middleware;
+using VoxMentor.Api.Services;
 using VoxMentor.Application;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Infrastructure;
@@ -42,6 +43,10 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c => c.CustomSchemaIds(x => x.FullName));
 
 builder.Services.AddSignalR();
+
+// Overrides the NullMasteryEventPublisher from Infrastructure so BKT updates
+// reach /hubs/mastery (#73).
+builder.Services.AddScoped<IMasteryEventPublisher, SignalRMasteryEventPublisher>();
 
 builder.Services.AddCors(options =>
 {
