@@ -61,8 +61,9 @@ public static class DependencyInjection
         services.AddSingleton<IRefreshTokenHasher, RefreshTokenHasher>();
         services.AddScoped<IHealthService, HealthService>();
         services.AddHttpClient<ICodeEvaluator, OllamaCodeEvaluator>();
-        // Tutor streaming (#73): generous timeout — CPU-bound Ollama generations
-        // can outlive HttpClient's 100s default while the NDJSON body streams.
+        // Tutor streaming (#73): HttpClient.Timeout covers only the header wait
+        // (ResponseHeadersRead) — the NDJSON body read is capped by a linked CTS
+        // inside TutorService.StreamAnswerAsync (300s total per ask).
         services.AddHttpClient<ITutorService, TutorService>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(300);

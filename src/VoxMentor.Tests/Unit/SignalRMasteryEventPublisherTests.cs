@@ -46,6 +46,7 @@ public class SignalRMasteryEventPublisherTests
     private sealed class FakeHubClients : IHubClients<MasteryHub>, IHubClients
     {
         public RecordingProxy CallerProxy { get; } = new();
+        public string? RequestedUserId { get; private set; }
 
         // IHubCallerClients members (from IHubClients)
         public IClientProxy All => CallerProxy;
@@ -58,7 +59,11 @@ public class SignalRMasteryEventPublisherTests
         public IClientProxy OthersInGroup(string groupName) => CallerProxy;
         public IClientProxy GroupExcept(string groupName, IReadOnlyList<string> excludedConnectionIds) => CallerProxy;
         public IClientProxy Groups(IReadOnlyList<string> groupNames) => CallerProxy;
-        public IClientProxy User(string userId) => CallerProxy;
+        public IClientProxy User(string userId)
+        {
+            RequestedUserId = userId;
+            return CallerProxy;
+        }
         public IClientProxy Users(IReadOnlyList<string> userIds) => CallerProxy;
 
         // IHubClients<MasteryHub> strongly-typed members (explicit implementation for hiding)
@@ -120,6 +125,7 @@ public class SignalRMasteryEventPublisherTests
 
         await publisher.PublishMasteryUpdatedAsync(mastery, 0.5f, CancellationToken.None);
 
+        Assert.Equal("user-123", clients.RequestedUserId);
         var sent = clients.CallerProxy.Sent;
         Assert.Contains(sent, s => s.Method == "MasteryUpdated");
         var masterUpdated = sent.Single(s => s.Method == "MasteryUpdated");

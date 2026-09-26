@@ -156,11 +156,20 @@ public class TutorHub : Hub
                     _logger.LogError(ex, "Failed to persist completed TutorSession {SessionId}", session.Id);
                 }
 
-                await Clients.Caller.SendAsync("TutorComplete", new
+                try
                 {
-                    sessionId = session.Id,
-                    totalTokens
-                });
+                    await Clients.Caller.SendAsync("TutorComplete", new
+                    {
+                        sessionId = session.Id,
+                        totalTokens
+                    });
+                }
+                catch (Exception ex)
+                {
+                    // ponytail: delivery failed after generation succeeded — session stays
+                    // Completed; a dead client doesn't get to flip it to Failed (#89 F1).
+                    _logger.LogWarning(ex, "Failed to send TutorComplete for session {SessionId}", session.Id);
+                }
             }
             catch (OperationCanceledException)
             {

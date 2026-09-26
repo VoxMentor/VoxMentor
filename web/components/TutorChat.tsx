@@ -4,10 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { getTutorConnection } from "@/lib/signalr";
 import type { HubConnection } from "@microsoft/signalr";
 
-interface HubConnectionWithOffClose extends HubConnection {
-  offclose: (callback: (err?: Error) => void) => void;
-}
-
 type Status = "idle" | "connecting" | "streaming" | "done" | "error";
 
 interface TutorCompletePayload {
@@ -20,6 +16,12 @@ interface TutorErrorPayload {
   message: string;
 }
 
+// ponytail: one mounted TutorChat (dashboard). The close callback must be
+// registered exactly once per cached connection — HubConnection.onclose has no
+// matching off(), so re-registering per mount would pile up handlers.
+let closeHandler: ((err?: Error) => void) | null = null;
+const closeRegistered = new WeakSet<HubConnection>();
+
 export default function TutorChat() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -28,8 +30,6 @@ export default function TutorChat() {
   const [stats, setStats] = useState<{ sessionId: string; totalTokens: number } | null>(null);
 
   const statusRef = useRef<Status>("idle");
-  const connRef = useRef<ReturnType<typeof getTutorConnection> | null>(null);
-  const onCloseRef = useRef<(err?: Error) => void>(() => {});
 
   // Keep statusRef in sync with status for the onclose handler
   useEffect(() => {
@@ -38,25 +38,25 @@ export default function TutorChat() {
 
   useEffect(() => {
     const conn = getTutorConnection();
-    connRef.current = conn;
 
-    const handleClose = (err?: Error) => {
+    closeHandler = (err) => {
       if (statusRef.current === "streaming" || statusRef.current === "connecting") {
         setError(err?.message ?? "Connection lost");
         setStatus("error");
       }
     };
-    onCloseRef.current = handleClose;
-    conn.onclose(handleClose);
+    if (!closeRegistered.has(conn)) {
+      closeRegistered.add(conn);
+      conn.onclose((err) => closeHandler?.(err));
+    }
 
     return () => {
-      // Cleanup handlers on unmount to prevent memory leaks
+      // HubConnection.off removes method handlers; close handlers can't be
+      // removed, so neuter ours instead.
+      closeHandler = null;
       conn.off("TutorToken");
       conn.off("TutorComplete");
       conn.off("TutorError");
-      if (onCloseRef.current) {
-        (conn as HubConnectionWithOffClose).offclose(onCloseRef.current);
-      }
     };
   }, []);
 

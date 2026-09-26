@@ -69,8 +69,16 @@ public class TutorService : ITutorService
         {
             Content = new StringContent(json, Encoding.UTF8, "application/json")
         };
+
+        // ponytail: HttpClient.Timeout stops at headers with ResponseHeadersRead —
+        // this linked CTS caps header wait + body read together (300s total per ask,
+        // matches client.Timeout in DependencyInjection.cs). A stalled Ollama mid-stream
+        // now cancels instead of pinning the user's InFlightAsks entry forever (#89 F2).
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(300));
+
         using var response = await _http.SendAsync(
-            httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            httpRequest, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -78,8 +86,8 @@ public class TutorService : ITutorService
             throw new InvalidOperationException("Tutor service temporarily unavailable.");
         }
 
-        await using var body = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await foreach (var chunk in ReadStreamAsync(body, cancellationToken))
+        await using var body = await response.Content.ReadAsStreamAsync(timeoutCts.Token);
+        await foreach (var chunk in ReadStreamAsync(body, timeoutCts.Token))
         {
             yield return chunk;
         }

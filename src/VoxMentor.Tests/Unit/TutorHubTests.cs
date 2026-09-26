@@ -46,10 +46,15 @@ public class TutorHubTests
     private sealed class RecordingProxy : IClientProxy
     {
         public List<(string Method, object?[] Args)> Sent { get; } = new();
+        public string? FailOnMethod { get; set; }
 
         public Task SendCoreAsync(string method, object?[] args, CancellationToken cancellationToken = default)
         {
             Sent.Add((method, args));
+            if (method == FailOnMethod)
+            {
+                throw new InvalidOperationException("client disconnected during send");
+            }
             return Task.CompletedTask;
         }
     }
@@ -229,6 +234,21 @@ public class TutorHubTests
         var session = await db.TutorSessions.SingleAsync();
         Assert.Equal(TutorSessionStatus.Completed, session.Status);
         Assert.Equal(0, session.TotalTokens);
+    }
+
+    [Fact]
+    public async Task AskTutor_TutorCompleteSendFails_SessionStaysCompleted()
+    {
+        var (hub, clients, db) = CreateHub();
+        clients.CallerProxy.FailOnMethod = "TutorComplete";
+
+        await hub.AskTutor("", "question?");
+
+        var session = await db.TutorSessions.SingleAsync();
+        Assert.Equal(TutorSessionStatus.Completed, session.Status);
+        Assert.Equal("Hello", session.Answer);
+        Assert.Equal(42, session.TotalTokens);
+        Assert.DoesNotContain(clients.CallerProxy.Sent, s => s.Method == "TutorError");
     }
 
     [Fact]
