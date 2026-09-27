@@ -33,10 +33,16 @@ public class AuditLogController : ControllerBase
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 200);
+        // mirror GetQuestionsHandler: offset as long, empty page past int.MaxValue
+        var offset = (long)(page - 1) * pageSize;
+        if (offset > int.MaxValue)
+        {
+            return Ok(ApiResponse<IReadOnlyList<AuditLog>>.SuccessResult(new List<AuditLog>()));
+        }
 
         var items = await _db.AuditLogs
             .OrderByDescending(a => a.Id)
-            .Skip((page - 1) * pageSize)
+            .Skip((int)offset)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 

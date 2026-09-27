@@ -307,4 +307,179 @@ public class AdminRbacApiTests : IClassFixture<CustomWebApplicationFactory>
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
+
+    // --- #82 review fixes: coverage gaps, overflow guard, stale-token replay ---
+
+    [Fact]
+    public async Task UsersList_SuperAdmin_Returns200_WithUsers()
+    {
+        var (cookie, _) = await LoginWithRoleAsync("SuperAdmin");
+
+        var response = await _client.SendAsync(Request(HttpMethod.Get, "/api/v1/admin/users", cookie));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<ApiResponse<List<UserRolesDto>>>();
+        Assert.NotNull(result);
+        Assert.True(result.Success);
+        Assert.NotEmpty(result.Data!);
+    }
+
+    [Fact]
+    public async Task UsersList_Anonymous_Returns401Unauthorized()
+    {
+        var response = await _client.GetAsync("/api/v1/admin/users");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("ContentAdmin")]
+    [InlineData("PlatformAdmin")]
+    [InlineData("Student")]
+    public async Task AssignRole_NonSuperAdmin_Returns403Forbidden(string role)
+    {
+        var (cookie, userId) = await LoginWithRoleAsync(role);
+
+        var response = await _client.SendAsync(Request(
+            HttpMethod.Post, $"/api/v1/admin/users/{userId}/roles", cookie,
+            new { role = "ContentAdmin" }));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("ContentAdmin")]
+    [InlineData("PlatformAdmin")]
+    [InlineData("Student")]
+    public async Task RemoveRole_NonSuperAdmin_Returns403Forbidden(string role)
+    {
+        var (cookie, userId) = await LoginWithRoleAsync(role);
+
+        var response = await _client.SendAsync(Request(
+            HttpMethod.Delete, $"/api/v1/admin/users/{userId}/roles/Student", cookie));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Questions_SuperAdmin_Returns200Ok()
+    {
+        var (cookie, _) = await LoginWithRoleAsync("SuperAdmin");
+
+        var response = await _client.SendAsync(Request(HttpMethod.Get, "/api/v1/admin/questions", cookie));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AuditLogs_SuperAdmin_Returns200Ok()
+    {
+        var (cookie, _) = await LoginWithRoleAsync("SuperAdmin");
+
+        var response = await _client.SendAsync(Request(HttpMethod.Get, "/api/v1/admin/audit-logs", cookie));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UsersList_PageOverflow_Returns200Empty()
+    {
+        var (cookie, _) = await LoginWithRoleAsync("SuperAdmin");
+
+        var response = await _client.SendAsync(
+            Request(HttpMethod.Get, "/api/v1/admin/users?page=2147483647&pageSize=50", cookie));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<ApiResponse<List<UserRolesDto>>>();
+        Assert.NotNull(result);
+        Assert.True(result.Success);
+        Assert.Empty(result.Data!);
+    }
+
+    [Fact]
+    public async Task AuditLogs_PageOverflow_Returns200Empty()
+    {
+        var (cookie, _) = await LoginWithRoleAsync("PlatformAdmin");
+
+        var response = await _client.SendAsync(
+            Request(HttpMethod.Get, "/api/v1/admin/audit-logs?page=2147483647&pageSize=50", cookie));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<ApiResponse<List<AuditLog>>>();
+        Assert.NotNull(result);
+        Assert.True(result.Success);
+        Assert.Empty(result.Data!);
+    }
+
+    [Fact]
+    public async Task RemoveLastSuperAdmin_LowercaseRole_Returns400BadRequest()
+    {
+        var (cookie, userId) = await LoginWithRoleAsync("SuperAdmin");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var superAdmins = await userManager.GetUsersInRoleAsync("SuperAdmin");
+            foreach (var superAdmin in superAdmins)
+            {
+                if (superAdmin.Id != userId)
+                {
+                    await userManager.RemoveFromRoleAsync(superAdmin, "SuperAdmin");
+                }
+            }
+        }
+
+        var response = await _client.SendAsync(Request(
+            HttpMethod.Delete, $"/api/v1/admin/users/{userId}/roles/superadmin", cookie));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<ApiResponse<object>>();
+        Assert.NotNull(result);
+        Assert.Contains("last SuperAdmin", result.Message);
+    }
+
+    [Fact]
+    public async Task RemoveOneOfTwoSuperAdmins_Returns200_AndPersistsRemoval()
+    {
+        var (cookieA, _) = await LoginWithRoleAsync("SuperAdmin");
+        var (_, userIdB) = await LoginWithRoleAsync("SuperAdmin");
+
+        var response = await _client.SendAsync(Request(
+            HttpMethod.Delete, $"/api/v1/admin/users/{userIdB}/roles/SuperAdmin", cookieA));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var userB = await userManager.FindByIdAsync(userIdB);
+        Assert.NotNull(userB);
+        Assert.False(await userManager.IsInRoleAsync(userB, "SuperAdmin"));
+    }
+
+    [Fact]
+    public async Task DemotedAdmin_StaleToken_CannotReElevate()
+    {
+        var (cookieA, userIdA) = await LoginWithRoleAsync("SuperAdmin");
+        await LoginWithRoleAsync("SuperAdmin"); // second SuperAdmin so the self-demote passes the guard
+
+        var selfDemote = await _client.SendAsync(Request(
+            HttpMethod.Delete, $"/api/v1/admin/users/{userIdA}/roles/SuperAdmin", cookieA));
+        Assert.Equal(HttpStatusCode.OK, selfDemote.StatusCode);
+
+        // The demoted admin's still-unexpired token must now fail authentication...
+        var replay = await _client.SendAsync(Request(HttpMethod.Get, "/api/v1/admin/roles", cookieA));
+        Assert.Equal(HttpStatusCode.Unauthorized, replay.StatusCode);
+
+        // ...and the #82 exploit (re-assign SuperAdmin to self) must not land.
+        var exploit = await _client.SendAsync(Request(
+            HttpMethod.Post, $"/api/v1/admin/users/{userIdA}/roles", cookieA,
+            new { role = "SuperAdmin" }));
+        Assert.Equal(HttpStatusCode.Unauthorized, exploit.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var userA = await userManager.FindByIdAsync(userIdA);
+        Assert.NotNull(userA);
+        Assert.False(await userManager.IsInRoleAsync(userA, "SuperAdmin"));
+    }
 }
