@@ -5,7 +5,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Features.Practice.GetReadiness;
+using VoxMentor.Application.Features.Practice.GetSubmissions;
 using VoxMentor.Domain.Entities;
+using VoxMentor.Domain.Enums;
 using VoxMentor.Infrastructure.Persistence;
 using Xunit;
 
@@ -176,5 +178,138 @@ public class StudentApiTests : IClassFixture<CustomWebApplicationFactory>
         Assert.NotNull(result);
         Assert.True(result.Success);
         Assert.Equal(2, result.Data!.EstimatedWeeksToReady);
+    }
+
+    /// <summary>Seeds one concept + question so the weakest-concept path can answer 200.</summary>
+    private async Task SeedConceptWithQuestionAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var concept = new Concept
+        {
+            Id = Guid.NewGuid(),
+            Name = $"Binding Concept {Guid.NewGuid():N}",
+            Description = "desc",
+            DifficultyLevel = 2,
+            Category = "Test"
+        };
+        db.Concepts.Add(concept);
+        db.Questions.Add(new Question
+        {
+            Id = Guid.NewGuid(),
+            ConceptId = concept.Id,
+            Title = "Binding Question",
+            Description = "Desc",
+            QuestionType = "Code",
+            Difficulty = 3,
+            TestCases = new[] { "{\"input\":\"1\",\"expected\":\"1\"}" },
+            HiddenTestCaseCount = 0
+        });
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>Seeds a concept, a question, and <paramref name="count"/> owned submissions.</summary>
+    private async Task SeedOwnedSubmissionsAsync(string email, int count)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var user = await db.Users.FirstAsync(u => u.Email == email);
+
+        var concept = new Concept
+        {
+            Id = Guid.NewGuid(),
+            Name = $"Submission Concept {Guid.NewGuid():N}",
+            Description = "desc",
+            DifficultyLevel = 2,
+            Category = "Test"
+        };
+        var question = new Question
+        {
+            Id = Guid.NewGuid(),
+            ConceptId = concept.Id,
+            Title = "Submission Question",
+            Description = "Desc",
+            QuestionType = "Code",
+            Difficulty = 3,
+            TestCases = new[] { "{\"input\":\"1\",\"expected\":\"1\"}" },
+            HiddenTestCaseCount = 0
+        };
+        db.Concepts.Add(concept);
+        db.Questions.Add(question);
+
+        for (var i = 0; i < count; i++)
+        {
+            db.CodeSubmissions.Add(new CodeSubmission
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                QuestionId = question.Id,
+                Code = "x",
+                Language = "python",
+                IsCorrect = true,
+                TestCasesPassed = 1,
+                TestCasesTotal = 1,
+                Status = SubmissionStatus.Accepted,
+                CreatedAt = DateTime.UtcNow.AddSeconds(-i)
+            });
+        }
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>Flat conceptId key binds to GetNextQuestionQuery.ConceptId (issue #76).</summary>
+    [Fact]
+    public async Task NextQuestion_ConceptIdQueryString_BindsToQuery()
+    {
+        var email = $"student-nq-{Guid.NewGuid():N}@example.com";
+        var (_, cookieValue) = await LoginAsStudentAsync(email);
+        // With seeded content, dropping the binding would yield 200 from the
+        // weakest-concept path instead of the unknown-concept 404 below.
+        await SeedConceptWithQuestionAsync();
+
+        var message = new HttpRequestMessage(
+            HttpMethod.Get, $"/api/v1/student/next-question?conceptId={Guid.NewGuid()}");
+        message.Headers.Add("Cookie", cookieValue);
+
+        var response = await _client.SendAsync(message);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<ApiResponse<object>>();
+        Assert.NotNull(result);
+        Assert.Contains("Concept not found", result.Message);
+    }
+
+    /// <summary>New /submissions endpoint enforces the documented Student role gate.</summary>
+    [Fact]
+    public async Task Submissions_AuthenticatedNonStudent_Returns403Forbidden()
+    {
+        var accessTokenCookie = await CreateNonStudentUserWithLoginAsync();
+
+        var message = new HttpRequestMessage(HttpMethod.Get, "/api/v1/student/submissions");
+        message.Headers.Add("Cookie", accessTokenCookie);
+
+        var response = await _client.SendAsync(message);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    /// <summary>Route + class-based limit binding: 3 rows, ?limit=2 → exactly 2.</summary>
+    [Fact]
+    public async Task Submissions_StudentRole_LimitQueryBindsToHandler()
+    {
+        var email = $"student-submissions-{Guid.NewGuid():N}@example.com";
+        var (_, cookieValue) = await LoginAsStudentAsync(email);
+        await SeedOwnedSubmissionsAsync(email, count: 3);
+
+        // If binding is dropped, the default limit of 10 returns all 3 rows.
+        var message = new HttpRequestMessage(HttpMethod.Get, "/api/v1/student/submissions?limit=2");
+        message.Headers.Add("Cookie", cookieValue);
+
+        var response = await _client.SendAsync(message);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<ApiResponse<IReadOnlyList<SubmissionItemDto>>>();
+        Assert.NotNull(result);
+        Assert.True(result.Success);
+        Assert.Equal(2, result.Data!.Count);
     }
 }

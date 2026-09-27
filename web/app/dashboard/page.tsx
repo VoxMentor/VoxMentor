@@ -3,45 +3,18 @@
 import { useAuth } from "@/lib/auth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import TutorChat from "@/components/TutorChat";
-import Link from "next/link";
+import Navbar from "@/components/Navbar";
+import MasteryHeatmap from "@/components/MasteryHeatmap";
+import ReadinessOverview from "@/components/ReadinessOverview";
+import RecentActivity from "@/components/RecentActivity";
 
 export default function DashboardPage() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-bg-light">
-        {/* Top Nav */}
-        <header className="navbar scrolled">
-          <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-            <Link href="/" className="flex items-center gap-3">
-              <div className="logo-icon !w-9 !h-9 !rounded-lg">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                  <line x1="12" x2="12" y1="19" y2="22" />
-                </svg>
-              </div>
-              <span className="logo-text">VoxMentor</span>
-            </Link>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center text-white text-sm font-semibold">
-                  {user?.fullName?.charAt(0) ?? "?"}
-                </div>
-                <span className="text-sm font-medium text-text-heading hidden sm:block">
-                  {user?.fullName}
-                </span>
-              </div>
-              <button
-                onClick={logout}
-                className="px-3 py-1.5 text-sm font-medium text-text-muted hover:text-text-heading hover:bg-accent-light-blue rounded-xl transition-colors cursor-pointer"
-              >
-                Sign out
-              </button>
-            </div>
-          </div>
-        </header>
+        <Navbar />
 
         {/* Main */}
         <main className="max-w-6xl mx-auto px-6 py-10">
@@ -123,37 +96,19 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          {/* AI Tutor */}
+          {/* Real data sections */}
           <div className="mt-10">
-            <TutorChat />
+            <MasteryHeatmap />
           </div>
 
-          {/* Concept List */}
-          <div className="mt-10">
-            <h2 className="font-heading font-semibold text-navy text-lg mb-4">Your Concepts</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[
-                { name: "Arrays", mastery: 85, color: "bg-green-500" },
-                { name: "Dynamic Programming", mastery: 52, color: "bg-yellow-500" },
-                { name: "Graphs", mastery: 30, color: "bg-orange-500" },
-                { name: "Trees", mastery: 65, color: "bg-blue-500" },
-                { name: "System Design", mastery: 15, color: "bg-red-500" },
-                { name: "Recursion", mastery: 70, color: "bg-teal-500" },
-              ].map((concept) => (
-                <div key={concept.name} className="card">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-heading font-medium text-navy text-sm">{concept.name}</h3>
-                    <span className="text-xs font-medium text-text-muted">{concept.mastery}%</span>
-                  </div>
-                  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${concept.color}`}
-                      style={{ width: `${concept.mastery}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+            <ReadinessOverview />
+            <RecentActivity />
+          </div>
+
+          {/* AI Tutor */}
+          <div className="mt-10" id="tutor">
+            <TutorChat />
           </div>
         </main>
       </div>

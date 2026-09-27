@@ -6,6 +6,7 @@ using VoxMentor.Application.Features.KnowledgeGraph.GetEligibleConcepts;
 using VoxMentor.Application.Features.Practice.GetMastery;
 using VoxMentor.Application.Features.Practice.GetNextQuestion;
 using VoxMentor.Application.Features.Practice.GetReadiness;
+using VoxMentor.Application.Features.Practice.GetSubmissions;
 using VoxMentor.Application.Features.Practice.SubmitCode;
 
 namespace VoxMentor.Api.Controllers;
@@ -62,8 +63,9 @@ public class StudentController : ControllerBase
     }
 
     /// <summary>
-    /// Returns the next adaptive question for the student. Without jdId, targets
-    /// the weakest concept at difficulty 1 + mastery×9.
+    /// Returns the next adaptive question for the student. Without conceptId,
+    /// targets the weakest concept at difficulty 1 + mastery×9; with conceptId,
+    /// returns a question for that concept only.
     /// </summary>
     [HttpGet("next-question")]
     [Authorize(Roles = "Student")]
@@ -71,9 +73,11 @@ public class StudentController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetNextQuestion(CancellationToken cancellationToken)
+    public async Task<IActionResult> GetNextQuestion(
+        [FromQuery] GetNextQuestionQuery query,
+        CancellationToken cancellationToken)
     {
-        var response = await _sender.Send(new GetNextQuestionQuery(), cancellationToken);
+        var response = await _sender.Send(query, cancellationToken);
         return Ok(response);
     }
 
@@ -104,6 +108,23 @@ public class StudentController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetReadiness(
         [FromQuery] GetReadinessQuery query,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(query, cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Returns the student's recent code submissions (newest first) with
+    /// question title, concept, pass/fail, mastery delta, and timestamp.
+    /// </summary>
+    [HttpGet("submissions")]
+    [Authorize(Roles = "Student")]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<SubmissionItemDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetSubmissions(
+        [FromQuery] GetSubmissionsQuery query,
         CancellationToken cancellationToken)
     {
         var response = await _sender.Send(query, cancellationToken);

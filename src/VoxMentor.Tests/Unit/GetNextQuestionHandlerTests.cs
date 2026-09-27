@@ -206,6 +206,86 @@ public class GetNextQuestionHandlerTests
     }
 
     [Fact]
+    public async Task Handle_WithConceptId_PicksThatConceptEvenIfNotWeakest()
+    {
+        using var db = CreateDb();
+        var c1 = await SeedConceptAsync(db, "Arrays");
+        var c2 = await SeedConceptAsync(db, "DP");
+        await SeedMasteryAsync(db, "user-1", c1.Id, 0.9f);
+        await SeedMasteryAsync(db, "user-1", c2.Id, 0.1f);
+        await SeedQuestionAsync(db, c1.Id, difficulty: 3, title: "ArrayQ");
+        await SeedQuestionAsync(db, c2.Id, difficulty: 3, title: "DPQ");
+        var handler = CreateHandler(db);
+
+        // DP is weakest, but filter pins to Arrays (near-mastered)
+        var response = await handler.Handle(
+            new GetNextQuestionQuery { ConceptId = c1.Id }, CancellationToken.None);
+
+        Assert.Equal("Arrays", response.Data!.ConceptName);
+        Assert.Equal("ArrayQ", response.Data.Title);
+    }
+
+    [Fact]
+    public async Task Handle_ConceptIdWithNoQuestions_ThrowsNotFound()
+    {
+        using var db = CreateDb();
+        var c1 = await SeedConceptAsync(db, "Arrays");
+        await SeedConceptAsync(db, "Empty");
+        await SeedQuestionAsync(db, c1.Id, difficulty: 3, title: "ArrayQ");
+        var empty = db.Concepts.Single(c => c.Name == "Empty");
+        var handler = CreateHandler(db);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => handler.Handle(new GetNextQuestionQuery { ConceptId = empty.Id }, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Handle_ConceptId_AllAttempted_RetriesWithinConcept()
+    {
+        using var db = CreateDb();
+        var c1 = await SeedConceptAsync(db, "Arrays");
+        var c2 = await SeedConceptAsync(db, "DP");
+        var q1 = await SeedQuestionAsync(db, c1.Id, difficulty: 3, title: "ArrayDone");
+        await SeedQuestionAsync(db, c2.Id, difficulty: 3, title: "DPFresh");
+        db.CodeSubmissions.Add(new CodeSubmission
+        {
+            Id = Guid.NewGuid(),
+            UserId = "user-1",
+            QuestionId = q1.Id,
+            Code = "x",
+            Language = "python",
+            IsCorrect = true,
+            TestCasesPassed = 1,
+            TestCasesTotal = 1,
+            Status = SubmissionStatus.Accepted
+        });
+        await db.SaveChangesAsync();
+        var handler = CreateHandler(db);
+
+        // Must stay within Arrays (retrying the attempted question) even though
+        // the DP question is unanswered
+        var response = await handler.Handle(
+            new GetNextQuestionQuery { ConceptId = c1.Id }, CancellationToken.None);
+
+        Assert.Equal("ArrayDone", response.Data!.Title);
+        Assert.Equal("Arrays", response.Data.ConceptName);
+    }
+
+    [Fact]
+    public async Task Handle_UnknownConceptId_ThrowsNotFound()
+    {
+        using var db = CreateDb();
+        await SeedConceptAsync(db, "Arrays");
+        await SeedQuestionAsync(db, db.Concepts.Single().Id, difficulty: 3, title: "ArrayQ");
+        var handler = CreateHandler(db);
+
+        // A stale/malformed ?conceptId must 404 (the practice page maps 404 to its
+        // "no questions" card) instead of falling through to the weakest concept.
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => handler.Handle(new GetNextQuestionQuery { ConceptId = Guid.NewGuid() }, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Handle_NoQuestions_ThrowsNotFoundException()
     {
         using var db = CreateDb();
