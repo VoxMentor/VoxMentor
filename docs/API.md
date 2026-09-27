@@ -22,12 +22,19 @@ The Next.js client proxies `/api/:path*` → `BACKEND_ORIGIN` (`web/next.config.
 ## Conventions
 
 ### Authentication
-- JWT Bearer: `Authorization: Bearer <token>` (Issuer `VoxMentorApi`, Audience `VoxMentorApp`, 120-min expiry).
+- JWT Bearer: `Authorization: Bearer <token>` (Issuer `VoxMentorApi`, Audience `VoxMentorApp`, 15-min expiry).
 - The Core API also accepts the JWT from the `access_token` cookie (set on login, `Path=/api/v1`, HttpOnly, SameSite=Lax).
 - Refresh token lives in the `refresh_token` cookie (`Path=/api/v1/auth`, HttpOnly).
 - For SignalR hubs pass the JWT as `?access_token=<token>` query string.
 - Anonymous endpoints: `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`, `/health`.
-- Admin endpoints require role `Admin`; everything else requires role `Student` (or any authenticated user).
+- **Roles** (multi-admin RBAC, [#82](https://github.com/VoxMentor/VoxMentor/issues/82)):
+  | Role | Access |
+  |---|---|
+  | `Student` | Practice, mock, resume, tutor (default on register) |
+  | `ContentAdmin` | Question bank, concepts, prerequisites, textbook (`ManageContent`) |
+  | `PlatformAdmin` | Hangfire/health/ops, plagiarism review, cross-user support, audit read (`ManagePlatform`) |
+  | `SuperAdmin` | All admin powers + **only** role that can add/remove/change admin roles (`ManageRoles`) |
+- Target gates use named policies (`ManageContent`, `ManagePlatform`, `ManageRoles`). Until [#82](https://github.com/VoxMentor/VoxMentor/issues/82) ships, content admin endpoints still use role `Admin` (legacy — migrate to `ContentAdmin`); student endpoints require `Student` (or any authenticated user as noted).
 
 ### Response envelope (all Core API endpoints)
 ```json
@@ -414,7 +421,9 @@ Errors: `400` missing/unsupported file, `404` JD not found.
 
 ---
 
-# 8. Admin — 🚧 To be built (requires role `Admin`); question-bank endpoints are Week 2 in progress (issue #55)
+# 8. Admin — 🚧 To be built (requires `ContentAdmin` or `SuperAdmin` via `ManageContent`; currently role `Admin` until #82); question-bank endpoints are Week 2 in progress (issue #55)
+
+Role management (list users/roles, assign/remove) is SuperAdmin-only — planned in [#82](https://github.com/VoxMentor/VoxMentor/issues/82), not listed below.
 
 ### POST /api/v1/admin/concepts
 Create a DSA concept.
@@ -589,7 +598,8 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | AI Coach | 2 REST (ask, session) + hub | 🚧 |
 | Mock Interviews | 5 REST (start, answer, complete, review, history) + hub | 🚧 |
 | Resume ATS | 1 (analyze) | 🚧 |
-| Admin | 5 (concepts, prerequisites, questions, textbook upload, textbook status) | 🚧 (questions: Week 2 #55) |
+| Admin (content) | 5 (concepts, prerequisites, questions, textbook upload, textbook status) | 🚧 (questions: Week 2 #55) |
+| Role management (SuperAdmin) | planned (#82) | 🚧 |
 | Voice Service | 3 (stt, tts, health) | 🚧 |
 | Gateway | YARP routing + rate limiting | 🚧 |
 | **Total** | **31 REST + 3 hubs** | 8 done / 23 to build |
