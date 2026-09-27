@@ -168,6 +168,19 @@ public class RoleManagementController : ControllerBase
             {
                 await using var transaction = await BeginGuardTransactionAsync();
 
+                if (attempt > 0)
+                {
+                    // A failed first attempt rolled back the Identity update but left
+                    // the in-memory ConcurrencyStamp advanced; reload so the retry
+                    // doesn't fail the stamp check with a stale original value.
+                    var reloaded = await _userManager.FindByIdAsync(userId);
+                    if (reloaded is null)
+                    {
+                        return NotFound(ApiResponse<object>.FailureResult("User not found."));
+                    }
+                    user = reloaded;
+                }
+
                 if (string.Equals(role, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
                 {
                     var targetHoldsRole = (await _userManager.GetRolesAsync(user))

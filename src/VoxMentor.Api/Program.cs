@@ -1,5 +1,4 @@
 using Hangfire;
-using Hangfire.Dashboard;
 using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
 using VoxMentor.Api.Authorization;
@@ -101,11 +100,12 @@ app.MapControllers();
 
 if (app.Environment.IsDevelopment() && hangfireEnabled)
 {
-    // Role-gated (#82): previously open to any request reaching the dev server.
-    app.MapHangfireDashboard("/hangfire", new DashboardOptions
-    {
-        Authorization = new[] { new PlatformDashboardAuthorizationFilter() }
-    });
+    // Role-gated via the named policy (#82): previously open to any request
+    // reaching the dev server. The helper clears Hangfire's default
+    // local-requests-only filter and applies ManagePlatform instead.
+    app.MapHangfireDashboardWithAuthorizationPolicy(
+        authorizationPolicyName: Policies.ManagePlatform,
+        pattern: "/hangfire");
 }
 
 app.MapHub<TutorHub>("/hubs/tutor");

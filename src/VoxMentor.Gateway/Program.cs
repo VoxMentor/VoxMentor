@@ -34,7 +34,8 @@ app.UseSerilogRequestLogging();
 app.MapReverseProxy();
 
 // Hangfire dashboard removed (#82): Gateway has no auth stack, so it cannot be
-// role-gated here. Same job storage is reachable via the gated API dashboard.
+// role-gated here. Jobs registered here are visible via the gated API dashboard
+// only when both services point ConnectionStrings:Hangfire at the same database.
 
 // Register nightly job
 if (!string.IsNullOrEmpty(hangfireConnectionString))
