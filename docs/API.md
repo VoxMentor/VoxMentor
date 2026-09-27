@@ -33,10 +33,10 @@ The Next.js client proxies `/api/:path*` → `BACKEND_ORIGIN` (`web/next.config.
   |---|---|
   | `Student` | Practice, mock, resume, tutor (default on register) |
   | `ContentAdmin` | Question bank, concepts, prerequisites, textbook (`ManageContent`) |
-  | `PlatformAdmin` | Hangfire/health/ops, audit read (`ManagePlatform`) |
+  | `PlatformAdmin` | Hangfire/health/ops, audit read, plagiarism review, cross-user tutor support (`ManagePlatform`) |
   | `SuperAdmin` | All admin powers + **only** role that can add/remove/change admin roles (`ManageRoles`) |
 
-- Target gates use named policies (`ManageContent`, `ManagePlatform`, `ManageRoles`); legacy role `Admin` is no longer seeded or required. Student endpoints require `Student` (or any authenticated user as noted). Deferred to follow-up [#93](https://github.com/VoxMentor/VoxMentor/issues/93): plagiarism review queue and cross-user support APIs (PlatformAdmin).
+- Target gates use named policies (`ManageContent`, `ManagePlatform`, `ManageRoles`); legacy role `Admin` is no longer seeded or required. Student endpoints require `Student` (or any authenticated user as noted). Plagiarism review queue and cross-user tutor support shipped in [#93](https://github.com/VoxMentor/VoxMentor/issues/93) (Platform ops below).
 
 ### Response envelope (all Core API endpoints)
 ```json
@@ -436,6 +436,15 @@ All four endpoints require a SuperAdmin session; the last SuperAdmin can never b
 
 Errors for all four: `401` invalid/expired session, `403` caller is not SuperAdmin.
 
+### Platform ops — PlatformAdmin only (`ManagePlatform`)
+
+Read-only by design (#93). Errors: `401` invalid/expired session, `403` caller is not PlatformAdmin or SuperAdmin.
+
+- `GET /api/v1/admin/plagiarism/submissions?minScore=0.7&page&pageSize` — flagged submissions (`PlagiarismScore >= minScore`, `minScore` clamped 0–1, `pageSize` clamped 1–200), highest score first. Response `200`: `[ { "id", "userId", "userEmail", "questionId", "language", "isCorrect", "plagiarismScore", "status", "createdAt" } ]`.
+- `GET /api/v1/admin/plagiarism/submissions/{id}` — full submission incl. `code`, `aiEvaluation`, `testCasesPassed/Total`, `questionTitle`. Response `200`; `404` unknown id.
+- `GET /api/v1/admin/tutor/sessions?userId=&status=&page&pageSize` — any user's tutor sessions, newest first; optional `userId` and `status` (`Pending|Streaming|Completed|Failed`). Response `200`: `[ { "id", "userId", "userEmail", "conceptId", "question", "status", "totalTokens", "createdAt", "completedAt" } ]`.
+- `GET /api/v1/admin/tutor/sessions/{id}` — full session incl. `answer`. Response `200`; `404` unknown id.
+
 ### POST /api/v1/admin/concepts
 Create a DSA concept.
 
@@ -613,4 +622,5 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | Role management (SuperAdmin) | 4 (list roles, list users, assign, remove) | ✅ Done |
 | Voice Service | 3 (stt, tts, health) | 🚧 |
 | Gateway | YARP routing + rate limiting | 🚧 |
-| **Total** | **35 REST + 3 hubs** | 12 done / 23 to build |
+| Platform ops (PlatformAdmin) | 4 (plagiarism queue list/get, tutor sessions list/get) | ✅ Done |
+| **Total** | **40 REST + 3 hubs** | 16 done / 24 to build |
