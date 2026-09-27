@@ -48,17 +48,17 @@ public class StudentApiTests : IClassFixture<CustomWebApplicationFactory>
         return (CookieName: "access_token", CookieValue: accessTokenCookie.Split(';')[0]);
     }
 
-    /// <summary>Creates an authenticated user with only the Admin role (no Student).</summary>
+    /// <summary>Creates an authenticated user with only the ContentAdmin role (no Student).</summary>
     private async Task<string> CreateNonStudentUserWithLoginAsync()
     {
-        var email = $"admin-{Guid.NewGuid():N}@example.com";
+        var email = $"contentadmin-{Guid.NewGuid():N}@example.com";
         const string password = "Password@123";
 
         using var scope = _factory.Services.CreateScope();
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-        if (!await roleManager.RoleExistsAsync("Admin"))
+        if (!await roleManager.RoleExistsAsync("ContentAdmin"))
         {
-            await roleManager.CreateAsync(new IdentityRole("Admin"));
+            await roleManager.CreateAsync(new IdentityRole("ContentAdmin"));
         }
 
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
@@ -66,11 +66,11 @@ public class StudentApiTests : IClassFixture<CustomWebApplicationFactory>
         {
             UserName = email,
             Email = email,
-            FullName = "Admin Api User"
+            FullName = "Content Admin Api User"
         };
         var create = await userManager.CreateAsync(user, password);
         Assert.True(create.Succeeded, string.Join(';', create.Errors.Select(e => e.Description)));
-        var addRole = await userManager.AddToRoleAsync(user, "Admin");
+        var addRole = await userManager.AddToRoleAsync(user, "ContentAdmin");
         Assert.True(addRole.Succeeded, string.Join(';', addRole.Errors.Select(e => e.Description)));
 
         var loginResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", new { email, password });

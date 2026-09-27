@@ -33,11 +33,8 @@ app.UseSerilogRequestLogging();
 // YARP routes
 app.MapReverseProxy();
 
-// Hangfire dashboard (dev only)
-if (app.Environment.IsDevelopment() && !string.IsNullOrEmpty(hangfireConnectionString))
-{
-    app.MapHangfireDashboard("/hangfire");
-}
+// Hangfire dashboard removed (#82): Gateway has no auth stack, so it cannot be
+// role-gated here. Same job storage is reachable via the gated API dashboard.
 
 // Register nightly job
 if (!string.IsNullOrEmpty(hangfireConnectionString))
