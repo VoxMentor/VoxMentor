@@ -74,7 +74,7 @@ public class PlatformOpsApiTests : IClassFixture<CustomWebApplicationFactory>
         return message;
     }
 
-    private async Task<Guid> SeedSubmissionAsync(string userId, float score, string code = "print('hello')")
+    private async Task<Guid> SeedSubmissionAsync(string userId, float score, string code = "print('hello')", DateTime? createdAt = null)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
@@ -91,6 +91,10 @@ public class PlatformOpsApiTests : IClassFixture<CustomWebApplicationFactory>
             PlagiarismScore = score,
             Status = SubmissionStatus.Accepted
         };
+        if (createdAt.HasValue)
+        {
+            submission.CreatedAt = createdAt.Value;
+        }
         db.CodeSubmissions.Add(submission);
         await db.SaveChangesAsync();
         return submission.Id;
@@ -241,7 +245,7 @@ public class PlatformOpsApiTests : IClassFixture<CustomWebApplicationFactory>
         var (_, studentB) = await LoginWithRoleAsync("Student");
         var aCompleted = await SeedSessionAsync(studentA, TutorSessionStatus.Completed, "what is a heap?", "a heap is ...");
         var aFailed = await SeedSessionAsync(studentA, TutorSessionStatus.Failed, "why does this fail?");
-        await SeedSessionAsync(studentB, TutorSessionStatus.Completed, "b question");
+        var bCompleted = await SeedSessionAsync(studentB, TutorSessionStatus.Completed, "b question");
 
         // userId filter: only student A's two sessions
         var byUserResponse = await _client.SendAsync(
@@ -268,6 +272,7 @@ public class PlatformOpsApiTests : IClassFixture<CustomWebApplicationFactory>
         var byStatus = await byStatusResponse.Content.ReadFromJsonAsync<ApiResponse<List<TutorSessionSummaryDto>>>();
         Assert.NotNull(byStatus);
         Assert.Contains(byStatus.Data!, s => s.Id == aCompleted);
+        Assert.Contains(byStatus.Data!, s => s.Id == bCompleted);
 
         // detail: full answer present, unknown id is 404
         var detailResponse = await _client.SendAsync(
@@ -281,5 +286,43 @@ public class PlatformOpsApiTests : IClassFixture<CustomWebApplicationFactory>
         var missingResponse = await _client.SendAsync(
             Request(HttpMethod.Get, $"/api/v1/admin/tutor/sessions/{Guid.NewGuid()}", adminCookie));
         Assert.Equal(HttpStatusCode.NotFound, missingResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task PlagiarismQueue_TiedRows_PaginateWithoutLossOrDuplication()
+    {
+        // ponytail: InMemory's LINQ-to-Objects OrderBy is stable, so this cannot fail
+        // on the tie-breaker itself here — it locks the contract. Postgres (no default
+        // ordering, per EF Core pagination docs) is where s.Id as final sort key matters.
+        var (adminCookie, _) = await LoginWithRoleAsync("PlatformAdmin");
+        var (_, studentId) = await LoginWithRoleAsync("Student");
+        var tiedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var tied = new List<Guid>();
+        for (var i = 0; i < 3; i++)
+        {
+            tied.Add(await SeedSubmissionAsync(studentId, 0.9f, $"tied code {i}", tiedAt));
+        }
+
+        var seen = new List<Guid>();
+        for (var page = 1; page <= 10; page++)
+        {
+            var response = await _client.SendAsync(Request(
+                HttpMethod.Get,
+                $"/api/v1/admin/plagiarism/submissions?minScore=0.9&page={page}&pageSize=2",
+                adminCookie));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var payload = await response.Content.ReadFromJsonAsync<ApiResponse<List<PlagiarismQueueItemDto>>>();
+            Assert.NotNull(payload);
+            if (payload.Data!.Count == 0)
+            {
+                break;
+            }
+            seen.AddRange(payload.Data.Select(i => i.Id));
+        }
+
+        foreach (var id in tied)
+        {
+            Assert.Equal(1, seen.Count(x => x == id));
+        }
     }
 }

@@ -623,4 +623,4 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | Voice Service | 3 (stt, tts, health) | 🚧 |
 | Gateway | YARP routing + rate limiting | 🚧 |
 | Platform ops (PlatformAdmin) | 4 (plagiarism queue list/get, tutor sessions list/get) | ✅ Done |
-| **Total** | **39 REST + 3 hubs** | 16 done / 23 to build |
+| **Total** | **40 REST + 3 hubs** | 16 done / 24 to build |

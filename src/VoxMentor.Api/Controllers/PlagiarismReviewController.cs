@@ -75,7 +75,7 @@ public class PlagiarismReviewController : ControllerBase
             from s in _db.CodeSubmissions
             where s.PlagiarismScore >= minScore
             let email = _db.Users.Where(u => u.Id == s.UserId).Select(u => u.Email).FirstOrDefault()
-            orderby s.PlagiarismScore descending, s.CreatedAt descending
+            orderby s.PlagiarismScore descending, s.CreatedAt descending, s.Id
             select new PlagiarismQueueItemDto(
                 s.Id, s.UserId, email, s.QuestionId, s.Language, s.IsCorrect,
                 s.PlagiarismScore, s.Status, s.CreatedAt)
