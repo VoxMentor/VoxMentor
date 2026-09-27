@@ -201,3 +201,8 @@ VoxMentor uses a **modular monolith + 3 microservices + YARP API Gateway** archi
 **Decision**: Use Monaco Editor (react-monaco-editor) for code input.
 **Rationale**: Same engine as VS Code. Syntax highlighting, autocomplete, multi-language support. Same experience as LeetCode.
 **Tradeoff**: Adds ~2MB to frontend bundle, but essential for code interview prep.
+
+### ADR-011: Multi-Admin RBAC (Not Single Admin)
+**Decision**: Seed four roles — `Student`, `ContentAdmin`, `PlatformAdmin`, `SuperAdmin` — and gate with named policies (`ManageContent`, `ManagePlatform`, `ManageRoles`). Only SuperAdmin may add/remove/change admin roles. Issue [#82](https://github.com/VoxMentor/VoxMentor/issues/82).
+**Rationale**: Content ops (question bank) and platform ops/support (Hangfire, health, plagiarism, audit) need separate least-privilege grants. JWT already emits multi-role claims (`JwtTokenGenerator`). SuperAdmin-only role management avoids privilege escalation.
+**Tradeoff**: More policies and seed data than a single `Admin` string; legacy `Admin` migration is out of band (requester). Permission-claim claims deferred until admin types exceed ~4–5.

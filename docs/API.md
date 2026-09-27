@@ -22,12 +22,21 @@ The Next.js client proxies `/api/:path*` → `BACKEND_ORIGIN` (`web/next.config.
 ## Conventions
 
 ### Authentication
-- JWT Bearer: `Authorization: Bearer <token>` (Issuer `VoxMentorApi`, Audience `VoxMentorApp`, 120-min expiry).
-- The Core API also accepts the JWT from the `access_token` cookie (set on login, `Path=/api/v1`, HttpOnly, SameSite=Lax).
+- JWT Bearer: `Authorization: Bearer <token>` (Issuer `VoxMentorApi`, Audience `VoxMentorApp`, 15-min expiry).
+- The Core API also accepts the JWT from the `access_token` cookie (set on login, `Path=/`, HttpOnly, SameSite=Lax).
 - Refresh token lives in the `refresh_token` cookie (`Path=/api/v1/auth`, HttpOnly).
 - For SignalR hubs pass the JWT as `?access_token=<token>` query string.
 - Anonymous endpoints: `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`, `/health`.
-- Admin endpoints require role `Admin`; everything else requires role `Student` (or any authenticated user).
+- **Roles** (multi-admin RBAC, [#82](https://github.com/VoxMentor/VoxMentor/issues/82)):
+
+  | Role | Access |
+  |---|---|
+  | `Student` | Practice, mock, resume, tutor (default on register) |
+  | `ContentAdmin` | Question bank, concepts, prerequisites, textbook (`ManageContent`) |
+  | `PlatformAdmin` | Hangfire/health/ops, audit read (`ManagePlatform`) |
+  | `SuperAdmin` | All admin powers + **only** role that can add/remove/change admin roles (`ManageRoles`) |
+
+- Target gates use named policies (`ManageContent`, `ManagePlatform`, `ManageRoles`); legacy role `Admin` is no longer seeded or required. Student endpoints require `Student` (or any authenticated user as noted). Deferred to follow-up [#93](https://github.com/VoxMentor/VoxMentor/issues/93): plagiarism review queue and cross-user support APIs (PlatformAdmin).
 
 ### Response envelope (all Core API endpoints)
 ```json
@@ -414,7 +423,18 @@ Errors: `400` missing/unsupported file, `404` JD not found.
 
 ---
 
-# 8. Admin — 🚧 To be built (requires role `Admin`); question-bank endpoints are Week 2 in progress (issue #55)
+# 8. Admin — implemented (#82: requires `ContentAdmin` or `SuperAdmin` via `ManageContent`); question-bank endpoints are Week 2 in progress (issue #55)
+
+### Role management — SuperAdmin only (`ManageRoles`)
+
+All four endpoints require a SuperAdmin session; the last SuperAdmin can never be removed.
+
+- `GET /api/v1/admin/roles` — list role names. Response `200`: array of role strings.
+- `GET /api/v1/admin/users?page&pageSize` — paged users with roles (`pageSize` clamped 1–200). Response `200`: `[ { "id", "email", "fullName", "roles" } ]`.
+- `POST /api/v1/admin/users/{userId}/roles` — body `{ "role": "ContentAdmin" }`. Response `200` with updated roles; `400` unknown/missing role; `404` user not found.
+- `DELETE /api/v1/admin/users/{userId}/roles/{role}` — Response `200` with updated roles; `400` unknown role or would remove the last SuperAdmin; `404` unknown user; `409` concurrent update (retry).
+
+Errors for all four: `401` invalid/expired session, `403` caller is not SuperAdmin.
 
 ### POST /api/v1/admin/concepts
 Create a DSA concept.
@@ -589,7 +609,8 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | AI Coach | 2 REST (ask, session) + hub | 🚧 |
 | Mock Interviews | 5 REST (start, answer, complete, review, history) + hub | 🚧 |
 | Resume ATS | 1 (analyze) | 🚧 |
-| Admin | 5 (concepts, prerequisites, questions, textbook upload, textbook status) | 🚧 (questions: Week 2 #55) |
+| Admin (content) | 5 (concepts, prerequisites, questions, textbook upload, textbook status) | 🚧 (questions: Week 2 #55) |
+| Role management (SuperAdmin) | 4 (list roles, list users, assign, remove) | ✅ Done |
 | Voice Service | 3 (stt, tts, health) | 🚧 |
 | Gateway | YARP routing + rate limiting | 🚧 |
-| **Total** | **31 REST + 3 hubs** | 8 done / 23 to build |
+| **Total** | **35 REST + 3 hubs** | 12 done / 23 to build |

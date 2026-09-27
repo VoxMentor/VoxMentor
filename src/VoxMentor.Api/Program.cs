@@ -1,6 +1,7 @@
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
+using VoxMentor.Api.Authorization;
 using VoxMentor.Api.Hubs;
 using VoxMentor.Api.Middleware;
 using VoxMentor.Api.Services;
@@ -59,6 +60,14 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Named RBAC policies (#82). JwtTokenGenerator already emits one claim per role.
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(Policies.ManageContent, policy => policy.RequireRole("ContentAdmin", "SuperAdmin"));
+    options.AddPolicy(Policies.ManagePlatform, policy => policy.RequireRole("PlatformAdmin", "SuperAdmin"));
+    options.AddPolicy(Policies.ManageRoles, policy => policy.RequireRole("SuperAdmin"));
+});
+
 var app = builder.Build();
 
 // Seed Roles and Migrate DB
@@ -91,7 +100,12 @@ app.MapControllers();
 
 if (app.Environment.IsDevelopment() && hangfireEnabled)
 {
-    app.MapHangfireDashboard("/hangfire");
+    // Role-gated via the named policy (#82): previously open to any request
+    // reaching the dev server. The helper clears Hangfire's default
+    // local-requests-only filter and applies ManagePlatform instead.
+    app.MapHangfireDashboardWithAuthorizationPolicy(
+        authorizationPolicyName: Policies.ManagePlatform,
+        pattern: "/hangfire");
 }
 
 app.MapHub<TutorHub>("/hubs/tutor");

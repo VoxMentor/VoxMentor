@@ -43,6 +43,7 @@ PostgreSQL + pgvector ←→ Redis 7 ←→ Ollama (local LLM)
 ```
 
 - **Core API** — Auth, BKT, adaptive selection, knowledge graph, mock engine, resume (fast: 50-200ms)
+- **Roles** — `Student`, `ContentAdmin`, `PlatformAdmin`, `SuperAdmin` (multi-admin RBAC, see [ARCHITECTURE.md ADR-011](ARCHITECTURE.md) + [#82](https://github.com/VoxMentor/VoxMentor/issues/82))
 - **Tutor Service** — RAG AI coach with streaming (slow: 3-8s, isolated LLM crashes)
 - **CodeExec Service** — Judge0 code execution + AI eval + plagiarism (slow: 3-6s, untrusted code)
 - **Voice Service** (Python) — Whisper STT + Piper TTS (CPU-heavy, 2GB RAM)

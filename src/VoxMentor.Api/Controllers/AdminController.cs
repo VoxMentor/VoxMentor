@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using VoxMentor.Api.Authorization;
 using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Features.Admin.CreateQuestion;
 using VoxMentor.Application.Features.Admin.GetTextbookJob;
@@ -10,11 +11,11 @@ using VoxMentor.Application.Features.Admin.UploadTextbook;
 namespace VoxMentor.Api.Controllers;
 
 /// <summary>
-/// Admin endpoints for question bank and textbook content management. Requires Admin role.
+/// Admin endpoints for question bank and textbook content management. Requires ManageContent.
 /// </summary>
 [ApiController]
 [Route("api/v1/admin")]
-[Authorize(Roles = "Admin")]
+[Authorize(Policy = Policies.ManageContent)]
 public class AdminController : ControllerBase
 {
     private readonly ISender _sender;

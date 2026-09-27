@@ -1,3 +1,5 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
@@ -18,6 +20,9 @@ using VoxMentor.Infrastructure.Services;
 namespace VoxMentor.Infrastructure;
 public static class DependencyInjection
 {
+    // #82: admin role names whose JWT claims get re-validated on every request.
+    private static readonly string[] AdminRoles = { "SuperAdmin", "ContentAdmin", "PlatformAdmin" };
+
     /// <summary>
     /// Registers Infrastructure-layer services: Npgsql DbContext, ASP.NET Identity,
     /// JWT authentication (access token from cookie), and the current-user and
@@ -138,6 +143,44 @@ public static class DependencyInjection
                         context.Token = token;
                     }
                     return Task.CompletedTask;
+                },
+                OnTokenValidated = async context =>
+                {
+                    // #82: roles are baked into the JWT at issue, so a demoted admin
+                    // would otherwise keep admin rights until the token expires.
+                    // Gated on admin-role claims — student requests skip the DB lookup.
+                    var principal = context.Principal;
+                    if (principal is null)
+                    {
+                        context.Fail("Missing principal.");
+                        return;
+                    }
+
+                    if (!AdminRoles.Any(r => principal.IsInRole(r)))
+                    {
+                        return;
+                    }
+
+                    var services = context.HttpContext.RequestServices;
+                    var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
+                    // HttpContext.User isn't populated yet during validation — read the claim
+                    // from the principal being validated (sub, falling back to NameIdentifier).
+                    var userId = principal.FindFirstValue(JwtRegisteredClaimNames.Sub)
+                        ?? principal.FindFirstValue(ClaimTypes.NameIdentifier);
+                    var user = userId is null ? null : await userManager.FindByIdAsync(userId);
+                    if (user is null)
+                    {
+                        context.Fail("User no longer exists.");
+                        return;
+                    }
+
+                    var currentRoles = await userManager.GetRolesAsync(user);
+                    if (AdminRoles.Any(r =>
+                        principal.IsInRole(r) &&
+                        !currentRoles.Contains(r, StringComparer.OrdinalIgnoreCase)))
+                    {
+                        context.Fail("Token roles are stale; re-authenticate.");
+                    }
                 }
             };
         });
