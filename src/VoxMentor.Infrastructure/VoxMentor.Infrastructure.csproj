@@ -24,4 +24,9 @@
     <ProjectReference Include="..\VoxMentor.Domain\VoxMentor.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Single-source tutor prompt (#77): same file scripts/eval-tutor.py renders. -->
+    <EmbeddedResource Include="..\..\prompts\tutor-prompt.txt" LogicalName="VoxMentor.Infrastructure.tutor-prompt.txt" />
+  </ItemGroup>
+
 </Project>

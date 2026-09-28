@@ -192,11 +192,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             }
             entity.HasIndex(e => e.JobId);
             entity.HasIndex(e => e.ConceptId);
-            // ponytail: ivfflat per issue #70 spec; on the empty load table its
-            // centroids are untrained — REINDEX after #75 bulk-seeds if recall degrades.
+            // HNSW not ivfflat: ivfflat built on this tiny table returns 0-1 rows
+            // under LIMIT plans (untrained lists, probes=1) -> tutor retrieved nothing.
+            // Same method as IX_CodeSubmissions_CodeEmbedding.
             entity.HasIndex(e => e.Embedding)
                 .HasDatabaseName("IX_TextbookChunks_Embedding")
-                .HasMethod("ivfflat")
+                .HasMethod("hnsw")
                 .HasOperators("vector_cosine_ops");
         });
     }

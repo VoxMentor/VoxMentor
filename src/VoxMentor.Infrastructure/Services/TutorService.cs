@@ -12,10 +12,10 @@ using VoxMentor.Infrastructure.Plagiarism;
 namespace VoxMentor.Infrastructure.Services;
 
 /// <summary>
-/// Minimal RAG pipeline for the AI tutor (#73): embed the question, take the
-/// top-5 textbook chunks by pgvector cosine similarity, build the excerpt
-/// prompt, and stream Ollama's NDJSON output. Issue #72 layers the Hangfire
-/// worker and circuit breaker on top of this.
+/// Minimal RAG pipeline for the AI Tutor (#73): embed the question, take the
+/// top-Rag:TopK textbook chunks by pgvector cosine similarity, render the
+/// shared excerpt prompt, and stream Ollama's NDJSON output. Issue #72 layers
+/// the Hangfire worker and circuit breaker on top of this.
 /// </summary>
 public class TutorService : ITutorService
 {
@@ -25,6 +25,7 @@ public class TutorService : ITutorService
     private readonly ILogger<TutorService> _logger;
     private readonly string _baseUrl;
     private readonly string _model;
+    private readonly int _topK;
 
     private static readonly JsonSerializerOptions RequestJsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -41,6 +42,8 @@ public class TutorService : ITutorService
         _logger = logger;
         _baseUrl = config["Ollama:BaseUrl"] ?? "http://localhost:11434";
         _model = config["Ollama:Model"] ?? "llama3.2:3b";
+        // #77: Rag:TopK replaces the hardcoded LIMIT 5 so the eval can tune k.
+        _topK = int.TryParse(config["Rag:TopK"], out var topK) ? Math.Clamp(topK, 1, 50) : 5;
     }
 
     public async IAsyncEnumerable<TutorChunk> StreamAnswerAsync(
@@ -94,12 +97,15 @@ public class TutorService : ITutorService
     }
 
     /// <summary>
-    /// Top-5 chunks by cosine distance, concept-filtered when a concept is given.
-    /// Returns an empty list when the question can't be embedded (Ollama down) —
-    /// generation then proceeds without excerpts instead of failing the session.
+    /// Top-Rag:TopK chunks by cosine distance, concept-filtered when a concept
+    /// is given. Returns an empty list when the question can't be embedded
+    /// (Ollama down) — generation then proceeds without excerpts instead of
+    /// failing the session. Per-query retrieval metrics (k, concept, chunk
+    /// distances, elapsed) are logged for the #77 evaluation.
     /// </summary>
     private async Task<List<RetrievedChunk>> RetrieveAsync(string question, Guid? conceptId, CancellationToken cancellationToken)
     {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var embedding = await _embeddingService.EmbedAsync(question, cancellationToken);
         if (embedding is null)
         {
@@ -111,52 +117,102 @@ public class TutorService : ITutorService
         var vector = new Pgvector.Vector(embedding);
 
         // ponytail: raw SQL for pgvector cosine — EF Core can't translate <=>.
-        const string select = """
-            SELECT "Id", "Content", "Source"
+        // #77: SELECT carries Distance so retrieval quality can be logged/eval'd.
+        var vecRef = conceptId.HasValue ? "{1}" : "{0}";
+        var sql = $"""
+            SELECT "Id", "Content", "Source",
+                   "Embedding"::vector <=> {vecRef}::vector AS "Distance"
             FROM "TextbookChunks"
             WHERE "Embedding" IS NOT NULL
             """;
-        const string orderBy = """
-            ORDER BY "Embedding"::vector <=> {0}::vector
-            LIMIT 5
-            """;
+        if (conceptId.HasValue)
+        {
+            sql += "\n  AND \"ConceptId\" = {0}";
+        }
 
-        var sql = conceptId.HasValue
-            ? $"{select}\n  AND \"ConceptId\" = {{0}}\n{orderBy.Replace("{0}", "{1}")}"
-            : $@"{select}
-{orderBy}";
+        sql += $"""
+
+            ORDER BY "Embedding"::vector <=> {vecRef}::vector
+            LIMIT {_topK}
+            """;
 
         var parameters = conceptId.HasValue
             ? new object[] { conceptId.Value, vector }
             : new object[] { vector };
 
-        return await _db.SqlQueryRaw<RetrievedChunk>(sql, parameters)
+        var chunks = await _db.SqlQueryRaw<RetrievedChunk>(sql, parameters)
             .ToListAsync(cancellationToken);
+        stopwatch.Stop();
+        _logger.LogInformation(
+            "Tutor retrieval k={TopK} conceptId={ConceptId} chunks={ChunkCount} distances=[{Distances}] elapsedMs={ElapsedMs}",
+            _topK,
+            conceptId,
+            chunks.Count,
+            string.Join(",", chunks.Select(c =>
+                c.Distance?.ToString("F4", System.Globalization.CultureInfo.InvariantCulture) ?? "n/a")),
+            stopwatch.ElapsedMilliseconds);
+        return chunks;
     }
 
     /// <summary>
-    /// Prompt template from issue #72: retrieved excerpts with citations, then
-    /// the student's question.
+    /// Renders prompts/tutor-prompt.txt — the embedded template is the single
+    /// source of truth shared verbatim with scripts/eval-tutor.py (#77).
+    /// Prompt decisions documented per the issue: numbered [n] citations bind
+    /// every claim to a retrieved chunk so citation accuracy is machine-checkable;
+    /// the model must say the excerpts lack the information instead of guessing
+    /// (anti-hallucination); each excerpt carries its Source so expected-source
+    /// matching in the eval is possible. Do not edit the C# side only — the
+    /// template file drives both prod and eval.
     /// </summary>
     public static string BuildPrompt(string question, IReadOnlyList<RetrievedChunk> chunks)
     {
-        var sb = new StringBuilder();
-        sb.AppendLine("Based on these textbook excerpts, answer the student's question.");
-        sb.AppendLine("Cite the source material where relevant.");
-        sb.AppendLine();
-        if (chunks.Count > 0)
+        var text = PromptTemplate.Value;
+        if (chunks.Count == 0)
         {
-            sb.AppendLine("Excerpts:");
+            // drop the {EXCERPTS} placeholder line entirely (keeps the
+            // no-excerpts contract: no "Excerpts:" header, just the question)
+            var marker = text.IndexOf("{EXCERPTS}", StringComparison.Ordinal);
+            if (marker >= 0)
+            {
+                var end = marker + "{EXCERPTS}".Length;
+                if (end < text.Length && text[end] == '\n')
+                {
+                    end++;
+                }
+                text = text.Remove(marker, end - marker);
+            }
+        }
+        else
+        {
+            // explicit '\n' (not AppendLine): prompt bytes must match the
+            // Python evaluator's rendering on every OS
+            var sb = new StringBuilder();
+            sb.Append("Excerpts:\n");
             for (var i = 0; i < chunks.Count; i++)
             {
-                sb.AppendLine($"{chunks[i].Content} [Source: {chunks[i].Source}]");
+                sb.Append('[').Append(i + 1).Append("] ").Append(chunks[i].Content).Append('\n');
+                sb.Append("    Source: ").Append(chunks[i].Source);
+                if (i < chunks.Count - 1)
+                {
+                    sb.Append('\n');
+                }
             }
-            sb.AppendLine();
+            text = text.Replace("{EXCERPTS}", sb.ToString());
         }
-        sb.AppendLine($"Question: {question}");
-        sb.AppendLine();
-        sb.Append("Answer:");
-        return sb.ToString();
+
+        return text.Replace("{QUESTION}", question);
+    }
+
+    private static readonly Lazy<string> PromptTemplate = new(LoadPromptTemplate);
+
+    private static string LoadPromptTemplate()
+    {
+        const string resourceName = "VoxMentor.Infrastructure.tutor-prompt.txt";
+        using var stream = typeof(TutorService).Assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException(
+                $"Embedded prompt template '{resourceName}' not found — check the EmbeddedResource in VoxMentor.Infrastructure.csproj.");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd().Replace("\r\n", "\n").TrimEnd('\n');
     }
 
     /// <summary>
@@ -237,6 +293,7 @@ public class TutorService : ITutorService
         public string? Error { get; set; }
     }
 
-    /// <summary>Keyless DTO for the top-chunk retrieval query.</summary>
-    public sealed record RetrievedChunk(Guid Id, string Content, string Source);
+    /// <summary>Keyless DTO for the top-chunk retrieval query; Distance is the
+    /// pgvector cosine distance (0 = identical), logged as a retrieval metric (#77).</summary>
+    public sealed record RetrievedChunk(Guid Id, string Content, string Source, double? Distance = null);
 }
