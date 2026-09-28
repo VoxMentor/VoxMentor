@@ -143,8 +143,8 @@ public class TutorService : ITutorService
         // CodeRabbit #96: HNSW explores ~ef_search candidates; the ConceptId
         // post-filter can exhaust that budget before LIMIT TopK fills. Raise it
         // for this query and let iterative_scan continue past filtered-out rows
-        // (pgvector >= 0.8 for iterative_scan). Raw: Postgres SET takes no bind
-        // parameters; the value is an int.
+        // (pgvector >= 0.8 for iterative_scan; enforced via /health pgvector check).
+        // Raw: Postgres SET takes no bind parameters; the value is an int.
         var efSearch = Math.Max(40, _topK * 2);
         // IApplicationDbContext is the Application-layer abstraction; the GUC
         // SETs need the concrete EF DatabaseFacade (prod DI: ApplicationDbContext).

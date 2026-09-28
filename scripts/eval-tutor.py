@@ -138,16 +138,22 @@ def ado_to_libpq(ado: str) -> str:
 
 def connect():
     conn = psycopg.connect(db_dsn(), row_factory=psycopg.rows.dict_row, connect_timeout=15)
-    # CodeRabbit #96: mirror prod's TutorService retrieval session settings so
-    # eval and prod see the same HNSW behavior. Session-scoped on this
-    # dedicated connection; ef_search is set per-k in cmd_run. Needs
-    # pgvector >= 0.8 — fail fast with a clear message instead of a raw error.
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SET hnsw.iterative_scan = 'strict_order'")
-    except psycopg.Error as exc:
+    # CodeRabbit #96: ensure pgvector >= 0.8 for hnsw.iterative_scan.
+    # PG accepts unknown two-part GUCs as placeholders; the old try/except SET was vacuous.
+    # Explicit extversion check replaces it.
+    with conn.cursor() as cur:
+        cur.execute("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+        row = cur.fetchone()
+    if not row:
         conn.close()
-        sys.exit(f"pgvector too old for hnsw.iterative_scan (need >= 0.8): {exc}")
+        sys.exit("pgvector extension not installed")
+    ver = row[0] if isinstance(row, tuple) else row.get("extversion")
+    parts = tuple(int(x) for x in ver.split(".")[:2])
+    if parts < (0, 8):
+        conn.close()
+        sys.exit(f"pgvector {ver} < 0.8.0: hnsw.iterative_scan would be silently ignored")
+    with conn.cursor() as cur:
+        cur.execute("SET hnsw.iterative_scan = 'strict_order'")
     return conn
 
 
