@@ -52,6 +52,10 @@ APPSETTINGS_PATH = ROOT / "src" / "VoxMentor.Api" / "appsettings.Development.jso
 
 SOURCE_PREFIX = "eval/corpus.txt#"
 JOB_FILENAME = "eval/corpus.txt"
+# Fixed owner marker for seeded eval rows (CodeRabbit #96): cleanup and run
+# key on this JobId only, never on FileName/Source, so an admin upload named
+# eval/corpus.txt is never matched.
+EVAL_JOB_ID = "00000077-0077-4777-8777-000000000077"
 
 # Mirrors TextChunker.cs (words, not tokens): 375/37 overlap, step 338.
 CHUNK_SIZE_WORDS = 375
@@ -133,7 +137,18 @@ def ado_to_libpq(ado: str) -> str:
 
 
 def connect():
-    return psycopg.connect(db_dsn(), row_factory=psycopg.rows.dict_row, connect_timeout=15)
+    conn = psycopg.connect(db_dsn(), row_factory=psycopg.rows.dict_row, connect_timeout=15)
+    # CodeRabbit #96: mirror prod's TutorService retrieval session settings so
+    # eval and prod see the same HNSW behavior. Session-scoped on this
+    # dedicated connection; ef_search is set per-k in cmd_run. Needs
+    # pgvector >= 0.8 — fail fast with a clear message instead of a raw error.
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SET hnsw.iterative_scan = 'strict_order'")
+    except psycopg.Error as exc:
+        conn.close()
+        sys.exit(f"pgvector too old for hnsw.iterative_scan (need >= 0.8): {exc}")
+    return conn
 
 
 # ------------------------------------------------------------- corpus/chunk
@@ -220,18 +235,25 @@ def check_ollama(need_chat: bool) -> None:
 
 # ----------------------------------------------------------------- prompt
 
+def _escape_untrusted(value: str) -> str:
+    # mirror of TutorService.EscapeUntrusted: a literal "</" would close the
+    # <excerpts>/<question> delimiters early (CWE-1427, CodeRabbit #96)
+    return value.replace("</", "<\\/")
+
+
 def render_prompt(question: str, chunks: list[dict]) -> str:
     """Mirror of TutorService.BuildPrompt. chunks: [{content, source}]."""
     template = TEMPLATE_PATH.read_text(encoding="utf-8").replace("\r\n", "\n").rstrip("\n")
     if chunks:
-        block = "Excerpts:\n" + "\n".join(
-            f"[{i}] {c['content']}\n    Source: {c['source']}"
+        block = "<excerpts>\nExcerpts:\n" + "\n".join(
+            f"[{i}] {_escape_untrusted(c['content'])}\n    Source: {_escape_untrusted(c['source'])}"
             for i, c in enumerate(chunks, 1)
-        )
+        ) + "\n</excerpts>"
         template = template.replace("{EXCERPTS}", block, 1)
     else:
         template = re.sub(r"\{EXCERPTS\}\n?", "", template, count=1)
-    return template.replace("{QUESTION}", question, 1)
+    return template.replace(
+        "{QUESTION}", "<question>" + _escape_untrusted(question) + "</question>", 1)
 
 
 # ---------------------------------------------------------------- retrieval
@@ -303,15 +325,15 @@ def cmd_seed(args: argparse.Namespace) -> int:
     sections = parse_corpus(CORPUS_PATH.read_text(encoding="utf-8"))
     with connect() as conn, conn.cursor() as cur:
         if args.clean:
-            cur.execute('DELETE FROM "TextbookChunks" WHERE "Source" LIKE %s', (SOURCE_PREFIX + "%",))
+            cur.execute('DELETE FROM "TextbookChunks" WHERE "JobId" = %s', (EVAL_JOB_ID,))
             removed_chunks = cur.rowcount
-            cur.execute('DELETE FROM "TextbookJobs" WHERE "FileName" = %s', (JOB_FILENAME,))
+            cur.execute('DELETE FROM "TextbookJobs" WHERE "Id" = %s', (EVAL_JOB_ID,))
             print(f"cleaned {removed_chunks} prior eval chunks (+{cur.rowcount} job rows)")
 
         cur.execute('SELECT "Id", "Name" FROM "Concepts"')
         concepts = {row["Name"]: row["Id"] for row in cur.fetchall()}
 
-        job_id = str(uuid.uuid4())
+        job_id = EVAL_JOB_ID
         chunks: list[tuple[str, str, str | None]] = []  # (source, content, concept_id)
         for slug, body in sections:
             concept_name = SLUG_TO_CONCEPT.get(slug)
@@ -356,8 +378,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     check_ollama(need_chat=not args.skip_generation)
 
     with connect() as conn, conn.cursor() as cur:
-        cur.execute('SELECT count(*) AS n FROM "TextbookChunks" WHERE "Source" LIKE %s',
-                    (SOURCE_PREFIX + "%",))
+        cur.execute('SELECT count(*) AS n FROM "TextbookChunks" WHERE "JobId" = %s',
+                    (EVAL_JOB_ID,))
         seeded = cur.fetchone()["n"]
         if seeded == 0:
             sys.exit(f"no eval chunks found - run: {Path(sys.argv[0]).name} seed")
@@ -373,6 +395,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                 print(f"WARN: concept '{g['concept']}' missing in DB; running unfiltered")
             ranks = {}
             for k in k_values:
+                # mirror TutorService's ef_search budget for this k (CodeRabbit #96)
+                cur.execute(f"SET hnsw.ef_search = {max(40, 2 * k)}")
                 hits = retrieve(cur, vec, k, concept_id)
                 rank = next((i for i, h in enumerate(hits, 1) if h["Source"] == g["expected_source"]), None)
                 ranks[k] = {

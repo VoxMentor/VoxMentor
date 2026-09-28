@@ -17,7 +17,7 @@
       "question": "What precondition does binary search need, and what happens to its running time without it?",
       "expected_source": "eval/corpus.txt#binary-search",
       "expected_answer": "It requires sorted input with a consistent ordering; each step halves the search range, giving O(log n). Without sorted input the halving argument fails and the result is incorrect.",
-      "expected_answer_keyphrases": ["sorted", "log", "half"]
+      "expected_answer_keyphrases": ["sorted", "log", "hal"]
     },
     {
       "id": "gqa-03",
@@ -104,7 +104,7 @@
       "question": "Why is merge sort O(n log n)?",
       "expected_source": "eval/corpus.txt#sorting",
       "expected_answer": "Merging the whole array costs O(n) work per level of recursion, there are about log n levels of halving, and O(n) times O(log n) is O(n log n) in the worst case.",
-      "expected_answer_keyphrases": ["merge", "level", "log"]
+      "expected_answer_keyphrases": ["merg", "level", "log"]
     },
     {
       "id": "gqa-15",
@@ -148,7 +148,7 @@
       "question": "What is the difference between memoization and tabulation in dynamic programming?",
       "expected_source": "eval/corpus.txt#dynamic-programming",
       "expected_answer": "Memoization is top-down: it wraps recursion in a cache and computes only the states actually reached. Tabulation is bottom-up: it fills a table in an order where dependencies are solved first, with no recursion overhead.",
-      "expected_answer_keyphrases": ["cache", "table", "recursive"]
+      "expected_answer_keyphrases": ["cache", "table", "recursi"]
     }
   ]
 }

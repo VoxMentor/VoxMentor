@@ -140,8 +140,25 @@ public class TutorService : ITutorService
             ? new object[] { conceptId.Value, vector }
             : new object[] { vector };
 
+        // CodeRabbit #96: HNSW explores ~ef_search candidates; the ConceptId
+        // post-filter can exhaust that budget before LIMIT TopK fills. Raise it
+        // for this query and let iterative_scan continue past filtered-out rows
+        // (pgvector >= 0.8 for iterative_scan). Raw: Postgres SET takes no bind
+        // parameters; the value is an int.
+        var efSearch = Math.Max(40, _topK * 2);
+        // IApplicationDbContext is the Application-layer abstraction; the GUC
+        // SETs need the concrete EF DatabaseFacade (prod DI: ApplicationDbContext).
+        var efDb = (DbContext)_db;
+        await using var transaction = await efDb.Database.BeginTransactionAsync(cancellationToken);
+        // concatenated, not interpolated: SET takes no bind params, and an int
+        // formatted invariant is injection-proof (EF1002 otherwise)
+        await efDb.Database.ExecuteSqlRawAsync(
+            "SET LOCAL hnsw.ef_search = " + efSearch.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            cancellationToken);
+        await efDb.Database.ExecuteSqlRawAsync("SET LOCAL hnsw.iterative_scan = 'strict_order'", cancellationToken);
         var chunks = await _db.SqlQueryRaw<RetrievedChunk>(sql, parameters)
             .ToListAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         stopwatch.Stop();
         _logger.LogInformation(
             "Tutor retrieval k={TopK} conceptId={ConceptId} chunks={ChunkCount} distances=[{Distances}] elapsedMs={ElapsedMs}",
@@ -161,7 +178,10 @@ public class TutorService : ITutorService
     /// every claim to a retrieved chunk so citation accuracy is machine-checkable;
     /// the model must say the excerpts lack the information instead of guessing
     /// (anti-hallucination); each excerpt carries its Source so expected-source
-    /// matching in the eval is possible. Do not edit the C# side only — the
+    /// matching in the eval is possible; untrusted fields (question, chunk
+    /// content, source) are wrapped in &lt;excerpts&gt;/&lt;question&gt;
+    /// delimiters and escaped so they cannot inject instructions (CWE-1427).
+    /// Do not edit the C# side only — the
     /// template file drives both prod and eval.
     /// </summary>
     public static string BuildPrompt(string question, IReadOnlyList<RetrievedChunk> chunks)
@@ -187,21 +207,31 @@ public class TutorService : ITutorService
             // explicit '\n' (not AppendLine): prompt bytes must match the
             // Python evaluator's rendering on every OS
             var sb = new StringBuilder();
-            sb.Append("Excerpts:\n");
+            sb.Append("<excerpts>\nExcerpts:\n");
             for (var i = 0; i < chunks.Count; i++)
             {
-                sb.Append('[').Append(i + 1).Append("] ").Append(chunks[i].Content).Append('\n');
-                sb.Append("    Source: ").Append(chunks[i].Source);
+                sb.Append('[').Append(i + 1).Append("] ")
+                    .Append(EscapeUntrusted(chunks[i].Content)).Append('\n');
+                sb.Append("    Source: ").Append(EscapeUntrusted(chunks[i].Source));
                 if (i < chunks.Count - 1)
                 {
                     sb.Append('\n');
                 }
             }
+            sb.Append("\n</excerpts>");
             text = text.Replace("{EXCERPTS}", sb.ToString());
         }
 
-        return text.Replace("{QUESTION}", question);
+        return text.Replace("{QUESTION}", "<question>" + EscapeUntrusted(question) + "</question>");
     }
+
+    /// <summary>
+    /// Escapes a literal "&lt;/" so untrusted text (question, chunk content,
+    /// source names) cannot close the &lt;excerpts&gt;/&lt;question&gt;
+    /// delimiters early (CWE-1427, CodeRabbit #96). Mirrored by
+    /// render_prompt in scripts/eval-tutor.py — keep both in sync.
+    /// </summary>
+    private static string EscapeUntrusted(string value) => value.Replace("</", "<\\/");
 
     private static readonly Lazy<string> PromptTemplate = new(LoadPromptTemplate);
 
