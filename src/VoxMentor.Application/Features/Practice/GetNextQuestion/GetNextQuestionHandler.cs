@@ -43,10 +43,14 @@ public class GetNextQuestionHandler : IRequestHandler<GetNextQuestionQuery, ApiR
 
         var masteryByConcept = masteries.ToDictionary(m => m.ConceptId);
 
-        // Find weakest concept: lowest mastery (unpracticed = 0.1 default prior)
-        var weakestConcept = concepts
-            .OrderBy(c => masteryByConcept.TryGetValue(c.Id, out var m) ? m.MasteryProbability : 0.1f)
-            .First();
+        // Find weakest concept: lowest mastery (unpracticed = 0.1 default prior),
+        // or pin to the requested concept when provided.
+        var weakestConcept = request.ConceptId is { } requestedId
+            ? concepts.FirstOrDefault(c => c.Id == requestedId)
+                ?? throw new NotFoundException("Concept not found.")
+            : concepts
+                .OrderBy(c => masteryByConcept.TryGetValue(c.Id, out var m) ? m.MasteryProbability : 0.1f)
+                .First();
 
         var mastery = masteryByConcept.TryGetValue(weakestConcept.Id, out var m2) ? m2.MasteryProbability : 0.1f;
 
@@ -67,16 +71,33 @@ public class GetNextQuestionHandler : IRequestHandler<GetNextQuestionQuery, ApiR
             .ThenBy(q => q.Title)
             .FirstOrDefaultAsync(cancellationToken);
 
-        // Fallback: if all questions attempted for this concept, try any unanswered question
-        candidate ??= await _db.Questions
-            .AsNoTracking()
-            .Where(q => !attemptedIds.Contains(q.Id))
-            .OrderBy(q => Math.Abs(q.Difficulty - targetDifficulty))
-            .ThenBy(q => q.Title)
-            .FirstOrDefaultAsync(cancellationToken);
+        if (request.ConceptId is not null)
+        {
+            // Filtered mode never leaves the concept: retry an attempted question
+            // rather than falling back to a different concept.
+            candidate ??= await _db.Questions
+                .AsNoTracking()
+                .Where(q => q.ConceptId == weakestConcept.Id)
+                .OrderBy(q => Math.Abs(q.Difficulty - targetDifficulty))
+                .ThenBy(q => q.Title)
+                .FirstOrDefaultAsync(cancellationToken);
 
-        if (candidate is null)
-            throw new NotFoundException("No unanswered questions available.");
+            if (candidate is null)
+                throw new NotFoundException("No questions available for this concept.");
+        }
+        else
+        {
+            // Fallback: if all questions attempted for this concept, try any unanswered question
+            candidate ??= await _db.Questions
+                .AsNoTracking()
+                .Where(q => !attemptedIds.Contains(q.Id))
+                .OrderBy(q => Math.Abs(q.Difficulty - targetDifficulty))
+                .ThenBy(q => q.Title)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (candidate is null)
+                throw new NotFoundException("No unanswered questions available.");
+        }
 
         var conceptName = concepts.First(c => c.Id == candidate.ConceptId).Name;
 

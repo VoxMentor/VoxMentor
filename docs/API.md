@@ -189,8 +189,8 @@ Errors: `404` JD not found / not owned by user.
 
 # 4. Practice & Learning — 🚧 Week 2 in progress (issues #52 questions, #53 mastery, #54 submit-code)
 
-### GET /api/v1/student/next-question?jdId={jdId}
-Adaptive next question. Selection = BKT mastery gap × JD weight; question difficulty targets `1 + mastery×9` (eased after recent failure). `jdId` optional — without it the weakest concept is chosen.
+### GET /api/v1/student/next-question?conceptId={conceptId}
+Adaptive next question. Selection = BKT mastery gap; question difficulty targets `1 + mastery×9`. `conceptId` optional — without it the weakest concept is chosen; with it, a question from that concept only (never falls back to another concept).
 
 Response `200`:
 ```json
@@ -205,7 +205,7 @@ Response `200`:
   "isomorphicInstanceId": "uuid-unique-per-student"
 }
 ```
-Hidden test cases are excluded from the payload. Errors: `404` no JD / no questions in bank.
+Hidden test cases are excluded from the payload. Errors: `404` unknown/missing `conceptId`, no concepts in bank, or no questions in bank.
 
 ### POST /api/v1/student/submit-code
 Submit code → sandboxed execution (Judge0) + AI evaluation + plagiarism check + BKT mastery update.
@@ -268,6 +268,26 @@ Response `200`:
 ```
 Formula: `score = 100 × Σ mastery(topic) × jdWeight(topic)`; `severity = jdWeight × (1 − mastery)`.
 Errors: `404` no JD found.
+
+---
+
+### GET /api/v1/student/submissions?limit={limit}
+Recent code submissions for the authenticated student, newest first. `limit` defaults to 10, clamped to 1–50.
+
+Response `200` (`data`):
+```json
+[
+  {
+    "submissionId": "7f3a…",
+    "questionTitle": "Two Sum",
+    "conceptName": "Arrays",
+    "isCorrect": true,
+    "masteryDelta": 0.15,
+    "createdAt": "2026-01-05T00:00:00Z"
+  }
+]
+```
+`masteryDelta = masteryAfter − masteryBefore`, `null` when the BKT snapshot is missing.
 
 ---
 
