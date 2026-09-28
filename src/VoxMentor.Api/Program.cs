@@ -78,6 +78,20 @@ using (var scope = app.Services.CreateScope())
     if (dbContext.Database.IsRelational())
     {
         await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.MigrateAsync(dbContext.Database);
+        // CodeRabbit #96: production gate — refuse to boot on pgvector < 0.8.
+        // Older versions accept hnsw.iterative_scan as a placeholder and silently
+        // ignore it, so retrieval would degrade without any error anywhere.
+        if (dbContext.Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL")
+        {
+            var pgVer = await dbContext.Database
+                .SqlQuery<string>(VoxMentor.Infrastructure.Persistence.PgvectorVersion.Sql)
+                .FirstOrDefaultAsync();
+            if (!VoxMentor.Infrastructure.Persistence.PgvectorVersion.IsSupported(pgVer))
+            {
+                throw new InvalidOperationException(
+                    $"pgvector >= 0.8.0 required for hnsw.iterative_scan, found: {pgVer ?? "not installed"}");
+            }
+        }
     }
     await RoleSeeder.SeedRolesAsync(services);
 }
