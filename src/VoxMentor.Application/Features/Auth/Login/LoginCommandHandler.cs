@@ -48,7 +48,12 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, ApiResponse<Log
         var (accessToken, accessExpiration) = _jwtTokenGenerator.GenerateAccessToken(user, roles);
         var (refreshToken, refreshExpiration) = _jwtTokenGenerator.GenerateRefreshToken();
 
+        // Login runs unauthenticated (user id null) but must revoke the OTHER
+        // sessions of the user now logging in — bypass the global user filter.
+        // Login runs unauthenticated (expired access cookie) but must revoke
+        // the other sessions of the user now logging in — bypass the filter.
         var activeTokens = await _dbContext.RefreshTokens
+            .IgnoreQueryFilters()
             .Where(t => t.UserId == user.Id && !t.IsRevoked && t.ExpiryTime > DateTimeOffset.UtcNow)
             .ToListAsync(cancellationToken);
 

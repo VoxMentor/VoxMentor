@@ -43,7 +43,7 @@ public class HealthServicePgTests
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseNpgsql(cs, o => o.UseVector())
             .Options;
-        await using var db = new ApplicationDbContext(options);
+        await using var db = new ApplicationDbContext(options, new TestCurrentUser());
         if (!await db.Database.CanConnectAsync()) return; // env-conditional: no server (CI)
 
         var svc = new HealthService(db, NullLogger<HealthService>.Instance);

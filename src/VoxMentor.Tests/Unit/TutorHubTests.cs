@@ -92,7 +92,7 @@ public class TutorHubTests
         var options = new DbContextOptionsBuilder<Infrastructure.Persistence.ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        return new Infrastructure.Persistence.ApplicationDbContext(options);
+        return new Infrastructure.Persistence.ApplicationDbContext(options, new FakeCurrentUser());
     }
 
     private static (TutorHub Hub, FakeClients Clients, Infrastructure.Persistence.ApplicationDbContext Db) CreateHub(

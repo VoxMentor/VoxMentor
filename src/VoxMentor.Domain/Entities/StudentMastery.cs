@@ -1,9 +1,11 @@
+using VoxMentor.Domain.Interfaces;
+
 namespace VoxMentor.Domain.Entities;
 
 /// <summary>
 /// A student's BKT mastery state for one concept, tracked per user-concept pair.
 /// </summary>
-public class StudentMastery
+public class StudentMastery : IUserOwned
 {
     public Guid Id { get; set; }
     public string UserId { get; set; } = string.Empty;
