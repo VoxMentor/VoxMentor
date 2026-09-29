@@ -21,7 +21,10 @@ public class LogoutCommandHandler : IRequestHandler<LogoutCommand, ApiResponse<o
         if (!string.IsNullOrWhiteSpace(request.RefreshToken))
         {
             var tokenHash = _refreshTokenHasher.Hash(request.RefreshToken);
+            // Logout can arrive unauthenticated (expired access cookie); lookup
+            // is by secret hash, so bypass the global user filter (#57).
             var tokenEntity = await _dbContext.RefreshTokens
+                .IgnoreQueryFilters()
                 .FirstOrDefaultAsync(t => t.TokenHash == tokenHash, cancellationToken);
 
             if (tokenEntity != null && !tokenEntity.IsRevoked)

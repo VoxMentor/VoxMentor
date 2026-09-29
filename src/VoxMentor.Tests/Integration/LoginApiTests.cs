@@ -9,10 +9,12 @@ namespace VoxMentor.Tests.Integration;
 
 public class LoginApiTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
     public LoginApiTests(CustomWebApplicationFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
@@ -142,6 +144,35 @@ public class LoginApiTests : IClassFixture<CustomWebApplicationFactory>
         Assert.Contains(HttpStatusCode.Unauthorized, statusCodes);
         Assert.Equal(1, statusCodes.Count(s => s == HttpStatusCode.OK));
         Assert.Equal(1, statusCodes.Count(s => s == HttpStatusCode.Unauthorized));
+    }
+
+    // #57: login revocation must reach the returning user's other sessions
+    // even when the login request itself is unauthenticated (expired access
+    // cookie) — without IgnoreQueryFilters the user filter hides them and
+    // the old refresh token stays alive.
+    [Fact]
+    public async Task Login_FromCookielessClient_RevokesPreviousSession()
+    {
+        var email = $"revoke-{Guid.NewGuid():N}@example.com";
+        var loginRequest = new { email, password = "Password@123" };
+
+        // Session A: registers and logs in; its client keeps session-1 cookies.
+        var clientA = _factory.CreateClient();
+        await clientA.PostAsJsonAsync("/api/v1/auth/register", new { fullName = "Revoke Test User", email, password = "Password@123" });
+        var firstLogin = await clientA.PostAsJsonAsync("/api/v1/auth/login", loginRequest);
+        Assert.Equal(HttpStatusCode.OK, firstLogin.StatusCode);
+
+        // Session B: cookieless client = login with an expired access token.
+        var clientB = _factory.CreateClient();
+        var secondLogin = await clientB.PostAsJsonAsync("/api/v1/auth/login", loginRequest);
+        Assert.Equal(HttpStatusCode.OK, secondLogin.StatusCode);
+
+        // Session A's refresh token must be dead now. (Manual Cookie headers
+        // are shadowed by the client's cookie store, so clientA itself is the
+        // only way to present session 1's token.)
+        var refreshResponse = await clientA.PostAsync("/api/v1/auth/refresh", null);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, refreshResponse.StatusCode);
     }
 
     [Fact]
