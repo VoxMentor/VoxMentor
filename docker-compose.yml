@@ -12,7 +12,9 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U voxmentor"]
+      # -h 127.0.0.1 forces TCP: the temp init server is socket-only,
+      # so a socket check could mark db healthy before the real server listens.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U voxmentor -d voxmentor"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -81,6 +83,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      db-ensure:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:2358/configs || exit 1"]
       interval: 10s
@@ -93,6 +97,10 @@ services:
   judge0-worker:
     image: judge0/judge0:latest
     container_name: voxmentor-judge0-worker
+    # ponytail: upstream judge0 compose runs the worker privileged (isolate
+    # sandbox requirement); local dev only, API bound to 127.0.0.1 - see
+    # github.com/judge0/judge0/security/advisories/GHSA-q7vg-26pg-v5hr
+    privileged: true
     command: ["./scripts/workers"]
     environment:
       - SECRET_KEY=${JUDGE0_SECRET_KEY:?JUDGE0_SECRET_KEY not set - copy .env.example to .env}
@@ -107,6 +115,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      db-ensure:
+        condition: service_completed_successfully
 
   seq:
     image: datalust/seq:2024.3.3
