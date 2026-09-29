@@ -111,7 +111,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.1.0] — 2026-08-XX (Week 1)
+## [1.1.0] — 2026-09-02 (Week 1)
 
 ### Added
 - Project structure (.NET 8 solution with 7 projects)
