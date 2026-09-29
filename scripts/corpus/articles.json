@@ -1,0 +1,545 @@
+{
+  "_comment": "Curated GeeksforGeeks DSA articles, verified live 2026-09-29. Concept keys match Concepts.Name in scripts/seed-dsa-concepts.sql. seed-corpus.py maps each article here to its concept; keyword/TF-IDF auto-mapping only applies to local files in scripts/corpus/source/.",
+  "concepts": {
+    "Variables and Data Types": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/data-types-in-java/",
+        "title": "Java Data Types",
+        "words": 1707
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/data-types-in-c/",
+        "title": "Data Types in C",
+        "words": 1330
+      }
+    ],
+    "Control Flow": [
+      {
+        "url": "https://www.geeksforgeeks.org/loops-in-c/",
+        "title": "Loops in C++",
+        "words": 1533
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/decision-making-in-c/",
+        "title": "Decision Making in C (if , if..else, Nested if, if-else-if )",
+        "words": 883
+      }
+    ],
+    "Functions": [
+      {
+        "url": "https://www.geeksforgeeks.org/functions-in-c/",
+        "title": "Functions in C++",
+        "words": 988
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/functions/",
+        "title": "Classes of Functions",
+        "words": 805
+      }
+    ],
+    "Time Complexity": [
+      {
+        "url": "https://www.geeksforgeeks.org/time-complexity-and-space-complexity/",
+        "title": "Time and Space Complexity",
+        "words": 3381
+      }
+    ],
+    "Space Complexity": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/time-and-space-complexity-analysis-of-bubble-sort/",
+        "title": "Time and Space Complexity Analysis of Bubble Sort",
+        "words": 603
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/time-and-space-complexity-analysis-of-prims-algorithm/",
+        "title": "Time and Space Complexity Analysis of Prim's Algorithm",
+        "words": 562
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/time-and-space-complexity-analysis-of-quick-sort/",
+        "title": "Time Complexity and Space Analysis of Quick Sort",
+        "words": 468
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/time-and-space-complexity-analysis-of-kruskal-algorithm/",
+        "title": "Time and Space Complexity Analysis of Kruskal Algorithm",
+        "words": 397
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/time-and-space-complexity-analysis-of-merge-sort/",
+        "title": "Time Complexity and Space  Analysis of Merge Sort",
+        "words": 382
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/time-and-space-complexity-analysis-of-selection-sort/",
+        "title": "Time and Space complexity analysis of Selection Sort",
+        "words": 274
+      }
+    ],
+    "Arrays": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/largest-sum-contiguous-subarray/",
+        "title": "Maximum Subarray Sum  - Kadane's Algorithm",
+        "words": 2164
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/array-data-structure/",
+        "title": "Array Data Structure",
+        "words": 463
+      }
+    ],
+    "Strings": [
+      {
+        "url": "https://www.geeksforgeeks.org/strings-in-c/",
+        "title": "Strings in C",
+        "words": 1204
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/string-data-structure/",
+        "title": "String in Data Structure",
+        "words": 361
+      }
+    ],
+    "Hash Maps and Sets": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/longest-consecutive-subsequence/",
+        "title": "Longest Consecutive Subsequence",
+        "words": 2441
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/hashing-data-structure/",
+        "title": "Hashing in Data Structure",
+        "words": 419
+      }
+    ],
+    "Singly Linked Lists": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/reverse-a-linked-list/",
+        "title": "Reverse a Linked List",
+        "words": 4804
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/singly-linked-list/",
+        "title": "Singly Linked List Problems",
+        "words": 481
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/linked-list/",
+        "title": "Linked List Data Structure",
+        "words": 462
+      }
+    ],
+    "Doubly Linked Lists": [
+      {
+        "url": "https://www.geeksforgeeks.org/doubly-linked-list/",
+        "title": "Doubly Linked List Tutorial",
+        "words": 1844
+      }
+    ],
+    "Stacks": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/implement-stack-using-queue/",
+        "title": "Implement Stack using Queues",
+        "words": 4405
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/next-greater-element/",
+        "title": "Next Greater Element in Array",
+        "words": 2340
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/stack-data-structure/",
+        "title": "Stack Data Structure",
+        "words": 311
+      }
+    ],
+    "Queues": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/queue-using-stacks/",
+        "title": "Implement Queue using Stacks",
+        "words": 5041
+      }
+    ],
+    "Deque": [
+      {
+        "url": "https://www.geeksforgeeks.org/deque-in-c/",
+        "title": "Deque in C#",
+        "words": 3090
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/deque-cpp-stl/",
+        "title": "Deque in C++ STL",
+        "words": 1631
+      }
+    ],
+    "Recursion": [
+      {
+        "url": "https://www.geeksforgeeks.org/recursion/",
+        "title": "Introduction to Recursion",
+        "words": 3674
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/recursion-in-java/",
+        "title": "Recursion in Java",
+        "words": 1192
+      }
+    ],
+    "Binary Search": [
+      {
+        "url": "https://www.geeksforgeeks.org/binary-search/",
+        "title": "Binary Search",
+        "words": 3561
+      }
+    ],
+    "Two Pointers": [
+      {
+        "url": "https://www.geeksforgeeks.org/longest-palindromic-substring/",
+        "title": "Longest Palindromic Substring",
+        "words": 6955
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/two-pointers-technique/",
+        "title": "Two Pointers Technique",
+        "words": 2996
+      }
+    ],
+    "Sliding Window": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/maximum-of-all-subarrays-of-size-k/",
+        "title": "Sliding Window Maximum (Maximum of All Subarrays of Size K)",
+        "words": 5143
+      }
+    ],
+    "Prefix Sum": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/prefix-sum-array-implementation-applications-competitive-programming/",
+        "title": "Prefix Sum Array - Implementation",
+        "words": 1000
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/understanding-prefix-sums/",
+        "title": "Prefix Sum Technique",
+        "words": 886
+      }
+    ],
+    "Bubble Sort": [
+      {
+        "url": "https://www.geeksforgeeks.org/bubble-sort/",
+        "title": "Bubble Sort",
+        "words": 1862
+      }
+    ],
+    "Selection Sort": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/selection-sort/",
+        "title": "Selection Sort",
+        "words": 2014
+      }
+    ],
+    "Insertion Sort": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/insertion-sort/",
+        "title": "Insertion Sort Algorithm",
+        "words": 2032
+      }
+    ],
+    "Merge Sort": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/merge-two-sorted-arrays/",
+        "title": "Merge two sorted arrays",
+        "words": 3948
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/merge-sort/",
+        "title": "Merge Sort",
+        "words": 3151
+      }
+    ],
+    "Quick Sort": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/quick-sort/",
+        "title": "Quick Sort",
+        "words": 2865
+      }
+    ],
+    "Counting Sort": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/sort-an-array-of-0s-1s-and-2s/",
+        "title": "Sort an array of 0s, 1s and 2s - Dutch National Flag Problem",
+        "words": 3736
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/counting-sort/",
+        "title": "Counting Sort",
+        "words": 2028
+      }
+    ],
+    "Binary Trees": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/binary-tree-representation/",
+        "title": "Binary Tree Representation",
+        "words": 862
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/binary-tree-data-structure/",
+        "title": "Binary Tree Data Structure",
+        "words": 447
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/tree-data-structure/",
+        "title": "Tree Data Structure",
+        "words": 351
+      }
+    ],
+    "Binary Search Trees": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/level-order-traversal-in-spiral-form/",
+        "title": "Level order traversal in spiral form",
+        "words": 6123
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/balanced-binary-tree/",
+        "title": "Balanced Binary Tree",
+        "words": 513
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/binary-search-tree/",
+        "title": "Binary Search Tree",
+        "words": 445
+      }
+    ],
+    "Tree Traversals": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/inorder-traversal-of-binary-tree/",
+        "title": "Inorder Traversal of Binary Tree",
+        "words": 1556
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/tree-traversals-inorder-preorder-and-postorder/",
+        "title": "Tree Traversal Techniques",
+        "words": 618
+      }
+    ],
+    "Heap Data Structure": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/binary-heap/",
+        "title": "Binary Heap",
+        "words": 5094
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/heap/",
+        "title": "Heap Data Structure",
+        "words": 295
+      }
+    ],
+    "Priority Queues": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/priority-queue-set-1-introduction/",
+        "title": "Introduction to Priority Queue",
+        "words": 4092
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/priority-queue-using-array/",
+        "title": "Priority Queue Using Array",
+        "words": 2203
+      }
+    ],
+    "Trie": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/trie-insert-and-search/",
+        "title": "Trie Data Structure",
+        "words": 5633
+      }
+    ],
+    "Graph Representations": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/graph-and-its-representations/",
+        "title": "Representation of Graph",
+        "words": 4973
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/adjacency-matrix/",
+        "title": "Adjacency Matrix Representation",
+        "words": 2059
+      }
+    ],
+    "Breadth-First Search (BFS)": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/breadth-first-search-or-bfs-for-a-graph/",
+        "title": "Breadth First Search or BFS for a Graph",
+        "words": 4422
+      }
+    ],
+    "Depth-First Search (DFS)": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/depth-first-search-or-dfs-for-a-graph/",
+        "title": "Depth First Search or DFS for a Graph",
+        "words": 4225
+      }
+    ],
+    "Topological Sort": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/topological-sorting-indegree-based-solution/",
+        "title": "Topological Sorting using BFS - Kahn's Algorithm",
+        "words": 1861
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/topological-sorting/",
+        "title": "Topological Sorting",
+        "words": 537
+      }
+    ],
+    "Cycle Detection": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/detect-cycle-in-a-graph/",
+        "title": "Detect Cycle in a Directed Graph",
+        "words": 3637
+      }
+    ],
+    "Union-Find": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/union-find/",
+        "title": "Introduction to Disjoint Set (Union-Find Data Structure)",
+        "words": 1926
+      }
+    ],
+    "Dijkstra's Algorithm": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/dijkstras-shortest-path-algorithm-greedy-algo-7/",
+        "title": "Dijkstra's Algorithm",
+        "words": 3537
+      }
+    ],
+    "Bellman-Ford Algorithm": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/bellman-ford-algorithm-simple-implementation/",
+        "title": "Bellman Ford Algorithm (Simple Implementation)",
+        "words": 3530
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/bellman-ford-algorithm-in-python/",
+        "title": "Bellman-Ford algorithm in Python",
+        "words": 533
+      }
+    ],
+    "Floyd-Warshall Algorithm": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/detecting-negative-cycle-using-floyd-warshall/",
+        "title": "Detecting negative cycle using Floyd Warshall",
+        "words": 3012
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/floyd-warshall-algorithm-dp-16/",
+        "title": "Floyd Warshall Algorithm",
+        "words": 2419
+      }
+    ],
+    "Kruskal's Algorithm": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/kruskals-minimum-spanning-tree-algorithm-greedy-algo-2/",
+        "title": "Kruskal’s Minimum Spanning Tree (MST) Algorithm",
+        "words": 2850
+      }
+    ],
+    "Prim's Algorithm": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/prims-minimum-spanning-tree-mst-greedy-algo-5/",
+        "title": "Prim’s Algorithm for Minimum Spanning Tree (MST)",
+        "words": 5977
+      }
+    ],
+    "Weighted Graphs": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/dijkstras-algorithm-for-competitive-programming/",
+        "title": "Dijkstra's Algorithm for Competitive Programming",
+        "words": 12782
+      }
+    ],
+    "Shortest Path Algorithms": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/shortest-path-algorithms-a-complete-guide/",
+        "title": "Shortest Path Algorithm Tutorial with Problems",
+        "words": 2122
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/comparison-between-shortest-path-algorithms/",
+        "title": "Comparison between Shortest Path Algorithms:",
+        "words": 702
+      }
+    ],
+    "Minimum Spanning Tree": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/spanning-tree/",
+        "title": "Spanning Tree",
+        "words": 1340
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/what-is-minimum-spanning-tree-mst/",
+        "title": "What is Minimum Spanning Tree (MST)",
+        "words": 1101
+      }
+    ],
+    "Backtracking": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/rat-in-a-maze/",
+        "title": "Rat in a Maze",
+        "words": 2610
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/backtracking-algorithms/",
+        "title": "Backtracking Algorithm",
+        "words": 676
+      }
+    ],
+    "Memoization": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/tabulation-vs-memoization/",
+        "title": "Tabulation vs Memoization",
+        "words": 2378
+      }
+    ],
+    "Tabulation": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/introduction-to-dynamic-programming-data-structures-and-algorithm-tutorials/",
+        "title": "Dynamic Programming (DP) Introduction",
+        "words": 3551
+      }
+    ],
+    "Knapsack Problem": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/knapsack-problem/",
+        "title": "0/1 Knapsack Problem",
+        "words": 5732
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/fractional-knapsack-problem/",
+        "title": "Fractional Knapsack",
+        "words": 2330
+      }
+    ],
+    "Longest Common Subsequence": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/shortest-common-supersequence/",
+        "title": "Shortest Common Supersequence",
+        "words": 7401
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/longest-common-subsequence-dp-4/",
+        "title": "Longest Common Subsequence (LCS)",
+        "words": 7045
+      }
+    ],
+    "Greedy Algorithms": [
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/job-sequencing-problem/",
+        "title": "Job Sequencing Problem",
+        "words": 3979
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/dsa/greedy-algorithms/",
+        "title": "Greedy Algorithms Tutorial",
+        "words": 626
+      }
+    ]
+  }
+}

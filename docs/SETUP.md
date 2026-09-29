@@ -101,7 +101,9 @@ bash scripts/init-db.sh
 # 4. Seeds 50 DSA concepts + prerequisites
 # 5. Seeds 100 practice questions
 # 6. Seeds BKT parameters per concept
-# 7. Embeds CTCI + GFG content into TextbookChunks (via Ollama nomic-embed-text)
+# 7. Embeds the DSA corpus into TextbookChunks (via Ollama nomic-embed-text)
+#    - see "Step 4b: Seed the RAG corpus" below; this step is a separate
+#      manual run, not part of init-db.sh
 
 # Verify database
 docker compose exec postgres psql -U dev -d voxmentor -c "\dt"
@@ -113,6 +115,51 @@ docker compose exec postgres psql -U dev -d voxmentor -c "SELECT COUNT(*) FROM C
 
 docker compose exec postgres psql -U dev -d voxmentor -c "SELECT COUNT(*) FROM Questions;"
 # Should return: 100
+```
+
+---
+
+## Step 4b: Seed the RAG corpus (optional but recommended)
+
+The tutor answers questions out of `TextbookChunks`. `scripts/seed-corpus.py`
+fetches the curated GeeksforGeeks DSA articles listed in
+`scripts/corpus/articles.json`, groups them per concept, and uploads one file
+per concept through `POST /api/v1/admin/textbook/upload` — 50 concepts, ~680
+embedded chunks. No copyrighted text is committed; only URLs are.
+
+```bash
+pip install -r scripts/requirements-seed.txt
+
+# Dry run: fetch, map and report chunk counts without uploading
+python scripts/seed-corpus.py plan
+
+# Upload (needs a ContentAdmin/SuperAdmin account; register only grants Student)
+VOXMENTOR_ADMIN_EMAIL=admin@example.com VOXMENTOR_ADMIN_PASSWORD=... \
+  python scripts/seed-corpus.py seed
+
+# Re-run without duplicating what is already there
+python scripts/seed-corpus.py seed --clean
+
+# Check the acceptance criteria (>= 500 chunks, >= 5 per concept, cosine search)
+python scripts/seed-corpus.py verify
+```
+
+Uploads go through the `ManageContent` policy, so grant the role once:
+
+```sql
+INSERT INTO "AspNetUserRoles" ("UserId", "RoleId")
+SELECT u."Id", r."Id" FROM "AspNetUsers" u, "AspNetRoles" r
+WHERE u."Email" = 'admin@example.com' AND r."Name" = 'ContentAdmin';
+```
+
+You can also drop your own prep material (e.g. a CTCI PDF converted to text)
+into `scripts/corpus/source/` (gitignored) — those files carry no concept label,
+so the script picks the nearest concept with keyword matching plus TF-IDF.
+
+Offline tests for the mapping/chunking logic:
+
+```bash
+python -m unittest scripts.test_seed_corpus
 ```
 
 ---
