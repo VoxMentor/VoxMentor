@@ -5,19 +5,32 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Pgvector;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Domain.Entities;
+using VoxMentor.Domain.Interfaces;
 
 namespace VoxMentor.Infrastructure.Persistence;
 
 /// <summary>
 /// EF Core context for all VoxMentor entities, including Identity stores.
 /// Configures keys, unique indexes, and concurrency tokens.
+/// Applies a global query filter per <see cref="IUserOwned"/> entity (#57).
 /// </summary>
 public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplicationDbContext
 {
-    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
+    private readonly ICurrentUserService _currentUser;
+
+    public ApplicationDbContext(
+        DbContextOptions<ApplicationDbContext> options,
+        ICurrentUserService currentUser)
         : base(options)
     {
+        _currentUser = currentUser;
     }
+
+    /// <summary>
+    /// The querying user's id (null when unauthenticated / in background jobs).
+    /// Backs the IUserOwned global filters: null matches no rows (fail closed).
+    /// </summary>
+    private string? CurrentUserId => _currentUser.UserId;
 
     public DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
     public DbSet<Concept> Concepts { get; set; } = null!;
@@ -50,6 +63,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         base.OnModelCreating(builder);
         builder.HasPostgresExtension("vector");
 
+        // Global tenant filter (#57): every IUserOwned entity queries as
+        // UserId == current user only; null (unauthenticated/jobs) matches
+        // nothing. Cross-user code must call IgnoreQueryFilters() explicitly.
         builder.Entity<ApplicationUser>(entity =>
         {
             entity.Property(e => e.FullName)
@@ -63,6 +79,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.Property(e => e.TokenHash).IsRequired();
             entity.HasIndex(e => e.TokenHash).IsUnique();
             entity.Property(e => e.Version).IsConcurrencyToken();
+            entity.HasQueryFilter(e => e.UserId == CurrentUserId);
 
             entity.HasOne(e => e.User)
                 .WithMany()
@@ -100,6 +117,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.UserId, e.ConceptId }).IsUnique();
             entity.Property(e => e.RowVersion).IsRowVersion();
+            entity.HasQueryFilter(e => e.UserId == CurrentUserId);
         });
 
         builder.Entity<CodeSubmission>(entity =>
@@ -108,6 +126,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             // Write-once claim: concurrency token so a stale duplicate save fails
             // (WHERE MasteryAppliedAt IS NULL) instead of double-applying mastery.
             entity.Property(e => e.MasteryAppliedAt).IsConcurrencyToken();
+            entity.HasQueryFilter(e => e.UserId == CurrentUserId);
             entity.Property(e => e.CodeEmbedding)
                 .HasColumnType("vector(768)")
                 .HasConversion<VectorToJsonConverter>();
@@ -120,10 +139,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         builder.Entity<MockInterview>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasQueryFilter(e => e.UserId == CurrentUserId);
         });
 
         builder.Entity<AuditLog>(entity =>
         {
+            // Not IUserOwned: UserId is nullable and ops/security views need
+            // cross-user rows. Filtering here would hide other users' audit trail.
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).ValueGeneratedOnAdd();
         });
@@ -138,6 +160,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.UserId).IsRequired();
+            entity.HasQueryFilter(e => e.UserId == CurrentUserId);
             entity.Property(e => e.CompanyName).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Role).IsRequired().HasMaxLength(200);
             entity.Property(e => e.RawText).IsRequired();
@@ -146,6 +169,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
 
         builder.Entity<JdSkillWeight>(entity =>
         {
+            // Not IUserOwned: scoped through its parent JobDescription — callers
+            // must load the parent through its own filter first, then query
+            // weights by that parent id (see GetReadinessHandler). EF does not
+            // push a principal's filter into direct dependent queries.
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.JobDescriptionId, e.SkillName }).IsUnique();
             entity.Property(e => e.SkillName).IsRequired().HasMaxLength(100);
@@ -163,6 +190,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.UserId).IsRequired();
+            entity.HasQueryFilter(e => e.UserId == CurrentUserId);
             entity.Property(e => e.Question).IsRequired().HasMaxLength(2000);
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
             entity.HasIndex(e => new { e.UserId, e.CreatedAt });

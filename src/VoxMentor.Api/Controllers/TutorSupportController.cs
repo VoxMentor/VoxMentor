@@ -68,7 +68,8 @@ public class TutorSupportController : ControllerBase
             return Ok(ApiResponse<IReadOnlyList<TutorSessionSummaryDto>>.SuccessResult(new List<TutorSessionSummaryDto>()));
         }
 
-        IQueryable<TutorSession> query = _db.TutorSessions;
+        // Admin queue: any user's sessions — bypass the global user filter.
+        IQueryable<TutorSession> query = _db.TutorSessions.IgnoreQueryFilters();
         if (!string.IsNullOrWhiteSpace(userId))
         {
             query = query.Where(s => s.UserId == userId);
@@ -107,6 +108,7 @@ public class TutorSupportController : ControllerBase
     public async Task<IActionResult> GetSession(Guid id, CancellationToken cancellationToken)
     {
         var dto = await _db.TutorSessions
+            .IgnoreQueryFilters() // admin review: any user's session
             .Where(s => s.Id == id)
             .Select(s => new TutorSessionDetailDto(
                 s.Id,

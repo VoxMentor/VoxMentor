@@ -37,7 +37,11 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, A
 
         var tokenHash = _refreshTokenHasher.Hash(request.RefreshToken);
 
+        // Refresh routinely runs unauthenticated (expired access cookie) and
+        // looks up by secret hash — possession proves ownership (#57 filter
+        // would hide the row from a null current user).
         var existingToken = await _dbContext.RefreshTokens
+            .IgnoreQueryFilters()
             .Include(t => t.User)
             .FirstOrDefaultAsync(t => t.TokenHash == tokenHash, cancellationToken);
 

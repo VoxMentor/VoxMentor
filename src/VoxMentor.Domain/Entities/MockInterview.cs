@@ -1,8 +1,9 @@
 using VoxMentor.Domain.Enums;
+using VoxMentor.Domain.Interfaces;
 
 namespace VoxMentor.Domain.Entities;
 
-public class MockInterview
+public class MockInterview : IUserOwned
 {
     public Guid Id { get; set; }
     public string UserId { get; set; } = string.Empty;

@@ -23,7 +23,7 @@ public class GetNextQuestionHandlerTests
         var options = new DbContextOptionsBuilder<Infrastructure.Persistence.ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        return new Infrastructure.Persistence.ApplicationDbContext(options);
+        return new Infrastructure.Persistence.ApplicationDbContext(options, new FakeCurrentUserService());
     }
 
     private static async Task<Concept> SeedConceptAsync(

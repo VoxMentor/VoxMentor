@@ -38,7 +38,7 @@ public class UploadTextbookHandlerTests
         var options = new DbContextOptionsBuilder<Infrastructure.Persistence.ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        return new Infrastructure.Persistence.ApplicationDbContext(options);
+        return new Infrastructure.Persistence.ApplicationDbContext(options, new TestCurrentUser());
     }
 
     private static UploadTextbookCommand Command(
