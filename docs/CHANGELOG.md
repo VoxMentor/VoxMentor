@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 - Multi-admin RBAC ([#82](https://github.com/VoxMentor/VoxMentor/issues/82)): seed `SuperAdmin`, `ContentAdmin`, `PlatformAdmin`; named policies `ManageContent` / `ManagePlatform` / `ManageRoles`; SuperAdmin-only role management; Hangfire/ops + audit gated to PlatformAdmin
+- Hangfire nightly BKT parameter tuning job (EM algorithm) ([#57](https://github.com/VoxMentor/VoxMentor/issues/57))
+- Hangfire nightly spaced repetition decay job ([#57](https://github.com/VoxMentor/VoxMentor/issues/57))
 
 ### Planned for Week 6
 - Docker Compose production configuration
@@ -86,7 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.2.0] — 2026-08-XX (Week 2)
+## [1.2.0] — 2026-09-29 (Week 2)
 
 ### Added
 - BKT Engine (pure C#, 4-parameter Bayesian Knowledge Tracing)
@@ -101,8 +103,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AI Code Evaluation (Ollama analyzes correctness, complexity, style, edge cases)
 - Plagiarism Detection (CodeBERT embeddings + AST comparison via tree-sitter)
 - Per-submission idempotency (MasteryApplied claim)
-- Hangfire nightly BKT parameter tuning job (EM algorithm)
-- Hangfire nightly spaced repetition decay job
 
 ### Changed
 - StudentMastery table now includes LastPracticedAt for spaced repetition

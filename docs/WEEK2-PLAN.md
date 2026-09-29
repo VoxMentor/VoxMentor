@@ -188,8 +188,8 @@ BKT EM-tuning (2 AM) + decay (3 AM, floor 0.1) + `IUserOwned` global filter; CI 
 ### Both
 - [ ] All unit tests pass (`dotnet test`)
 - [ ] Frontend builds (`npm run build`)
-- [ ] `CHANGELOG.md` updated for v1.2.0 (#39)
-- [ ] Tag `v1.2.0` created on `main` (#39)
+- [x] `CHANGELOG.md` updated for v1.2.0 (#39)
+- [x] Tag `v1.2.0` created on `main` (#39)
 - [ ] Demo: register → practice question via API → see mastery update
 
 ---
