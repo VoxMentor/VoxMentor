@@ -4,7 +4,7 @@ services:
     container_name: voxmentor-db
     environment:
       - POSTGRES_USER=voxmentor
-      - POSTGRES_PASSWORD=voxmentor
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set - copy .env.example to .env}
       - POSTGRES_DB=voxmentor
     ports:
       - "127.0.0.1:5432:5432"
@@ -16,6 +16,25 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # One-shot: applies idempotent schema prerequisites (vector extension,
+  # judge0 database) on every `up`, so upgraded volumes work too -
+  # postgres only runs docker-entrypoint-initdb.d on a fresh data dir.
+  db-ensure:
+    image: pgvector/pgvector:pg15
+    container_name: voxmentor-db-ensure
+    environment:
+      - POSTGRES_USER=voxmentor
+      - POSTGRES_DB=voxmentor
+      - POSTGRES_HOST=db
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set - copy .env.example to .env}
+    volumes:
+      - ./scripts/init-db.sh:/ensure.sh:ro
+    entrypoint: ["/bin/bash", "/ensure.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
 
   redis:
     image: redis:7-alpine
@@ -38,7 +57,8 @@ services:
     volumes:
       - ollama-data:/root/.ollama
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      # ponytail: ollama image ships no curl - `ollama list` is the image-native probe
+      test: ["CMD", "ollama", "list"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -47,16 +67,19 @@ services:
     image: judge0/judge0:latest
     container_name: voxmentor-judge0
     environment:
-      - SECRET_KEY=voxmentor-judge0-secret-key
+      - SECRET_KEY=${JUDGE0_SECRET_KEY:?JUDGE0_SECRET_KEY not set - copy .env.example to .env}
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
       - POSTGRES_USER=voxmentor
-      - POSTGRES_PASSWORD=voxmentor
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set - copy .env.example to .env}
       - POSTGRES_DB=judge0
+      - REDIS_HOST=redis
     ports:
       - "127.0.0.1:2358:2358"
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:2358/configs || exit 1"]
@@ -64,6 +87,26 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+
+  # Judge0's reference stack runs workers in a separate container;
+  # without it the API accepts submissions but never executes them.
+  judge0-worker:
+    image: judge0/judge0:latest
+    container_name: voxmentor-judge0-worker
+    command: ["./scripts/workers"]
+    environment:
+      - SECRET_KEY=${JUDGE0_SECRET_KEY:?JUDGE0_SECRET_KEY not set - copy .env.example to .env}
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=voxmentor
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set - copy .env.example to .env}
+      - POSTGRES_DB=judge0
+      - REDIS_HOST=redis
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   seq:
     image: datalust/seq:2024.3.3
@@ -82,7 +125,7 @@ services:
   #     context: .
   #     dockerfile: docker/Dockerfile.Gateway
   #   environment:
-  #     - ConnectionStrings__Hangfire=Host=db;Port=5432;Database=voxmentor;Username=voxmentor;Password=voxmentor
+  #     - ConnectionStrings__Hangfire=Host=db;Port=5432;Database=voxmentor;Username=voxmentor;Password=${POSTGRES_PASSWORD}
   #     - ReverseProxy__Clusters__core-api__Destinations__d1__Address=http://api:5000/
   #     - ReverseProxy__Clusters__tutor-service__Destinations__d1__Address=http://tutor:5001/
   #     - ReverseProxy__Clusters__codeexec-service__Destinations__d1__Address=http://codeexec:5002/
