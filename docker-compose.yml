@@ -1,6 +1,6 @@
 services:
   db:
-    image: ankane/pgvector:v15
+    image: pgvector/pgvector:pg15
     container_name: voxmentor-db
     environment:
       - POSTGRES_USER=voxmentor
