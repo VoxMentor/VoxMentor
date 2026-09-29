@@ -1,9 +1,10 @@
 using VoxMentor.Domain.Enums;
+using VoxMentor.Domain.Interfaces;
 
 namespace VoxMentor.Domain.Entities;
 
 /// <summary>A single AI tutor Q&amp;A session row.</summary>
-public class TutorSession
+public class TutorSession : IUserOwned
 {
     public Guid Id { get; set; }
     public string UserId { get; set; } = string.Empty;

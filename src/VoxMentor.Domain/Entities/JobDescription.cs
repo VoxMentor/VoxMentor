@@ -1,6 +1,8 @@
+using VoxMentor.Domain.Interfaces;
+
 namespace VoxMentor.Domain.Entities;
 
-public class JobDescription
+public class JobDescription : IUserOwned
 {
     public Guid Id { get; set; }
     public string UserId { get; set; } = string.Empty;

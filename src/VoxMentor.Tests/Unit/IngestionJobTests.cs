@@ -50,7 +50,7 @@ public class IngestionJobTests
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        return new ApplicationDbContext(options);
+        return new ApplicationDbContext(options, new TestCurrentUser());
     }
 
     private static CodeEmbeddingService CreateEmbedder(StubHandler handler)

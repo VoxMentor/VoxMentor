@@ -72,7 +72,7 @@ public class PlagiarismReviewController : ControllerBase
         }
 
         var items = await (
-            from s in _db.CodeSubmissions
+            from s in _db.CodeSubmissions.IgnoreQueryFilters() // admin queue: all users' submissions
             where s.PlagiarismScore >= minScore
             let email = _db.Users.Where(u => u.Id == s.UserId).Select(u => u.Email).FirstOrDefault()
             orderby s.PlagiarismScore descending, s.CreatedAt descending, s.Id
@@ -93,7 +93,7 @@ public class PlagiarismReviewController : ControllerBase
     public async Task<IActionResult> GetSubmission(Guid id, CancellationToken cancellationToken)
     {
         var dto = await (
-            from s in _db.CodeSubmissions
+            from s in _db.CodeSubmissions.IgnoreQueryFilters() // admin review: any user's submission
             where s.Id == id
             let email = _db.Users.Where(u => u.Id == s.UserId).Select(u => u.Email).FirstOrDefault()
             let title = _db.Questions.Where(q => q.Id == s.QuestionId).Select(q => q.Title).FirstOrDefault()

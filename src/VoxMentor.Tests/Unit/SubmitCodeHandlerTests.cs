@@ -70,7 +70,8 @@ public class SubmitCodeHandlerTests
     private static Infrastructure.Persistence.ApplicationDbContext CreateDb() =>
         new(new DbContextOptionsBuilder<Infrastructure.Persistence.ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options);
+            .Options,
+            new FakeCurrentUserService());
 
     private static async Task<Question> SeedQuestionAsync(
         Infrastructure.Persistence.ApplicationDbContext db,

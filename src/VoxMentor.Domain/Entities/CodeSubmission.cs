@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using Pgvector;
 using VoxMentor.Domain.Enums;
+using VoxMentor.Domain.Interfaces;
 
 namespace VoxMentor.Domain.Entities;
 
@@ -8,7 +9,7 @@ namespace VoxMentor.Domain.Entities;
 /// Represents a student's code submission for a practice question,
 /// including execution results, AI evaluation, and status.
 /// </summary>
-public class CodeSubmission
+public class CodeSubmission : IUserOwned
 {
     /// <summary>Primary key.</summary>
     public Guid Id { get; set; }

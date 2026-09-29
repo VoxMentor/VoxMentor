@@ -1,6 +1,8 @@
+using VoxMentor.Domain.Interfaces;
+
 namespace VoxMentor.Domain.Entities;
 
-public class RefreshToken
+public class RefreshToken : IUserOwned
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string UserId { get; set; } = string.Empty;
