@@ -5,7 +5,13 @@ namespace VoxMentor.Application.Features.Admin.GetQuestions;
 
 /// <summary>
 /// Retrieves a paginated list of questions for admin curation.
+/// Bound from the query string as a class (flat keys: page, pageSize).
 /// </summary>
-/// <param name="Page">1-indexed page number.</param>
-/// <param name="PageSize">Number of items per page (max 100).</param>
-public record GetQuestionsQuery(int Page = 1, int PageSize = 20) : IRequest<ApiResponse<GetQuestionsResultDto>>;
+public class GetQuestionsQuery : IRequest<ApiResponse<GetQuestionsResultDto>>
+{
+    /// <summary>1-indexed page number.</summary>
+    public int Page { get; set; } = 1;
+
+    /// <summary>Number of items per page (max 100).</summary>
+    public int PageSize { get; set; } = 20;
+}

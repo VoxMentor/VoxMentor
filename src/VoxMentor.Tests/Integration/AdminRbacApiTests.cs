@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using VoxMentor.Api.Controllers;
 using VoxMentor.Application.Common.Models;
+using VoxMentor.Application.Features.Admin.GetQuestions;
 using VoxMentor.Domain.Entities;
 using Xunit;
 
@@ -221,6 +222,39 @@ public class AdminRbacApiTests : IClassFixture<CustomWebApplicationFactory>
         var response = await _client.SendAsync(Request(HttpMethod.Get, "/api/v1/admin/questions", cookie));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    /// <summary>Flat query keys bind through the GetQuestionsQuery class (#85).</summary>
+    [Fact]
+    public async Task Questions_FlatQueryKeys_BindPaging()
+    {
+        var (cookie, _) = await LoginWithRoleAsync("ContentAdmin");
+
+        var response = await _client.SendAsync(
+            Request(HttpMethod.Get, "/api/v1/admin/questions?page=2&pageSize=5", cookie));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<ApiResponse<GetQuestionsResultDto>>();
+        Assert.NotNull(result);
+        Assert.True(result.Success);
+        Assert.Equal(2, result.Data!.Page);
+        Assert.Equal(5, result.Data.PageSize);
+    }
+
+    /// <summary>Omitted query string falls back to the class property defaults (#85).</summary>
+    [Fact]
+    public async Task Questions_NoQueryString_UsesDefaults()
+    {
+        var (cookie, _) = await LoginWithRoleAsync("ContentAdmin");
+
+        var response = await _client.SendAsync(Request(HttpMethod.Get, "/api/v1/admin/questions", cookie));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<ApiResponse<GetQuestionsResultDto>>();
+        Assert.NotNull(result);
+        Assert.True(result.Success);
+        Assert.Equal(1, result.Data!.Page);
+        Assert.Equal(20, result.Data.PageSize);
     }
 
     [Fact]
