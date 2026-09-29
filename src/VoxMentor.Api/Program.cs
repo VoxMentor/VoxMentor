@@ -8,6 +8,7 @@ using VoxMentor.Api.Services;
 using VoxMentor.Application;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Infrastructure;
+using VoxMentor.Infrastructure.Jobs;
 using VoxMentor.Infrastructure.Persistence.Seeders;
 using VoxMentor.Infrastructure.Services;
 
@@ -120,6 +121,22 @@ if (app.Environment.IsDevelopment() && hangfireEnabled)
     app.MapHangfireDashboardWithAuthorizationPolicy(
         authorizationPolicyName: Policies.ManagePlatform,
         pattern: "/hangfire");
+}
+
+// Nightly jobs (#57): UTC crons — BKT EM tuning 02:00, spaced-repetition
+// decay 03:00. AddOrUpdate is idempotent, so re-registration is a no-op.
+if (hangfireEnabled)
+{
+    using var scope = app.Services.CreateScope();
+    var manager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+    manager.AddOrUpdate<BktParameterTuningJob>(
+        "bkt-parameter-tuning",
+        job => job.ExecuteAsync(CancellationToken.None),
+        "0 2 * * *");
+    manager.AddOrUpdate<SpacedRepetitionDecayJob>(
+        "spaced-repetition-decay",
+        job => job.ExecuteAsync(CancellationToken.None),
+        "0 3 * * *");
 }
 
 app.MapHub<TutorHub>("/hubs/tutor");

@@ -177,7 +177,7 @@ BKT EM-tuning (2 AM) + decay (3 AM, floor 0.1) + `IUserOwned` global filter; CI 
 - [ ] AI evaluates code quality (#31)
 - [ ] Plagiarism flags similar submissions (#56)
 - [ ] Per-submission idempotency holds (#51)
-- [ ] Hangfire jobs configured + query filter (#57)
+- [x] Hangfire jobs configured + query filter (#57)
 - [ ] CI green on every PR (#38)
 
 ### Frontend

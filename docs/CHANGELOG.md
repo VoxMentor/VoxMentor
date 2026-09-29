@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Tutor retrieval + prompt evaluation harness ([#77](https://github.com/VoxMentor/VoxMentor/issues/77)): `scripts/eval-tutor.py` seeds a tagged eval corpus and scores 20 golden Q&As (recall@k/MRR sweep at k=3/5/7, citation precision, keyphrase coverage, latency) with pass/fail gates; baseline snapshot in `scripts/eval/baseline.md`
+- Hangfire nightly BKT parameter tuning job (EM algorithm) ([#57](https://github.com/VoxMentor/VoxMentor/issues/57))
+- Hangfire nightly spaced repetition decay job ([#57](https://github.com/VoxMentor/VoxMentor/issues/57))
 
 ### Changed
 - Tutor prompt moved to single-source `prompts/tutor-prompt.txt` (embedded by C#, rendered by the eval): numbered `[n]` citations, refuse-to-guess instruction ([#77](https://github.com/VoxMentor/VoxMentor/issues/77))
@@ -21,8 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 - Multi-admin RBAC ([#82](https://github.com/VoxMentor/VoxMentor/issues/82)): seed `SuperAdmin`, `ContentAdmin`, `PlatformAdmin`; named policies `ManageContent` / `ManagePlatform` / `ManageRoles`; SuperAdmin-only role management; Hangfire/ops + audit gated to PlatformAdmin
-- Hangfire nightly BKT parameter tuning job (EM algorithm) ([#57](https://github.com/VoxMentor/VoxMentor/issues/57))
-- Hangfire nightly spaced repetition decay job ([#57](https://github.com/VoxMentor/VoxMentor/issues/57))
 
 ### Planned for Week 6
 - Docker Compose production configuration
