@@ -21,6 +21,7 @@ public class HealthService : IHealthService
     {
         var checks = new Dictionary<string, string>();
         var isHealthy = true;
+        var postgresOk = false;
 
         try
         {
@@ -28,6 +29,7 @@ public class HealthService : IHealthService
             if (canConnect)
             {
                 checks["postgres"] = "Healthy";
+                postgresOk = true;
             }
             else
             {
@@ -45,32 +47,42 @@ public class HealthService : IHealthService
             isHealthy = false;
         }
 
-        try
+        // CodeRabbit #96: skip the second connection attempt during an outage —
+        // the postgres check already failed, so report the version as Unknown.
+        if (!postgresOk)
         {
-            var ver = await _dbContext.Database
-                .SqlQuery<string>(PgvectorVersion.Sql)
-                .FirstOrDefaultAsync(cancellationToken);
-            if (string.IsNullOrEmpty(ver))
-            {
-                checks["pgvector"] = "Missing";
-                isHealthy = false;
-            }
-            else
-            {
-                var ok = PgvectorVersion.IsSupported(ver);
-                checks["pgvector"] = ok ? $"{ver} (ok)" : $"{ver} < 0.8.0";
-                if (!ok) isHealthy = false;
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "pgvector version check failed");
             checks["pgvector"] = "Unknown";
             isHealthy = false;
+        }
+        else
+        {
+            try
+            {
+                var ver = await _dbContext.Database
+                    .SqlQuery<string>(PgvectorVersion.Sql)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (string.IsNullOrEmpty(ver))
+                {
+                    checks["pgvector"] = "Missing";
+                    isHealthy = false;
+                }
+                else
+                {
+                    var ok = PgvectorVersion.IsSupported(ver);
+                    checks["pgvector"] = ok ? $"{ver} (ok)" : $"{ver} < 0.8.0";
+                    if (!ok) isHealthy = false;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "pgvector version check failed");
+                checks["pgvector"] = "Unknown";
+                isHealthy = false;
+            }
         }
 
         return new HealthCheckResultDto
