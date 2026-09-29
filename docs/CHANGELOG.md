@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Tutor retrieval + prompt evaluation harness ([#77](https://github.com/VoxMentor/VoxMentor/issues/77)): `scripts/eval-tutor.py` seeds a tagged eval corpus and scores 20 golden Q&As (recall@k/MRR sweep at k=3/5/7, citation precision, keyphrase coverage, latency) with pass/fail gates; baseline snapshot in `scripts/eval/baseline.md`
+
+### Changed
+- Tutor prompt moved to single-source `prompts/tutor-prompt.txt` (embedded by C#, rendered by the eval): numbered `[n]` citations, refuse-to-guess instruction ([#77](https://github.com/VoxMentor/VoxMentor/issues/77))
+- Tutor retrieval: `Rag:TopK` config (default 5, replaces hardcoded `LIMIT 5`); per-query metrics logged (k, concept, chunk cosine distances, elapsed ms) ([#77](https://github.com/VoxMentor/VoxMentor/issues/77))
+
+### Fixed
+- Tutor chunk retrieval returned 0–1 rows: the IVFFlat embedding index on a small `TextbookChunks` table probes one mostly-empty list under `LIMIT` plans — replaced with HNSW (same as `IX_CodeSubmissions_CodeEmbedding`), migration `SwitchTextbookEmbeddingIndexToHnsw` ([#77](https://github.com/VoxMentor/VoxMentor/issues/77))
+
 ### Planned
 - Multi-admin RBAC ([#82](https://github.com/VoxMentor/VoxMentor/issues/82)): seed `SuperAdmin`, `ContentAdmin`, `PlatformAdmin`; named policies `ManageContent` / `ManagePlatform` / `ManageRoles`; SuperAdmin-only role management; Hangfire/ops + audit gated to PlatformAdmin
 

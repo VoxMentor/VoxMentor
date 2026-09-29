@@ -1,0 +1,154 @@
+{
+  "gates": {
+    "min_recall_at_winner": 0.8,
+    "min_citation_precision": 0.8,
+    "max_avg_latency_s": 8.0
+  },
+  "golden": [
+    {
+      "id": "gqa-01",
+      "question": "Why is appending to a dynamic array O(1) if it sometimes has to copy everything?",
+      "expected_source": "eval/corpus.txt#big-o",
+      "expected_answer": "It is O(1) amortized: the backing store doubles when it fills, and the total copy work across a sequence of appends stays bounded by a constant factor of n, so any single append may copy but the average per append is constant.",
+      "expected_answer_keyphrases": ["amortized", "doubl", "copy"]
+    },
+    {
+      "id": "gqa-02",
+      "question": "What precondition does binary search need, and what happens to its running time without it?",
+      "expected_source": "eval/corpus.txt#binary-search",
+      "expected_answer": "It requires sorted input with a consistent ordering; each step halves the search range, giving O(log n). Without sorted input the halving argument fails and the result is incorrect.",
+      "expected_answer_keyphrases": ["sorted", "log", "hal"]
+    },
+    {
+      "id": "gqa-03",
+      "question": "Why does inserting an element into the middle of an array cost O(n)?",
+      "expected_source": "eval/corpus.txt#arrays",
+      "expected_answer": "Because every later element must shift to keep the data contiguous, so a single insert can touch O(n) elements.",
+      "expected_answer_keyphrases": ["shift", "o(n)", "contigu"]
+    },
+    {
+      "id": "gqa-04",
+      "question": "Both arrays and linked lists are O(n) to traverse. Why do arrays usually win in practice?",
+      "expected_source": "eval/corpus.txt#arrays",
+      "expected_answer": "Elements sit next to each other in contiguous memory, giving excellent spatial locality that hardware prefetchers exploit, while linked-list nodes are scattered and require pointer chasing.",
+      "expected_answer_keyphrases": ["contiguous", "locality", "cache"]
+    },
+    {
+      "id": "gqa-05",
+      "question": "Why is concatenating strings one at a time slow, and what should you do instead?",
+      "expected_source": "eval/corpus.txt#strings",
+      "expected_answer": "Each concatenation copies both sides, so concatenating n short strings can cost O(n^2) characters copied; use a builder or join so each piece is copied exactly once for total work linear in the final length.",
+      "expected_answer_keyphrases": ["cop", "builder"]
+    },
+    {
+      "id": "gqa-06",
+      "question": "How does a hash map achieve O(1) average-time lookups?",
+      "concept": "Hash Maps and Sets",
+      "expected_source": "eval/corpus.txt#hash-maps",
+      "expected_answer": "It indexes entries by a hash of the key, so lookup computes the hash and goes straight to the matching bucket; with good hash functions and resizing this is constant time on average, though the worst case is O(n) when all keys collide.",
+      "expected_answer_keyphrases": ["hash", "bucket", "average"]
+    },
+    {
+      "id": "gqa-07",
+      "question": "How do you turn the two-sum problem from O(n^2) into O(n) using a hash map?",
+      "expected_source": "eval/corpus.txt#hash-maps",
+      "expected_answer": "Scan once and for each value ask whether its complement (target minus value) was already seen; the map gives constant-time membership, so a single pass solves it in O(n) instead of checking all pairs.",
+      "expected_answer_keyphrases": ["complement", "o(n)", "hash"]
+    },
+    {
+      "id": "gqa-08",
+      "question": "How do you reverse a singly linked list in place?",
+      "expected_source": "eval/corpus.txt#linked-lists",
+      "expected_answer": "Keep three pointers: previous starting null, current walking the list, and flip current's next pointer to previous before advancing. This runs in O(n) time with O(1) extra space.",
+      "expected_answer_keyphrases": ["pointer", "o(1)", "null"]
+    },
+    {
+      "id": "gqa-09",
+      "question": "How does Floyd's tortoise and hare algorithm detect a cycle in a linked list?",
+      "expected_source": "eval/corpus.txt#linked-lists",
+      "expected_answer": "A slow pointer advances one node and a fast pointer advances two; if a cycle exists they meet inside it, and if not the fast pointer reaches the end. It uses O(1) space.",
+      "expected_answer_keyphrases": ["slow", "fast", "meet"]
+    },
+    {
+      "id": "gqa-10",
+      "question": "Why is removing the front element from a queue implemented as a plain array O(n), and what fixes it?",
+      "expected_source": "eval/corpus.txt#stacks-queues",
+      "expected_answer": "Because every remaining element must shift forward to fill the gap, making each dequeue O(n); a circular buffer with head and tail indices fixes this to O(1) amortized.",
+      "expected_answer_keyphrases": ["shift", "circular", "o(1)"]
+    },
+    {
+      "id": "gqa-11",
+      "question": "How do you find two numbers in a sorted array that add up to a target value?",
+      "concept": "Two Pointers",
+      "expected_source": "eval/corpus.txt#two-pointers",
+      "expected_answer": "Start one pointer at the left end and one at the right end. If the sum is too small advance the left pointer; if too large move the right pointer back; each step discards at least one candidate, giving O(n) after the sort.",
+      "expected_answer_keyphrases": ["sort", "left", "right"]
+    },
+    {
+      "id": "gqa-12",
+      "question": "What makes the sliding window technique O(n) instead of O(n^2)?",
+      "expected_source": "eval/corpus.txt#sliding-window",
+      "expected_answer": "Each index enters and leaves the window at most once during the whole sweep, so the entire pass is O(n) with small state, replacing the O(n^2) enumeration of all subarrays.",
+      "expected_answer_keyphrases": ["each", "once", "o(n)"]
+    },
+    {
+      "id": "gqa-13",
+      "question": "Why does binary search run in O(log n)?",
+      "concept": "Binary Search",
+      "expected_source": "eval/corpus.txt#binary-search",
+      "expected_answer": "Each comparison discards half the remaining elements, so the range sizes n, n/2, n/4 ... reach 1 after about log2(n) steps.",
+      "expected_answer_keyphrases": ["half", "log", "sorted"]
+    },
+    {
+      "id": "gqa-14",
+      "question": "Why is merge sort O(n log n)?",
+      "expected_source": "eval/corpus.txt#sorting",
+      "expected_answer": "Merging the whole array costs O(n) work per level of recursion, there are about log n levels of halving, and O(n) times O(log n) is O(n log n) in the worst case.",
+      "expected_answer_keyphrases": ["merg", "level", "log"]
+    },
+    {
+      "id": "gqa-15",
+      "question": "What happens to binary search tree operations if you insert values in sorted order and never balance?",
+      "expected_source": "eval/corpus.txt#bst",
+      "expected_answer": "The tree degenerates into a chain of height n, so search, insert, and delete that should be O(log n) degrade to O(n) because every operation walks a path of length n.",
+      "expected_answer_keyphrases": ["height", "o(n)", "degenerat"]
+    },
+    {
+      "id": "gqa-16",
+      "question": "Which tree traversal visits binary search tree values in sorted order?",
+      "expected_source": "eval/corpus.txt#tree-traversals",
+      "expected_answer": "Inorder traversal: visiting left subtree, node, then right subtree on a BST yields ascending sorted order.",
+      "expected_answer_keyphrases": ["inorder", "left", "sorted"]
+    },
+    {
+      "id": "gqa-17",
+      "question": "Why is inserting into a heap O(log n)?",
+      "expected_source": "eval/corpus.txt#heaps",
+      "expected_answer": "A heap is a complete binary tree, so its height is O(log n); appending the new element and sifting it up while it violates the parent ordering walks at most that height.",
+      "expected_answer_keyphrases": ["log", "complete", "sift"]
+    },
+    {
+      "id": "gqa-18",
+      "question": "Why does breadth-first search find shortest paths in an unweighted graph?",
+      "concept": "Breadth-First Search (BFS)",
+      "expected_source": "eval/corpus.txt#bfs-dfs",
+      "expected_answer": "BFS uses a queue and explores in layers by distance from the start, so the first time it reaches a node it has followed a path with the fewest edges; that path is a shortest path when all edges weigh the same.",
+      "expected_answer_keyphrases": ["queue", "distance", "shortest"]
+    },
+    {
+      "id": "gqa-19",
+      "question": "When is a greedy algorithm correct, and how is that usually proven?",
+      "concept": "Greedy Algorithms",
+      "expected_source": "eval/corpus.txt#greedy",
+      "expected_answer": "When the greedy-choice property holds: an optimal solution contains the greedy pick, so the remaining problem is smaller and optimal. Proofs use an exchange argument showing any optimal solution can be swapped to the greedy one without getting worse.",
+      "expected_answer_keyphrases": ["optimal", "greedy", "exchange"]
+    },
+    {
+      "id": "gqa-20",
+      "question": "What is the difference between memoization and tabulation in dynamic programming?",
+      "expected_source": "eval/corpus.txt#dynamic-programming",
+      "expected_answer": "Memoization is top-down: it wraps recursion in a cache and computes only the states actually reached. Tabulation is bottom-up: it fills a table in an order where dependencies are solved first, with no recursion overhead.",
+      "expected_answer_keyphrases": ["cache", "table", "recursi"]
+    }
+  ]
+}

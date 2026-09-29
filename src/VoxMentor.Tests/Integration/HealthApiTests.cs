@@ -26,5 +26,6 @@ public class HealthApiTests : IClassFixture<CustomWebApplicationFactory>
         Assert.True(result.Status == "Healthy" || result.Status == "Unhealthy");
         Assert.NotNull(result.Checks);
         Assert.True(result.Checks.ContainsKey("postgres"));
+        Assert.True(result.Checks.ContainsKey("pgvector"));
     }
 }

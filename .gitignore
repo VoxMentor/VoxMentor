@@ -69,6 +69,8 @@ pip-debug.log
 *.egg-info/
 dist/
 build/
+# tutor eval run output (#77)
+scripts/eval/report.json
 
 # ===== Docker =====
 *.log
