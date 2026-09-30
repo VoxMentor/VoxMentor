@@ -115,6 +115,33 @@ docker compose exec postgres psql -U dev -d voxmentor -c "SELECT COUNT(*) FROM Q
 # Should return: 100
 ```
 
+### Nightly background jobs
+
+Two Hangfire jobs run inside the API, registered at startup as recurring jobs:
+
+| Job | Cron (UTC) | What it does |
+|---|---|---|
+| `bkt-parameter-tuning` | `0 2 * * *` | EM-optimises each concept's BKT slip/guess/learn from all users' scored submissions (concepts with 50+ submissions) |
+| `spaced-repetition-decay` | `0 3 * * *` | Mastery rows idle more than 7 days lose 5% per idle day, down to a 0.1 floor |
+
+They need a Hangfire connection string. `ConnectionStrings:Hangfire` wins, and
+the API falls back to `ConnectionStrings:DefaultConnection`, so a normal dev
+setup needs no extra config — the jobs appear under **Recurring jobs** on
+`/hangfire` and the startup log confirms both registered. If neither
+connection string is set the API logs a warning and the jobs silently do not
+exist; textbook uploads also return 500 in that state.
+
+Notes:
+
+- `/hangfire` is mapped in Development only and needs the `PlatformAdmin` role.
+- Both jobs read and write the database directly, cross-tenant, so the global
+  user filter does not apply to them.
+- Neither job calls Ollama — the EM tuning is pure maths over stored
+  submissions. (`nomic-embed-text` is only needed by the textbook ingestion
+  pipeline, not by these two.)
+- `VoxMentor.Gateway` deliberately runs no Hangfire worker; all job execution
+  happens in the API.
+
 ---
 
 ## Step 5: Run the Backend
