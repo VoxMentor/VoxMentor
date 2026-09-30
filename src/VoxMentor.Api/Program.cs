@@ -18,8 +18,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
 
-// Hangfire — textbook ingestion (#70). ConnectionStrings:Hangfire wins, falls back
-// to DefaultConnection; explicit empty string (integration tests) disables it.
+// Hangfire — textbook ingestion (#70) and the nightly jobs (#57).
+// ConnectionStrings:Hangfire wins, falls back to DefaultConnection; explicit
+// empty string (integration tests) disables it.
 var hangfireCs = builder.Configuration.GetConnectionString("Hangfire")
     ?? builder.Configuration.GetConnectionString("DefaultConnection");
 var hangfireEnabled = !string.IsNullOrWhiteSpace(hangfireCs);
@@ -70,6 +71,15 @@ builder.Services.AddAuthorization(options =>
 });
 
 var app = builder.Build();
+
+// Without this the two nightly jobs silently never exist: the AddOrUpdate block
+// further down is skipped and nothing in the log says so (#57).
+if (!hangfireEnabled)
+{
+    app.Logger.LogWarning(
+        "Hangfire disabled (neither ConnectionStrings:Hangfire nor DefaultConnection is set): "
+        + "textbook uploads will return 500 and the BKT tuning + spaced-repetition jobs will not run.");
+}
 
 // Seed Roles and Migrate DB
 using (var scope = app.Services.CreateScope())
@@ -137,6 +147,9 @@ if (hangfireEnabled)
         "spaced-repetition-decay",
         job => job.ExecuteAsync(CancellationToken.None),
         "0 3 * * *");
+    app.Logger.LogInformation(
+        "Hangfire: registered nightly jobs bkt-parameter-tuning (0 2 * * *) and "
+        + "spaced-repetition-decay (0 3 * * *), both UTC.");
 }
 
 app.MapHub<TutorHub>("/hubs/tutor");
