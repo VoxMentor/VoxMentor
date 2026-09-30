@@ -126,8 +126,28 @@ export interface SubmissionItem {
   createdAt: string;
 }
 
-export interface NextQuestion {
-  questionId: string;
+export interface StudentQuestion {
+  id: string;
+  conceptId: string;
+  conceptName: string;
+  title: string;
+  description: string;
+  questionType: string;
+  difficulty: number;
+  exampleCount: number;
+  totalTestCases: number;
+  hiddenTestCaseCount: number;
+}
+
+export interface QuestionListResult {
+  questions: StudentQuestion[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface QuestionDetail {
+  id: string;
   conceptId: string;
   conceptName: string;
   title: string;
@@ -139,6 +159,8 @@ export interface NextQuestion {
   starterCode: string[];
   visibleTestCases: string[];
   rubric: string[];
+  totalTestCases: number;
+  hiddenTestCaseCount: number;
 }
 
 export const api = {
@@ -166,10 +188,22 @@ export const api = {
   submissions: (limit = 10) =>
     request<SubmissionItem[]>(`/v1/student/submissions?limit=${limit}`),
 
-  nextQuestion: (conceptId?: string) =>
-    request<NextQuestion>(
-      `/v1/student/next-question${conceptId ? `?conceptId=${encodeURIComponent(conceptId)}` : ""}`
-    ),
+  questions: (params: {
+    conceptId?: string;
+    difficulty?: number;
+    page?: number;
+    pageSize?: number;
+  } = {}) => {
+    const q = new URLSearchParams();
+    if (params.conceptId) q.set("conceptId", params.conceptId);
+    if (params.difficulty != null) q.set("difficulty", String(params.difficulty));
+    if (params.page) q.set("page", String(params.page));
+    if (params.pageSize) q.set("pageSize", String(params.pageSize));
+    const qs = q.toString();
+    return request<QuestionListResult>(`/v1/questions${qs ? `?${qs}` : ""}`);
+  },
+
+  question: (id: string) => request<QuestionDetail>(`/v1/questions/${encodeURIComponent(id)}`),
 };
 
 export { ApiError };
