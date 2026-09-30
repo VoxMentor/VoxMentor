@@ -423,7 +423,11 @@ def report(built: list[dict]) -> int:
     else:
         print("every concept has at least 5 chunks")
     missing = [b["concept"] for b in built if not b["conceptId"]]
-    if missing:
+    if len(missing) == len(built):
+        # every one unresolved means the Concepts lookup failed wholesale, so
+        # naming all 50 concepts buries the real problem
+        print("no concept ids resolved at all - the Concepts table was unreadable")
+    elif missing:
         print("no Concepts row (chunks stored without ConceptId): " + ", ".join(missing))
     return total
 
