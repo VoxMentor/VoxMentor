@@ -106,14 +106,14 @@ bash scripts/init-db.sh
 #      manual run, not part of init-db.sh
 
 # Verify database
-docker compose exec postgres psql -U dev -d voxmentor -c "\dt"
+docker compose exec db psql -U voxmentor -d voxmentor -c "\dt"
 # Should list all tables: AspNetUsers, Concepts, Prerequisites, Questions, etc.
 
 # Verify seed data
-docker compose exec postgres psql -U dev -d voxmentor -c "SELECT COUNT(*) FROM Concepts;"
+docker compose exec db psql -U voxmentor -d voxmentor -c "SELECT COUNT(*) FROM Concepts;"
 # Should return: 50
 
-docker compose exec postgres psql -U dev -d voxmentor -c "SELECT COUNT(*) FROM Questions;"
+docker compose exec db psql -U voxmentor -d voxmentor -c "SELECT COUNT(*) FROM Questions;"
 # Should return: 100
 ```
 
@@ -320,7 +320,7 @@ docker compose restart ollama
 
 ```bash
 # Connect to Postgres
-docker compose exec -it postgres psql -U dev -d voxmentor
+docker compose exec -it db psql -U voxmentor -d voxmentor
 
 # Check tables
 \dt
@@ -329,8 +329,8 @@ docker compose exec -it postgres psql -U dev -d voxmentor
 dotnet ef database update --project src/VoxMentor.Infrastructure --startup-project src/VoxMentor.Api
 
 # Re-seed data
-docker compose exec postgres psql -U dev -d voxmentor -f scripts/seed-dsa-concepts.sql
-docker compose exec postgres psql -U dev -d voxmentor -f scripts/seed-questions.sql
+docker compose exec db psql -U voxmentor -d voxmentor -f scripts/seed-dsa-concepts.sql
+docker compose exec db psql -U voxmentor -d voxmentor -f scripts/seed-questions.sql
 ```
 
 ### Frontend can't connect to backend
