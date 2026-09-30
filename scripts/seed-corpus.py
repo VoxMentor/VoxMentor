@@ -331,12 +331,16 @@ def build_files(plan: dict[str, list[dict]], workdir: Path,
 # ------------------------------------------------------------------ postgres
 
 def psql_cmd() -> list[str]:
-    """Plain psql when VOXMENTOR_DB is set, else psql inside the compose Postgres."""
+    """Plain psql when VOXMENTOR_DB is set, else psql inside the compose db container.
+
+    Service and role names follow docker-compose.yml: the service is `db` (it
+    used to be `postgres`) and the role/database are both `voxmentor`.
+    """
     dsn = os.environ.get("VOXMENTOR_DB")
     if dsn:
         return ["psql", dsn]
-    return ["docker", "compose", "exec", "-T", "postgres", "psql",
-            "-U", os.environ.get("VOXMENTOR_PGUSER", "dev"),
+    return ["docker", "compose", "exec", "-T", "db", "psql",
+            "-U", os.environ.get("VOXMENTOR_PGUSER", "voxmentor"),
             "-d", os.environ.get("VOXMENTOR_PGDATABASE", "voxmentor")]
 
 
