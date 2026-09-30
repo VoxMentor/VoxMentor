@@ -1,7 +1,6 @@
 using Serilog;
 using Hangfire;
 using Hangfire.PostgreSql;
-using VoxMentor.Gateway.Jobs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,18 +33,7 @@ app.UseSerilogRequestLogging();
 app.MapReverseProxy();
 
 // Hangfire dashboard removed (#82): Gateway has no auth stack, so it cannot be
-// role-gated here. Jobs registered here are visible via the gated API dashboard
-// only when both services point ConnectionStrings:Hangfire at the same database.
-
-// Register nightly job
-if (!string.IsNullOrEmpty(hangfireConnectionString))
-{
-    using var scope = app.Services.CreateScope();
-    var manager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
-    manager.AddOrUpdate<NightlyJob>(
-        "nightly-cleanup",
-        job => job.ExecuteAsync(CancellationToken.None),
-        Cron.Daily);
-}
+// role-gated here — use the API's gated /hangfire dashboard instead. Nightly
+// jobs live in VoxMentor.Api and register against the same Hangfire storage.
 
 app.Run();
