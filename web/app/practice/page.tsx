@@ -55,7 +55,6 @@ function PracticeContent({
         key: string;
         ok: boolean;
         questions: StudentQuestion[];
-        totalCount: number;
         message?: string;
       }
     | null
@@ -77,10 +76,6 @@ function PracticeContent({
     listState?.key === listKey && !listState.ok ? (listState.message ?? "Failed to load questions.") : null;
   const questions = useMemo(
     () => (listOk && listState ? listState.questions : []),
-    [listOk, listState]
-  );
-  const totalCount = useMemo(
-    () => (listOk && listState ? listState.totalCount : 0),
     [listOk, listState]
   );
 
@@ -122,7 +117,7 @@ function PracticeContent({
     };
   }, []);
 
-  // ponytail: single pageSize=100 fetch (backend max, seed = 100); pager if totalCount > 100
+  // ponytail: single pageSize=100 fetch (backend max, seed = 100); add pager if bank exceeds it
   useEffect(() => {
     let cancelled = false;
     api
@@ -133,7 +128,6 @@ function PracticeContent({
           key: listKey,
           ok: true,
           questions: res.questions,
-          totalCount: res.totalCount,
         });
       })
       .catch((e) => {
@@ -142,7 +136,6 @@ function PracticeContent({
           key: listKey,
           ok: false,
           questions: [],
-          totalCount: 0,
           message: e instanceof ApiError ? e.message : "Failed to load questions.",
         });
       });
@@ -392,7 +385,7 @@ function PracticeContent({
               hasPrev={index > 0}
               hasNext={index >= 0 && index < questions.length - 1}
               position={position}
-              total={totalCount}
+              total={questions.length}
             />
           </div>
         )}
