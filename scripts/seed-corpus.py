@@ -436,6 +436,30 @@ def embed_query(text: str) -> str:
     return "[" + ",".join(f"{v:.8f}" for v in resp.json()["embeddings"][0]) + "]"
 
 
+def _supports_iterative_scan(version: str) -> bool:
+    """hnsw.iterative_scan exists from pgvector 0.8.0 (the API also requires it at boot)."""
+    try:
+        major, minor = (int(part) for part in version.strip().split(".")[:2])
+    except (ValueError, TypeError):
+        return False
+    return (major, minor) >= (0, 8)
+
+
+def exact_search_prefix() -> str:
+    """Statement prefix that makes the HNSW scan return exact nearest neighbours.
+
+    Without it the acceptance check ranks approximately, so a genuine pass could
+    hide a chunk the index skipped. Kept in the same statement batch as the
+    query because psql runs each -c in its own session.
+    """
+    version = psql("SELECT extversion FROM pg_extension WHERE extname = 'vector';").strip()
+    if _supports_iterative_scan(version):
+        return "SET hnsw.iterative_scan = 'strict_order'; "
+    print(f"  ! pgvector {version or 'not installed'}: hnsw.iterative_scan unavailable, "
+          "so the cosine search below is approximate")
+    return ""
+
+
 def verify() -> int:
     total = int(psql(f'SELECT count(*) FROM "TextbookChunks" '
                      f"WHERE \"Source\" LIKE '{SOURCE_PREFIX}%';").strip())
@@ -453,7 +477,8 @@ def verify() -> int:
 
     query = "Kadane's algorithm maximum subarray sum"
     vector = embed_query(query)
-    hits = psql('SELECT "Source", round(("Embedding" <=> \'' + vector + '\'::vector)::numeric, 4), '
+    prefix = exact_search_prefix()
+    hits = psql(prefix + 'SELECT "Source", round(("Embedding" <=> \'' + vector + '\'::vector)::numeric, 4), '
                 'left("Content", 100) FROM "TextbookChunks" '
                 'ORDER BY "Embedding" <=> \'' + vector + '\'::vector LIMIT 3;')
     print(f"\ncosine search: {query!r}")

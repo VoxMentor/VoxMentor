@@ -91,6 +91,20 @@ class ArticlesJsonTests(unittest.TestCase):
                 seen.add(a["url"])
 
 
+class PgVersionTests(unittest.TestCase):
+    def test_iterative_scan_supported_from_0_8(self):
+        # the API refuses to boot below 0.8, and hnsw.iterative_scan only exists there
+        self.assertTrue(sc._supports_iterative_scan("0.8.0"))
+        self.assertTrue(sc._supports_iterative_scan("0.9.1"))
+        self.assertTrue(sc._supports_iterative_scan("1.0.0"))
+        self.assertFalse(sc._supports_iterative_scan("0.7.4"))
+        self.assertFalse(sc._supports_iterative_scan("0.7"))
+
+    def test_missing_or_garbage_version_is_not_supported(self):
+        for value in ("", "not-installed", "unknown"):
+            self.assertFalse(sc._supports_iterative_scan(value), value)
+
+
 class BuildFileTests(unittest.TestCase):
     def test_one_file_per_concept_under_the_source_prefix(self):
         plan = {
