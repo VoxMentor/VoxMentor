@@ -32,6 +32,10 @@ public class BktParameterTuningJob
     {
         var stopwatch = Stopwatch.StartNew();
 
+        // ponytail: loads every scored submission into memory and groups it per
+        // concept and per user in-process - fine while CodeSubmissions stays in
+        // the low millions. Beyond that, aggregate (ConceptId, UserId,
+        // IsCorrect) counts in SQL and keep only the run-length sequences here.
         var rows = await (
                 from s in _db.CodeSubmissions.IgnoreQueryFilters()
                 join q in _db.Questions on s.QuestionId equals q.Id

@@ -98,7 +98,7 @@ Dependency order: #47 → #45 → #50 → #31 → #54 → (#52, #55, #53, #49) �
 | `POST/GET /api/v1/admin/questions` + 100-question seed | #55 (new) | Todo |
 | `GET /api/concepts/{id}/prerequisites`, `GET /api/students/me/eligible` | #49 | Todo |
 | Plagiarism scoring (in-pipeline) | #56 (new) | Todo |
-| Hangfire jobs + query filter | #57 (new) | Todo |
+| Hangfire jobs + query filter | #57 (new) | ✅ Merged |
 | AI code evaluation (in-pipeline) | #31 | Todo |
 | Per-submission idempotency | #51 | Todo |
 
