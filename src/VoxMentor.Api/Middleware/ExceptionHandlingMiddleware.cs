@@ -74,6 +74,7 @@ public class ExceptionHandlingMiddleware
         }
 
         var response = ApiResponse<object>.FailureResult(message, errors);
+        response.TraceId = System.Diagnostics.Activity.Current?.Id ?? context.TraceIdentifier;
         var jsonOptions = new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace VoxMentor.Application.Common.Models;
 
 public class ApiResponse<T>
@@ -6,6 +8,10 @@ public class ApiResponse<T>
     public string Message { get; set; } = string.Empty;
     public T? Data { get; set; }
     public IDictionary<string, string[]>? Errors { get; set; }
+
+    // #112: correlation id for failed responses only — omitted from success payloads.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? TraceId { get; set; }
 
     public static ApiResponse<T> SuccessResult(T data, string message = "Success")
     {
