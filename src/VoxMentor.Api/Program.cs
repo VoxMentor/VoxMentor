@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using Hangfire;
 using Hangfire.PostgreSql;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VoxMentor.Api.Authorization;
 using VoxMentor.Api.Hubs;
@@ -7,6 +9,7 @@ using VoxMentor.Api.Middleware;
 using VoxMentor.Api.Services;
 using VoxMentor.Application;
 using VoxMentor.Application.Common.Interfaces;
+using VoxMentor.Application.Common.Models;
 using VoxMentor.Infrastructure;
 using VoxMentor.Infrastructure.Jobs;
 using VoxMentor.Infrastructure.Persistence.Seeders;
@@ -42,6 +45,33 @@ else
 }
 
 builder.Services.AddControllers();
+// #112: model-binding failures return the ApiResponse envelope instead of the
+// default ValidationProblemDetails, so every 4xx the client sees parses the same way.
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var errors = context.ModelState
+            .Where(kv => kv.Value != null && kv.Value.Errors.Count > 0)
+            .ToDictionary(
+                kv => kv.Key,
+                kv => kv.Value!.Errors
+                    // #112 / CWE-209: exception-backed ModelErrors and System.Text.Json
+                    // parser text (CLR type names, "LineNumber:" path suffix) are server
+                    // internals — never pass them to clients. Everything else
+                    // (DataAnnotations, binding templates) is authored for clients.
+                    // ponytail: marker is STJ's path-suffix format; add markers if other
+                    // formatters ever leak message-only technical text.
+                    .Select(e => e.Exception != null || e.ErrorMessage.Contains("LineNumber:", StringComparison.Ordinal)
+                        ? "The supplied value is invalid."
+                        : e.ErrorMessage)
+                    .Where(s => s.Length > 0)
+                    .ToArray());
+        var body = ApiResponse<object>.FailureResult("Validation failed.", errors.Count > 0 ? errors : null);
+        body.TraceId = Activity.Current?.Id ?? context.HttpContext.TraceIdentifier;
+        return new BadRequestObjectResult(body);
+    };
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c => c.CustomSchemaIds(x => x.FullName));
 
@@ -109,6 +139,28 @@ using (var scope = app.Services.CreateScope())
 
 // Configure HTTP request pipeline
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+
+// #112: empty4xx/5xx responses (routing misses, auth challenges, unsupported
+// methods...) get an ApiResponse body. Native middleware: only fires when the
+// response has no body, so exception/factory responses pass through untouched.
+app.UseStatusCodePages(async statusCodeContext =>
+{
+    var response = statusCodeContext.HttpContext.Response;
+    var status = response.StatusCode;
+    var message = status switch
+    {
+        StatusCodes.Status400BadRequest => "Bad request.",
+        StatusCodes.Status401Unauthorized => "Authentication is required.",
+        StatusCodes.Status403Forbidden => "You do not have permission to perform this action.",
+        StatusCodes.Status404NotFound => "The requested resource was not found.",
+        StatusCodes.Status405MethodNotAllowed => "The HTTP method is not allowed for this resource.",
+        _ when status >= 500 => "An error occurred while processing your request.",
+        _ => "The request could not be processed."
+    };
+    var body = ApiResponse<object>.FailureResult(message);
+    body.TraceId = Activity.Current?.Id ?? response.HttpContext.TraceIdentifier;
+    await response.WriteAsJsonAsync(body);
+});
 
 if (app.Environment.IsDevelopment())
 {
