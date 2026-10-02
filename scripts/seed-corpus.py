@@ -211,7 +211,10 @@ def keyword_score(text_lower: str, terms: list[str]) -> float:
     """Alias hits per 1000 words. Cheap and high-signal."""
     if not terms:
         return 0.0
-    hits = sum(text_lower.count(t) for t in terms)
+    hits = sum(
+        len(re.findall(rf"(?<!\w){re.escape(t)}(?!\w)", text_lower))
+        for t in terms
+    )
     return hits / (1 + len(text_lower.split()) / 1000.0)
 
 
@@ -250,7 +253,7 @@ def best_concept(text: str, min_score: float = 0.35) -> tuple[str | None, float]
     lowered = text.lower()
     scores = {name: keyword_score(lowered, terms) for name, terms in CONCEPT_KEYWORDS.items()}
     top = max(scores, key=lambda n: scores[n])
-    if scores[top] > 0:
+    if scores[top] > 0 and scores[top] >= min_score:
         return top, scores[top]
 
     tf = tfidf_scores(text, CONCEPT_KEYWORDS)
@@ -260,7 +263,7 @@ def best_concept(text: str, min_score: float = 0.35) -> tuple[str | None, float]
 
 # ----------------------------------------------------------------- corpus IO
 
-def load_plan(delay: float) -> dict[str, list[dict]]:
+def load_plan(delay: float, only: str | None = None) -> dict[str, list[dict]]:
     """concept -> [{title, text, origin}] from articles.json plus local sources."""
     curated = json.loads(ARTICLES_PATH.read_text(encoding="utf-8"))["concepts"]
     session = requests.Session()
@@ -269,6 +272,8 @@ def load_plan(delay: float) -> dict[str, list[dict]]:
     plan: dict[str, list[dict]] = {}
     total = len(curated)
     for i, (concept, articles) in enumerate(curated.items(), 1):
+        if only and concept != only:
+            continue
         docs: list[dict] = []
         for art in articles:
             got = fetch_article(session, art["url"])
@@ -399,8 +404,14 @@ def upload(session: requests.Session, base_url: str, item: dict, poll_seconds: i
     status = "Pending"
     while time.time() < deadline:
         time.sleep(3)
-        job = session.get(f"{base_url}/api/v1/admin/textbook/status/{job_id}", timeout=30).json()["data"]
-        status = job["status"]
+        poll = session.get(f"{base_url}/api/v1/admin/textbook/status/{job_id}", timeout=30)
+        if not 200 <= poll.status_code < 300:
+            raise RuntimeError(f"status poll failed ({poll.status_code}): {poll.text[:300]}")
+        try:
+            job = poll.json()["data"]
+            status = job["status"]
+        except (ValueError, KeyError, TypeError) as exc:
+            raise RuntimeError(f"invalid status poll response: {exc}") from exc
         if status in ("Completed", "Failed"):
             if status == "Failed":
                 # Ollama or the embedder is unhappy - every later upload would
@@ -514,7 +525,7 @@ def main() -> int:
         return verify()
 
     print(f"loading corpus from {ARTICLES_PATH}")
-    plan = load_plan(args.delay)
+    plan = load_plan(args.delay, args.only)
     if args.only:
         if args.only not in plan:
             sys.exit(f"unknown concept {args.only!r}")
@@ -540,16 +551,16 @@ def main() -> int:
             print("\nplan only - nothing uploaded")
             return 0 if total >= 500 else 1
 
-        if args.clean:
-            print(f"\ncleaning chunks with Source LIKE {SOURCE_PREFIX}%")
-            psql(f'''DELETE FROM "TextbookChunks" WHERE "Source" LIKE '{SOURCE_PREFIX}%';''')
-
         if not args.email or not args.password:
             sys.exit("seed needs --email/--password "
                      "(or VOXMENTOR_ADMIN_EMAIL / VOXMENTOR_ADMIN_PASSWORD)")
 
         session = requests.Session()
         login(session, args.base_url, args.email, args.password)
+
+        if args.clean:
+            print(f"\ncleaning chunks with Source LIKE {SOURCE_PREFIX}%")
+            psql(f'''DELETE FROM "TextbookChunks" WHERE "Source" LIKE '{SOURCE_PREFIX}%';''')
 
         seeded = 0
         for item in built:

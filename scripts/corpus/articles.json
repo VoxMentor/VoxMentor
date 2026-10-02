@@ -293,9 +293,9 @@
     ],
     "Binary Search Trees": [
       {
-        "url": "https://www.geeksforgeeks.org/dsa/level-order-traversal-in-spiral-form/",
-        "title": "Level order traversal in spiral form",
-        "words": 6123
+        "url": "https://www.geeksforgeeks.org/binary-search-tree-set-1-search-and-insertion/",
+        "title": "Searching in Binary Search Tree (BST)",
+        "words": 2678
       },
       {
         "url": "https://www.geeksforgeeks.org/dsa/balanced-binary-tree/",

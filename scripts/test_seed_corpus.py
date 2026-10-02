@@ -61,6 +61,12 @@ class MappingTests(unittest.TestCase):
         concept, _ = sc.best_concept("banana smoothie recipe with cinnamon and oats")
         self.assertIsNone(concept)
 
+    def test_keyword_score_requires_whole_terms(self):
+        # "pop" must not count inside "popular": substring hits mis-map local
+        # files to the wrong concept (#111)
+        self.assertEqual(sc.keyword_score("popular music", ["pop"]), 0.0)
+        self.assertGreater(sc.keyword_score("we push push the button", ["push"]), 0.0)
+
     def test_every_concept_has_keywords(self):
         # articles.json keys and CONCEPT_KEYWORDS must stay in lockstep or a
         # local source file can never be auto-mapped to its concept
