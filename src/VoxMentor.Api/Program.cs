@@ -56,7 +56,15 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
             .ToDictionary(
                 kv => kv.Key,
                 kv => kv.Value!.Errors
-                    .Select(e => string.IsNullOrEmpty(e.ErrorMessage) ? e.Exception?.Message ?? "" : e.ErrorMessage)
+                    // #112 / CWE-209: exception-backed ModelErrors and System.Text.Json
+                    // parser text (CLR type names, "LineNumber:" path suffix) are server
+                    // internals — never pass them to clients. Everything else
+                    // (DataAnnotations, binding templates) is authored for clients.
+                    // ponytail: marker is STJ's path-suffix format; add markers if other
+                    // formatters ever leak message-only technical text.
+                    .Select(e => e.Exception != null || e.ErrorMessage.Contains("LineNumber:", StringComparison.Ordinal)
+                        ? "The supplied value is invalid."
+                        : e.ErrorMessage)
                     .Where(s => s.Length > 0)
                     .ToArray());
         var body = ApiResponse<object>.FailureResult("Validation failed.", errors.Count > 0 ? errors : null);

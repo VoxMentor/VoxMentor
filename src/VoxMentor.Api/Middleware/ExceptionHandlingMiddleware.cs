@@ -18,6 +18,7 @@ public class ExceptionHandlingMiddleware
         _env = env;
     }
 
+    /// <summary>Runs the pipeline and converts any uncaught exception into an ApiResponse failure body.</summary>
     public async Task InvokeAsync(HttpContext context)
     {
         try
@@ -32,6 +33,7 @@ public class ExceptionHandlingMiddleware
         }
     }
 
+    /// <summary>Maps a known exception to its status code and writes the ApiResponse JSON body.</summary>
     private static async Task HandleExceptionAsync(HttpContext context, Exception exception, bool isDevelopment)
     {
         context.Response.ContentType = "application/json";

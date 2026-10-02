@@ -13,6 +13,7 @@ public class ApiResponse<T>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? TraceId { get; set; }
 
+    /// <summary>Builds a successful envelope around <paramref name="data"/>.</summary>
     public static ApiResponse<T> SuccessResult(T data, string message = "Success")
     {
         return new ApiResponse<T>
@@ -24,6 +25,7 @@ public class ApiResponse<T>
         };
     }
 
+    /// <summary>Builds a failed envelope, optionally carrying per-field validation errors.</summary>
     public static ApiResponse<T> FailureResult(string message, IDictionary<string, string[]>? errors = null)
     {
         return new ApiResponse<T>

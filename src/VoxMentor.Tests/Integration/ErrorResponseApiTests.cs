@@ -15,6 +15,7 @@ public class ErrorResponseApiTests : IClassFixture<CustomWebApplicationFactory>
         _client = factory.CreateClient();
     }
 
+    /// <summary>Routing miss: bare 404 gets an ApiResponse body, not an empty response.</summary>
     [Fact]
     public async Task UnknownRoute_Returns404_AsApiResponse_WithTraceId()
     {
@@ -24,6 +25,7 @@ public class ErrorResponseApiTests : IClassFixture<CustomWebApplicationFactory>
         await AssertApiResponse(response);
     }
 
+    /// <summary>Auth challenge: bare 401 gets an ApiResponse body, not an empty response.</summary>
     [Fact]
     public async Task AnonymousRequest_Returns401_AsApiResponse_WithTraceId()
     {
@@ -33,6 +35,7 @@ public class ErrorResponseApiTests : IClassFixture<CustomWebApplicationFactory>
         await AssertApiResponse(response);
     }
 
+    /// <summary>Model binding: 400 carries field errors, and never raw exception/parser text (CWE-209).</summary>
     [Fact]
     public async Task ModelBindingFailure_Returns400_AsApiResponse_WithErrorsAndTraceId()
     {
@@ -45,9 +48,13 @@ public class ErrorResponseApiTests : IClassFixture<CustomWebApplicationFactory>
         var body = await AssertApiResponse(response);
 
         Assert.True(body.RootElement.TryGetProperty("errors", out var errors));
-        Assert.True(errors.EnumerateObject().Any());
+        // Client-authored binding message passes through untouched.
+        Assert.Equal("The command field is required.", errors.GetProperty("command")[0].GetString());
+        // Parser internals (CLR type names, JSON path, LineNumber) are replaced (#112 / CWE-209).
+        Assert.Equal("The supplied value is invalid.", errors.GetProperty("$.email")[0].GetString());
     }
 
+    /// <summary>Asserts the common ApiResponse failure shape: json content, success=false, message, traceId.</summary>
     private static async Task<JsonDocument> AssertApiResponse(HttpResponseMessage response)
     {
         Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
