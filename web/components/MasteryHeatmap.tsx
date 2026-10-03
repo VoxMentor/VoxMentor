@@ -40,6 +40,11 @@ function Skeleton() {
   );
 }
 
+/**
+ * Concept mastery heatmap — renders a grid of tiles colored by mastery level.
+ * Clicking or pressing Enter/Space on a tile navigates to the practice page for that concept.
+ * Hover or keyboard focus shows concept name and mastery percentage.
+ */
 export default function MasteryHeatmap() {
   const router = useRouter();
   const [concepts, setConcepts] = useState<MasteryConcept[] | null>(null);
@@ -89,23 +94,19 @@ export default function MasteryHeatmap() {
 
       <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
         {concepts.map((c) => (
-          <div
+          <button
             key={c.conceptId}
-            className="relative group"
+            type="button"
             onClick={() => router.push(`/practice?concept=${c.conceptId}`)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === "Enter" && router.push(`/practice?concept=${c.conceptId}`)}
             aria-label={`${c.name}: ${percent(c)}. Practice this concept.`}
+            className={`group relative aspect-square rounded-lg ${colorFor(c)} cursor-pointer transition-transform hover:scale-110 hover:ring-2 hover:ring-primary`}
           >
-            <button
-              className={`aspect-square rounded-lg ${colorFor(c)} hover:scale-110 hover:ring-2 hover:ring-primary transition-transform cursor-pointer w-full h-full`}
-              aria-hidden="true"
-            />
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-navy rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+            <span
+              className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 whitespace-nowrap rounded bg-navy px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100 z-10"
+            >
               {c.name} — {percent(c)}
-            </div>
-          </div>
+            </span>
+          </button>
         ))}
       </div>
 
