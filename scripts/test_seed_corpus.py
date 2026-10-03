@@ -240,6 +240,7 @@ class CleanOrderTests(unittest.TestCase):
         self.assertEqual(events[0], "upload")
         self.assertTrue(events[1][1].lstrip().startswith("DELETE"))
         self.assertIn('AND "JobId" NOT IN (\'job-1\')', events[1][1])
+        self.assertIn('AND "Source" IN (\'seed-corpus-arrays.txt\')', events[1][1])
 
     def test_failed_upload_leaves_the_previous_corpus_alone(self):
         result, events, lock_mock = self._run_seed(RuntimeError("ingestion failed: test"))

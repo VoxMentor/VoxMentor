@@ -646,12 +646,16 @@ def main() -> int:
 
         if args.clean and job_ids:
             # everything seeded before this run is a row whose JobId we never
-            # saw, so the old corpus survives until the last upload succeeds
+            # saw, so the old corpus survives until the last upload succeeds;
+            # Source IN keeps seed --only from wiping the other concepts (#111)
             print(f"\ncleaning chunks with Source LIKE {SOURCE_PREFIX}% "
                   f"from earlier runs")
             ids_sql = ",".join("'" + j.replace("'", "''") + "'" for j in job_ids)
+            sources_sql = ",".join("'" + b["path"].name.replace("'", "''") + "'"
+                                   for b in built)
             psql(f'''DELETE FROM "TextbookChunks"
                      WHERE "Source" LIKE '{SOURCE_PREFIX}%'
+                       AND "Source" IN ({sources_sql})
                        AND "JobId" NOT IN ({ids_sql});''')
 
     print(f"\nseeded {seeded} concept file(s); now run: python scripts/seed-corpus.py verify")
