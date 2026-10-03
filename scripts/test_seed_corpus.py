@@ -153,6 +153,44 @@ class BuildFileTests(unittest.TestCase):
         finally:
             sc.MAX_FILE_BYTES = original
 
+    def test_concept_with_no_fitting_article_is_skipped(self):
+        # a single article over the cap trims itself to nothing; the concept
+        # must be skipped, not written as an empty file (#111)
+        plan = {"Arrays": [{"title": "A", "text": "word " * 400, "origin": "a"}]}
+        original = sc.MAX_FILE_BYTES
+        sc.MAX_FILE_BYTES = 100
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                built = sc.build_files(plan, Path(tmp), {})
+                self.assertEqual(built, [])
+                self.assertEqual(list(Path(tmp).glob("*.txt")), [])
+        finally:
+            sc.MAX_FILE_BYTES = original
+
+
+class PlanExitTests(unittest.TestCase):
+    def test_full_plan_needs_five_per_concept_and_500_total(self):
+        self.assertTrue(sc.plan_ok([{"chunks": 5}] * 100, None))   # exactly 500
+        self.assertFalse(sc.plan_ok([{"chunks": 10}] * 49, None))  # 490 total
+        self.assertFalse(sc.plan_ok([{"chunks": 4}] + [{"chunks": 100}] * 10, None))
+
+    def test_only_plan_skips_the_500_bar_but_keeps_five(self):
+        # one healthy concept (~11 chunks) must pass; CodeRabbit #111
+        self.assertTrue(sc.plan_ok([{"chunks": 11}], "Binary Search Trees"))
+        self.assertFalse(sc.plan_ok([{"chunks": 3}], "Binary Search Trees"))
+        self.assertFalse(sc.plan_ok([], "Binary Search Trees"))
+
+
+class RelevanceTests(unittest.TestCase):
+    def test_seeded_arrays_or_kadane_hit_counts(self):
+        self.assertTrue(sc.relevant_hit(f"{sc.SOURCE_PREFIX}arrays.txt"))
+        self.assertTrue(sc.relevant_hit(f"{sc.SOURCE_PREFIX}kadanes-algorithm.txt"))
+
+    def test_unseeded_or_wrong_concept_does_not_count(self):
+        self.assertFalse(sc.relevant_hit("manual-arrays.txt"))  # missing prefix
+        self.assertFalse(sc.relevant_hit(f"{sc.SOURCE_PREFIX}stacks.txt"))
+        self.assertFalse(sc.relevant_hit(f"{sc.SOURCE_PREFIX}trees.txt"))
+
 
 if __name__ == "__main__":
     unittest.main()

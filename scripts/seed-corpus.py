@@ -318,6 +318,11 @@ def build_files(plan: dict[str, list[dict]], workdir: Path,
         parts = [f"{d['title']}\nSource: {d['origin']}\n\n{d['text']}" for d in docs]
         while parts and len("\n\n".join(parts).encode("utf-8")) > MAX_FILE_BYTES:
             parts.pop()  # 20 MiB is the API's cap; trim oldest article first
+        if not parts:
+            # a sole article over the cap trims itself away; skip the concept
+            # rather than write and upload an empty file (#111)
+            print(f"  ! {concept}: no article fits under {MAX_FILE_BYTES} bytes - skipped")
+            continue
         body = "\n\n".join(parts)
         path = workdir / f"{SOURCE_PREFIX}{slugify(concept)}.txt"
         path.write_text(body, encoding="utf-8")
@@ -389,7 +394,8 @@ def login(session: requests.Session, base_url: str, email: str, password: str) -
     sys.exit(1)
 
 
-def upload(session: requests.Session, base_url: str, item: dict, poll_seconds: int) -> int:
+def upload(session: requests.Session, base_url: str, item: dict, poll_seconds: int) -> tuple[str, int]:
+    """Upload one concept file; returns (job_id, stored chunk count)."""
     with item["path"].open("rb") as fh:
         data = {"conceptId": item["conceptId"]} if item["conceptId"] else {}
         resp = session.post(f"{base_url}/api/v1/admin/textbook/upload",
@@ -417,7 +423,7 @@ def upload(session: requests.Session, base_url: str, item: dict, poll_seconds: i
                 # Ollama or the embedder is unhappy - every later upload would
                 # fail the same way, so stop instead of burning 50 more.
                 raise RuntimeError(f"ingestion failed: {job.get('error')}")
-            return job["totalChunks"]
+            return job_id, job["totalChunks"]
     raise TimeoutError(f"job {job_id} still {status} after {poll_seconds}s")
 
 
@@ -441,6 +447,16 @@ def report(built: list[dict]) -> int:
     elif missing:
         print("no Concepts row (chunks stored without ConceptId): " + ", ".join(missing))
     return total
+
+
+def plan_ok(built: list[dict], only: str | None) -> bool:
+    """Plan-mode exit status (#111): every selected concept needs >= 5 chunks;
+    the 500-chunk bar only applies to a full-corpus plan, so a healthy --only
+    run does not have to reach it alone."""
+    if not built:
+        return False
+    return (all(b["chunks"] >= 5 for b in built)
+            and (bool(only) or sum(b["chunks"] for b in built) >= 500))
 
 
 def embed_query(text: str) -> str:
@@ -475,17 +491,31 @@ def exact_search_prefix() -> str:
     return ""
 
 
+def relevant_hit(source: str) -> bool:
+    """True when a cosine hit is a seeded chunk from an Arrays/Kadane concept file.
+
+    The issue #75 acceptance check queries Kadane's algorithm, whose article is
+    seeded under the Arrays concept, so anything else proves nothing.
+    """
+    return source.startswith(SOURCE_PREFIX) and any(
+        term in Path(source).stem.lower() for term in ("array", "kadane"))
+
+
 def verify() -> int:
     total = int(psql(f'SELECT count(*) FROM "TextbookChunks" '
                      f"WHERE \"Source\" LIKE '{SOURCE_PREFIX}%';").strip())
     print(f"seeded chunks: {total} (need >= 500)")
 
+    # Source filter goes in the ON clause so concepts with zero seeded chunks
+    # still show up as 0 below; counting all joined rows let unseeded ConceptId
+    # links from other uploads mask a failed seed (#111)
     rows = [line for line in psql(
         'SELECT c."Name", count(k."Id") FROM "Concepts" c '
         'LEFT JOIN "TextbookChunks" k ON k."ConceptId" = c."Id" '
+        f"AND k.\"Source\" LIKE '{SOURCE_PREFIX}%' "
         'GROUP BY c."Name";').splitlines() if "|" in line]
     short = [r for r in rows if int(r.split("|")[1]) < 5]
-    print(f"concepts with >= 5 chunks: {len(rows) - len(short)}/{len(rows)}")
+    print(f"concepts with >= 5 chunks: {len(rows) - len(short)}/{len(rows)} (need 50)")
     for row in short:
         name, count = row.split("|")
         print(f"  {name:34s} {count}")
@@ -497,11 +527,16 @@ def verify() -> int:
                 'left("Content", 100) FROM "TextbookChunks" '
                 'ORDER BY "Embedding" <=> \'' + vector + '\'::vector LIMIT 3;')
     print(f"\ncosine search: {query!r}")
+    sources = []
     for line in hits.splitlines():
         source, distance, snippet = line.split("|", 2)
+        sources.append(source)
         print(f"  {distance:>8}  {source:36s} {snippet}")
 
-    ok = total >= 500 and not short
+    relevant = any(relevant_hit(source) for source in sources)
+    if not relevant:
+        print("  ! no seeded Arrays/Kadane hit among the top 3")
+    ok = total >= 500 and not short and len(rows) >= 50 and relevant
     print(f"\n{'PASS' if ok else 'FAIL'}")
     return 0 if ok else 1
 
@@ -515,7 +550,8 @@ def main() -> int:
     ap.add_argument("--email", default=os.environ.get("VOXMENTOR_ADMIN_EMAIL"))
     ap.add_argument("--password", default=os.environ.get("VOXMENTOR_ADMIN_PASSWORD"))
     ap.add_argument("--clean", action="store_true",
-                    help=f"delete chunks whose Source starts with {SOURCE_PREFIX} before seeding")
+                    help=f"replace chunks whose Source starts with {SOURCE_PREFIX}: "
+                         "old rows are deleted only after every upload succeeds")
     ap.add_argument("--delay", type=float, default=1.0, help="seconds between article fetches")
     ap.add_argument("--poll-seconds", type=int, default=600, help="per-job ingestion timeout")
     ap.add_argument("--only", help="handle a single concept (name from seed-dsa-concepts.sql)")
@@ -545,11 +581,11 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="voxmentor-seed-") as tmp:
         built = build_files(plan, Path(tmp), ids)
-        total = report(built)
+        report(built)
 
         if args.mode == "plan":
             print("\nplan only - nothing uploaded")
-            return 0 if total >= 500 else 1
+            return 0 if plan_ok(built, args.only) else 1
 
         if not args.email or not args.password:
             sys.exit("seed needs --email/--password "
@@ -558,19 +594,29 @@ def main() -> int:
         session = requests.Session()
         login(session, args.base_url, args.email, args.password)
 
-        if args.clean:
-            print(f"\ncleaning chunks with Source LIKE {SOURCE_PREFIX}%")
-            psql(f'''DELETE FROM "TextbookChunks" WHERE "Source" LIKE '{SOURCE_PREFIX}%';''')
-
         seeded = 0
+        job_ids: list[str] = []
         for item in built:
             print(f"  {item['concept']:34s} {item['chunks']:3d} chunks", flush=True)
             try:
-                stored = upload(session, args.base_url, item, args.poll_seconds)
+                job_id, stored = upload(session, args.base_url, item, args.poll_seconds)
             except (RuntimeError, TimeoutError) as exc:
+                # --clean stays unrun, so a mid-run failure leaves the previous
+                # corpus retrievable instead of half-replaced (#111)
                 sys.exit(f"\n{exc}\nstopped after {seeded} concept file(s)")
+            job_ids.append(job_id)
             seeded += 1
             print(f"    stored {stored} chunks", flush=True)
+
+        if args.clean and job_ids:
+            # everything seeded before this run is a row whose JobId we never
+            # saw, so the old corpus survives until the last upload succeeds
+            print(f"\ncleaning chunks with Source LIKE {SOURCE_PREFIX}% "
+                  f"from earlier runs")
+            ids_sql = ",".join("'" + j.replace("'", "''") + "'" for j in job_ids)
+            psql(f'''DELETE FROM "TextbookChunks"
+                     WHERE "Source" LIKE '{SOURCE_PREFIX}%'
+                       AND "JobId" NOT IN ({ids_sql});''')
 
     print(f"\nseeded {seeded} concept file(s); now run: python scripts/seed-corpus.py verify")
     return 0

@@ -110,10 +110,10 @@ docker compose exec db psql -U voxmentor -d voxmentor -c "\dt"
 # Should list all tables: AspNetUsers, Concepts, Prerequisites, Questions, etc.
 
 # Verify seed data
-docker compose exec db psql -U voxmentor -d voxmentor -c "SELECT COUNT(*) FROM Concepts;"
+docker compose exec db psql -U voxmentor -d voxmentor -c 'SELECT COUNT(*) FROM "Concepts";'
 # Should return: 50
 
-docker compose exec db psql -U voxmentor -d voxmentor -c "SELECT COUNT(*) FROM Questions;"
+docker compose exec db psql -U voxmentor -d voxmentor -c 'SELECT COUNT(*) FROM "Questions";'
 # Should return: 100
 ```
 
