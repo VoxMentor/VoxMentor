@@ -29,6 +29,11 @@ function Skeleton() {
   );
 }
 
+/**
+ * Recent activity feed — lists the 10 most recent practice submissions.
+ * Shows question title, concept, pass/fail status, mastery delta, and relative timestamp.
+ * Hover a row for question title and exact relative time.
+ */
 export default function RecentActivity() {
   const [items, setItems] = useState<SubmissionItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +79,7 @@ export default function RecentActivity() {
             <div
               key={item.submissionId}
               className="flex items-center gap-3 py-3"
+              title={`${item.questionTitle} — ${timeAgo(item.createdAt)}`}
             >
               <span
                 className={`shrink-0 w-2 h-2 rounded-full ${
