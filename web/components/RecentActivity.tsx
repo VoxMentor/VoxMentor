@@ -74,6 +74,7 @@ export default function RecentActivity() {
             <div
               key={item.submissionId}
               className="flex items-center gap-3 py-3"
+              title={`${item.questionTitle} — ${timeAgo(item.createdAt)}`}
             >
               <span
                 className={`shrink-0 w-2 h-2 rounded-full ${

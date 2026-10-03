@@ -89,13 +89,23 @@ export default function MasteryHeatmap() {
 
       <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
         {concepts.map((c) => (
-          <button
+          <div
             key={c.conceptId}
+            className="relative group"
             onClick={() => router.push(`/practice?concept=${c.conceptId}`)}
-            title={`${c.name} — ${percent(c)}`}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === "Enter" && router.push(`/practice?concept=${c.conceptId}`)}
             aria-label={`${c.name}: ${percent(c)}. Practice this concept.`}
-            className={`aspect-square rounded-lg ${colorFor(c)} hover:scale-110 hover:ring-2 hover:ring-primary transition-transform cursor-pointer`}
-          />
+          >
+            <button
+              className={`aspect-square rounded-lg ${colorFor(c)} hover:scale-110 hover:ring-2 hover:ring-primary transition-transform cursor-pointer w-full h-full`}
+              aria-hidden="true"
+            />
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-navy rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+              {c.name} — {percent(c)}
+            </div>
+          </div>
         ))}
       </div>
 
