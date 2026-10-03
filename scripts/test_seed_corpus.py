@@ -12,6 +12,7 @@ import json
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parent
@@ -190,6 +191,58 @@ class RelevanceTests(unittest.TestCase):
         self.assertFalse(sc.relevant_hit("manual-arrays.txt"))  # missing prefix
         self.assertFalse(sc.relevant_hit(f"{sc.SOURCE_PREFIX}stacks.txt"))
         self.assertFalse(sc.relevant_hit(f"{sc.SOURCE_PREFIX}trees.txt"))
+
+
+class CleanOrderTests(unittest.TestCase):
+    """--clean must not delete anything until every upload succeeds (#111).
+
+    These run main() end to end with the network, database and run lock
+    mocked out, so a revert to the baseline clean-before-upload ordering
+    fails here instead of shipping a data-loss regression.
+    """
+
+    def _run_seed(self, upload_effect):
+        plan = {"Arrays": [{"title": "A", "text": "word " * 400, "origin": "a"}]}
+        events = []
+
+        def upload(*args, **kwargs):
+            events.append("upload")
+            if isinstance(upload_effect, BaseException):
+                raise upload_effect
+            return upload_effect
+
+        def psql(sql, field_sep="|"):
+            events.append(("psql", sql))
+            return ""
+
+        with unittest.mock.patch.object(sc, "load_plan", return_value=plan), \
+                unittest.mock.patch.object(sc, "fetch_concept_ids", return_value={}), \
+                unittest.mock.patch.object(sc, "login"), \
+                unittest.mock.patch.object(sc, "acquire_run_lock"), \
+                unittest.mock.patch.object(sc, "upload", side_effect=upload), \
+                unittest.mock.patch.object(sc, "psql", side_effect=psql), \
+                unittest.mock.patch.object(
+                    sys, "argv",
+                    ["seed-corpus.py", "seed", "--clean",
+                     "--email", "a@b.c", "--password", "x"]):
+            try:
+                result = sc.main()
+            except SystemExit as exc:
+                result = exc
+        return result, events
+
+    def test_clean_runs_after_every_upload_and_excludes_own_job(self):
+        result, events = self._run_seed(("job-1", 11))
+        self.assertEqual(result, 0)
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0], "upload")
+        self.assertTrue(events[1][1].lstrip().startswith("DELETE"))
+        self.assertIn('AND "JobId" NOT IN (\'job-1\')', events[1][1])
+
+    def test_failed_upload_leaves_the_previous_corpus_alone(self):
+        result, events = self._run_seed(RuntimeError("ingestion failed: test"))
+        self.assertIsInstance(result, SystemExit)
+        self.assertEqual(events, ["upload"])  # upload failed, no DELETE ran
 
 
 if __name__ == "__main__":

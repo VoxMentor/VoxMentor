@@ -543,6 +543,39 @@ def verify() -> int:
 
 # ----------------------------------------------------------------------- main
 
+_RUN_LOCK = None  # file handle held for the process lifetime of a seed run
+
+
+def acquire_run_lock() -> None:
+    """Refuse to seed while another seed run is active (#111).
+
+    Two overlapping `seed --clean` runs delete each other's rows at finish:
+    each end-phase DELETE only excludes its own job ids, so the earlier
+    finisher erases the later run's uploads and vice versa, leaving both
+    runs reporting success over a gutted corpus. The lock is OS-level, so
+    the kernel drops it even if this run crashes - no stale-lock recovery.
+    ponytail: machine-wide, not keyed by target database; key it by db
+    if seeding two databases at once ever becomes normal.
+    """
+    global _RUN_LOCK
+    path = Path(tempfile.gettempdir()) / "voxmentor-seed.lock"
+    fh = path.open("a+")
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        sys.exit(f"another seed run already holds {path} - wait for it to finish")
+    _RUN_LOCK = fh  # keep the handle (and its lock) alive for the whole run
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Seed the DSA textbook corpus (#75)")
     ap.add_argument("mode", choices=["plan", "seed", "verify"])
@@ -559,6 +592,9 @@ def main() -> int:
 
     if args.mode == "verify":
         return verify()
+
+    if args.mode == "seed":
+        acquire_run_lock()
 
     print(f"loading corpus from {ARTICLES_PATH}")
     plan = load_plan(args.delay, args.only)
