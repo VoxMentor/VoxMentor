@@ -9,6 +9,7 @@ Run: python -m unittest scripts/test_seed_corpus
 """
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -218,7 +219,7 @@ class CleanOrderTests(unittest.TestCase):
         with unittest.mock.patch.object(sc, "load_plan", return_value=plan), \
                 unittest.mock.patch.object(sc, "fetch_concept_ids", return_value={}), \
                 unittest.mock.patch.object(sc, "login"), \
-                unittest.mock.patch.object(sc, "acquire_run_lock"), \
+                unittest.mock.patch.object(sc, "acquire_run_lock") as lock_mock, \
                 unittest.mock.patch.object(sc, "upload", side_effect=upload), \
                 unittest.mock.patch.object(sc, "psql", side_effect=psql), \
                 unittest.mock.patch.object(
@@ -229,10 +230,11 @@ class CleanOrderTests(unittest.TestCase):
                 result = sc.main()
             except SystemExit as exc:
                 result = exc
-        return result, events
+        return result, events, lock_mock
 
     def test_clean_runs_after_every_upload_and_excludes_own_job(self):
-        result, events = self._run_seed(("job-1", 11))
+        result, events, lock_mock = self._run_seed(("job-1", 11))
+        lock_mock.assert_called_once()  # seed mode must take the run lock (#111)
         self.assertEqual(result, 0)
         self.assertEqual(len(events), 2)
         self.assertEqual(events[0], "upload")
@@ -240,9 +242,66 @@ class CleanOrderTests(unittest.TestCase):
         self.assertIn('AND "JobId" NOT IN (\'job-1\')', events[1][1])
 
     def test_failed_upload_leaves_the_previous_corpus_alone(self):
-        result, events = self._run_seed(RuntimeError("ingestion failed: test"))
+        result, events, lock_mock = self._run_seed(RuntimeError("ingestion failed: test"))
+        lock_mock.assert_called_once()
         self.assertIsInstance(result, SystemExit)
         self.assertEqual(events, ["upload"])  # upload failed, no DELETE ran
+
+    def test_plan_mode_never_takes_the_run_lock(self):
+        # 1500 words = 5 chunks, the --only floor in plan_ok (#111)
+        plan = {"Arrays": [{"title": "A", "text": "word " * 1500, "origin": "a"}]}
+        with unittest.mock.patch.object(sc, "load_plan", return_value=plan), \
+                unittest.mock.patch.object(sc, "fetch_concept_ids", return_value={}), \
+                unittest.mock.patch.object(sc, "acquire_run_lock") as lock_mock, \
+                unittest.mock.patch.object(
+                    sys, "argv",
+                    ["seed-corpus.py", "plan", "--only", "Arrays"]):
+            result = sc.main()
+        self.assertEqual(result, 0)
+        lock_mock.assert_not_called()
+
+
+class RunLockTests(unittest.TestCase):
+    """acquire_run_lock must hold a real OS lock for the whole run (#111).
+
+    The lock is the only thing standing between two overlapping
+    seed --clean runs and mutual deletion, so it gets real coverage:
+    a held lock refuses a second acquire, and a lock-primitive failure
+    exits before anything else runs.
+    """
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        # isolated lock location: never contends with a real seed run
+        patcher = unittest.mock.patch.object(
+            sc.tempfile, "gettempdir", return_value=tmp.name)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        def release():
+            if sc._RUN_LOCK is not None:
+                sc._RUN_LOCK.close()
+                sc._RUN_LOCK = None
+
+        self.addCleanup(release)  # runs first (LIFO): unlock before tmp cleanup
+
+    def test_second_acquire_is_refused_while_the_first_hold_is_live(self):
+        sc.acquire_run_lock()
+        self.assertIsNotNone(sc._RUN_LOCK)
+        self.assertFalse(sc._RUN_LOCK.closed)
+        with self.assertRaises(SystemExit) as ctx:
+            sc.acquire_run_lock()
+        self.assertIn("another seed run already holds", str(ctx.exception))
+
+    def test_lock_primitive_failure_exits_with_the_refusal_message(self):
+        # every OSError from the lock call means "refuse", whatever the cause
+        target = "msvcrt.locking" if os.name == "nt" else "fcntl.flock"
+        with unittest.mock.patch(target, side_effect=OSError(33, "busy")):
+            with self.assertRaises(SystemExit) as ctx:
+                sc.acquire_run_lock()
+        self.assertIn("another seed run already holds", str(ctx.exception))
+        self.assertIsNone(sc._RUN_LOCK)  # never held, so never retained
 
 
 if __name__ == "__main__":
