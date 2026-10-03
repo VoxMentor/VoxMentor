@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Seeded RAG corpus ([#75](https://github.com/VoxMentor/VoxMentor/issues/75)): `scripts/seed-corpus.py` fetches 88 curated GeeksforGeeks DSA articles (`scripts/corpus/articles.json`, one list per concept), groups them per concept and uploads one file per concept through `POST /api/v1/admin/textbook/upload` (~680 chunks, >= 5 per concept); `plan`/`seed`/`verify` modes, `--clean` re-seed, keyword + stdlib TF-IDF auto-mapping for local files in `scripts/corpus/source/`, offline tests in `scripts/test_seed_corpus.py` now enforced by a `scripts` CI job
 - Tutor retrieval + prompt evaluation harness ([#77](https://github.com/VoxMentor/VoxMentor/issues/77)): `scripts/eval-tutor.py` seeds a tagged eval corpus and scores 20 golden Q&As (recall@k/MRR sweep at k=3/5/7, citation precision, keyphrase coverage, latency) with pass/fail gates; baseline snapshot in `scripts/eval/baseline.md`
 - Hangfire nightly BKT parameter tuning job (EM algorithm) ([#57](https://github.com/VoxMentor/VoxMentor/issues/57))
 - Hangfire nightly spaced repetition decay job ([#57](https://github.com/VoxMentor/VoxMentor/issues/57))

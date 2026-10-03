@@ -71,6 +71,8 @@ dist/
 build/
 # tutor eval run output (#77)
 scripts/eval/report.json
+# local corpus source files (e.g. a CTCI PDF you are licensed to use) - #75
+scripts/corpus/source/
 
 # ===== Docker =====
 *.log
