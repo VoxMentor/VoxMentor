@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
+using VoxMentor.Application.Services;
 
 namespace VoxMentor.Application.Features.Practice.GetReadiness;
 
@@ -46,50 +47,8 @@ public class GetReadinessHandler : IRequestHandler<GetReadinessQuery, ApiRespons
             .Where(m => m.UserId == userId)
             .ToDictionaryAsync(m => m.ConceptId, cancellationToken);
 
-        var conceptByName = concepts
-            .GroupBy(c => c.Name)
-            .ToDictionary(g => g.Key, g => g.First());
-
-        var breakdown = new List<SkillBreakdownDto>();
-        float scoreSum = 0f;
-
-        foreach (var sw in skillWeights)
-        {
-            if (!conceptByName.TryGetValue(sw.SkillName, out var concept))
-                continue;
-
-            masteries.TryGetValue(concept.Id, out var mastery);
-            var masteryValue = mastery?.MasteryProbability ?? 0f;
-            var contribution = masteryValue * sw.Weight;
-            scoreSum += contribution;
-
-            breakdown.Add(new SkillBreakdownDto
-            {
-                Topic = sw.SkillName,
-                Mastery = masteryValue,
-                JdWeight = sw.Weight,
-                Contribution = contribution
-            });
-        }
-
-        var gaps = breakdown
-            .Where(b => b.Mastery < 1f)
-            .Select(b => new SkillGapDto
-            {
-                Topic = b.Topic,
-                Severity = b.JdWeight * (1f - b.Mastery),
-                Recommendation = $"Practice {b.Topic} — {b.JdWeight * (1f - b.Mastery):P0} gap remaining."
-            })
-            .OrderByDescending(g => g.Severity)
-            .ToList();
-
-        var dto = new ReadinessDto
-        {
-            Score = skillWeights.Count == 0 ? 0f : scoreSum * 100f,
-            Breakdown = breakdown,
-            Gaps = gaps,
-            EstimatedWeeksToReady = jd.EstimatedWeeks
-        };
+        var dto = ReadinessCalculator.Compute(
+            skillWeights, concepts, masteries, jd.EstimatedWeeks);
 
         return ApiResponse<ReadinessDto>.SuccessResult(dto, "Readiness score retrieved successfully.");
     }
