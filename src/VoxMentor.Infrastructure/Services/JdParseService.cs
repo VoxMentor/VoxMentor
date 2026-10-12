@@ -112,9 +112,11 @@ public class JdParseService : IJdParseService
         var parsed = JsonSerializer.Deserialize<JdParseResult>(content, ResponseJsonOptions)
                      ?? throw new InvalidOperationException("Ollama JD response deserialized to null");
 
-        if (parsed.CompanyName is null) parsed.CompanyName = "Unknown";
-        if (parsed.Role is null) parsed.Role = "Unknown";
-        if (parsed.Difficulty is null) parsed.Difficulty = "Medium";
+        // Blank strings are as invalid as null here (CodeRabbit #131): the prompt
+        // requires Easy/Medium/Hard and non-empty company/role.
+        if (string.IsNullOrWhiteSpace(parsed.CompanyName)) parsed.CompanyName = "Unknown";
+        if (string.IsNullOrWhiteSpace(parsed.Role)) parsed.Role = "Unknown";
+        if (string.IsNullOrWhiteSpace(parsed.Difficulty)) parsed.Difficulty = "Medium";
         if (parsed.TechnicalSkills is null)
             parsed.TechnicalSkills = new Dictionary<string, float>(StringComparer.Ordinal);
         if (parsed.HrSkills is null)

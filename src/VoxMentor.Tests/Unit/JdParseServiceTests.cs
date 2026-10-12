@@ -185,6 +185,18 @@ public class JdParseServiceTests
     }
 
     [Fact]
+    public void ParseResult_BlankStrings_GetSafeDefaults()
+    {
+        // Blank company/role/difficulty are as invalid as null (CodeRabbit #131).
+        var result = JdParseService.ParseResult(
+            """{"companyName":"  ","role":"","difficulty":"   "}""");
+
+        Assert.Equal("Unknown", result.CompanyName);
+        Assert.Equal("Unknown", result.Role);
+        Assert.Equal("Medium", result.Difficulty);
+    }
+
+    [Fact]
     public void ParseResult_NullSkillMaps_GetEmptyMaps()
     {
         var result = JdParseService.ParseResult(
