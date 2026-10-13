@@ -138,7 +138,7 @@ Stubs — `{ "status": "Healthy" }`.
 
 ---
 
-# 3. JD Intelligence — 🚧 To be built
+# 3. JD Intelligence — ✅ Built (#117 upload, #118 readiness/gaps)
 
 ### POST /api/v1/jd/upload
 Upload a Job Description. LLM (Ollama) parses it into weighted skills; falls back to keyword heuristics when Ollama is offline.
@@ -177,13 +177,15 @@ Response `200`:
   "hrSkills": { "Leadership": 0.3 },
   "difficulty": "Medium-Hard",
   "readinessScore": 42,
-  "gaps": [ { "topic": "DP", "severity": 0.298, "recommendation": "Practice 6 DP problems per week for the next 2 weeks." } ],
+  "gaps": [ { "topic": "DP", "severity": 0.298, "recommendation": "Practice DP — 30% gap remaining." } ],
   "estimatedWeeks": 6,
-  "roadmap": [ { "week": 1, "focus": "DP", "conceptIds": ["uuid-1", "uuid-2"] } ],
+  "roadmap": [ { "week": 1, "focus": "DP, Graphs", "conceptIds": ["uuid-1", "uuid-2"] } ],
   "createdAt": "2026-08-28T10:00:00Z"
 }
 ```
-Errors: `404` JD not found / not owned by user.
+`gaps` are computed by the shared `ReadinessCalculator` (`severity = jdWeight × (1 − mastery)`), ordered by severity descending. `roadmap` buckets those gaps across `estimatedWeeks` — week 1 always holds the highest-severity topic; when topics outnumber weeks, several share a week so none is dropped.
+
+Errors: `404` JD not found / not owned by user (enforced by the `IUserOwned` global query filter).
 
 ---
 
@@ -262,7 +264,7 @@ Response `200`:
   "score": 42,
   "maxScore": 100,
   "breakdown": [ { "topic": "DP", "mastery": 0.15, "jdWeight": 0.35, "contribution": 5.25 } ],
-  "gaps": [ { "topic": "DP", "severity": 0.298, "recommendation": "Practice 6 DP problems per week for the next 2 weeks." } ],
+  "gaps": [ { "topic": "DP", "severity": 0.298, "recommendation": "Practice DP — 30% gap remaining." } ],
   "estimatedWeeksToReady": 6
 }
 ```
@@ -633,7 +635,7 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 |---|---|---|
 | Auth | 5 (register, login, refresh, logout, me) | ✅ Done |
 | Health | 3 (Core, Tutor, CodeExec) | ✅ Done |
-| JD Intelligence | 2 (upload, get) | 🚧 |
+| JD Intelligence | 2 (upload, get) | ✅ Done |
 | Practice/Learning | 6 (questions list/get, next-question, submit-code, mastery, readiness) | 🚧 Week 2 (#52–#54) |
 | AI Coach | 2 REST (ask, session) + hub | 🚧 |
 | Mock Interviews | 5 REST (start, answer, complete, review, history) + hub | 🚧 |
