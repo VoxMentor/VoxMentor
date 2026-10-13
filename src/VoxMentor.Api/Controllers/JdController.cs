@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VoxMentor.Application.Common.Models;
+using VoxMentor.Application.Features.Jd.GetJd;
 using VoxMentor.Application.Features.Jd.UploadJd;
 
 namespace VoxMentor.Api.Controllers;
@@ -37,6 +38,23 @@ public class JdController : ControllerBase
         CancellationToken cancellationToken)
     {
         var response = await _sender.Send(command, cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Returns the parsed JD plus the current student's readiness score, gap
+    /// analysis, and week-by-week roadmap (#118). Unknown or foreign JDs both
+    /// return 404 — the IUserOwned query filter scopes the lookup.
+    /// </summary>
+    [HttpGet("{jdId:guid}")]
+    [Authorize(Roles = "Student")]
+    [ProducesResponseType(typeof(ApiResponse<GetJdResultDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> Get(Guid jdId, CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new GetJdQuery(jdId), cancellationToken);
         return Ok(response);
     }
 }
