@@ -192,7 +192,7 @@ Errors: `404` JD not found / not owned by user (enforced by the `IUserOwned` glo
 # 4. Practice & Learning — 🚧 Week 2 in progress (issues #52 questions, #53 mastery, #54 submit-code)
 
 ### GET /api/v1/student/next-question?conceptId={conceptId}
-Adaptive next question. Selection = BKT mastery gap; question difficulty targets `1 + mastery×9`. `conceptId` optional — without it the weakest concept is chosen; with it, a question from that concept only (never falls back to another concept).
+Adaptive next question. Selection = BKT mastery gap, or — when the student has a JD (#119) — JD-weighted severity `jdWeight × (1 − mastery)` with a 20% ε-greedy roll that explores among concepts still holding an unanswered question; latest JD wins. Question difficulty targets `1 + mastery×9`. `conceptId` optional — without it the concept is chosen as above; with it, a question from that concept only (never falls back to another concept).
 
 Response `200`:
 ```json
