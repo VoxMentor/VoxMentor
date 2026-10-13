@@ -66,6 +66,9 @@ public static class DependencyInjection
         services.AddSingleton<IRefreshTokenHasher, RefreshTokenHasher>();
         services.AddScoped<IHealthService, HealthService>();
         services.AddHttpClient<ICodeEvaluator, OllamaCodeEvaluator>();
+        // JD parse (#117): 60s internal cap via linked CTS inside JdParseService;
+        // failures degrade to keyword heuristics instead of surfacing 503.
+        services.AddHttpClient<IJdParseService, JdParseService>();
         // Tutor streaming (#73): HttpClient.Timeout covers only the header wait
         // (ResponseHeadersRead) — the NDJSON body read is capped by a linked CTS
         // inside TutorService.StreamAnswerAsync (300s total per ask).
