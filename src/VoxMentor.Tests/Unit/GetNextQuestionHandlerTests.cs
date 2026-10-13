@@ -375,11 +375,18 @@ public class GetNextQuestionHandlerTests
 
     private sealed class ThrowingRandom : Random
     {
-        public override int Next(int maxValue)
-            => throw new InvalidOperationException("selector rolled without a JD for the current user.");
+        private static InvalidOperationException Rolled()
+            => new("selector rolled without a JD for the current user.");
 
-        public override double NextDouble()
-            => throw new InvalidOperationException("selector rolled without a JD for the current user.");
+        public override int Next() => throw Rolled();
+
+        public override int Next(int maxValue) => throw Rolled();
+
+        public override int Next(int minValue, int maxValue) => throw Rolled();
+
+        public override double NextDouble() => throw Rolled();
+
+        public override float NextSingle() => throw Rolled();
     }
 
     [Fact]
@@ -503,7 +510,7 @@ public class GetNextQuestionHandlerTests
     }
 
     [Fact]
-    public async Task Handle_JdWeighted_ExplorationSkipsConceptWithNoUnansweredQuestions()
+    public async Task Handle_JdWeighted_NeverTargetsConceptWithNoUnansweredQuestions()
     {
         using var db = CreateDb();
         var arrays = await SeedConceptAsync(db, "Arrays");
@@ -514,8 +521,10 @@ public class GetNextQuestionHandlerTests
         var jd = await SeedJdAsync(db);
         await SeedWeightAsync(db, jd.Id, "Arrays", 0.9f);
         await SeedWeightAsync(db, jd.Id, "DP", 0.5f);
-        // "Empty" carries no JD weight → severity 0, so only a broken
-        // exploration pool could ever select it.
+        // "Empty" is the JD's top skill (1.0 × (1 − 0.1) = 0.9 severity), so it
+        // wins the exploit branch outright — yet it has nothing to serve, and
+        // both branches must skip it rather than fall back to an unrelated topic.
+        await SeedWeightAsync(db, jd.Id, "Empty", 1f);
 
         await SeedQuestionAsync(db, arrays.Id, difficulty: 9, title: "ArrayQ");
         await SeedQuestionAsync(db, dp.Id, difficulty: 2, title: "DPQ_easy");
@@ -536,7 +545,9 @@ public class GetNextQuestionHandlerTests
         }
 
         // Selecting "Empty" (unpracticed → target difficulty 2) would make the
-        // fallback serve DPQ_easy. DP's own target is 9, which picks DPQ_hard.
+        // fallback serve DPQ_easy — which is exactly what an exploit branch
+        // ranking all concepts does. The top eligible concept is Arrays
+        // (target 9 → ArrayQ), and DP, also target 9, picks DPQ_hard.
         Assert.Equal(0, dpEasy);
         // ...and exploration must still have fired at all.
         Assert.True(dpHard > 0, "exploration never fired.");

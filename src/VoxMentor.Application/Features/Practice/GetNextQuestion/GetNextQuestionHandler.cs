@@ -190,10 +190,17 @@ public class GetNextQuestionHandler : IRequestHandler<GetNextQuestionQuery, ApiR
         if (eligible.Count > 0 && _random.NextDouble() < Epsilon)
             return eligible[_random.Next(eligible.Count)];
 
+        // Rank only concepts that can still serve a question: otherwise the top
+        // pick would fall through to the "any unanswered" fallback and the
+        // difficulty target would be computed for a topic the student never
+        // saw. An empty pool (every question attempted) keeps the old
+        // behaviour — rank everything and let the caller's fallback 404.
+        var pool = eligible.Count > 0 ? eligible : concepts;
+
         // Ties (e.g. a JD with no extracted weights, where every severity is 0)
         // fall back to weakest mastery, so behaviour degrades to the pre-#119
         // selector instead of freezing on the first concept in query order.
-        return concepts
+        return pool
             .OrderByDescending(Severity)
             .ThenBy(c => MasteryOf(c.Id))
             .First();
