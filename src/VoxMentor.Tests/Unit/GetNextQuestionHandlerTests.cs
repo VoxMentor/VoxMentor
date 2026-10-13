@@ -88,10 +88,51 @@ public class GetNextQuestionHandlerTests
         await db.SaveChangesAsync();
     }
 
+    private static async Task<JobDescription> SeedJdAsync(
+        Infrastructure.Persistence.ApplicationDbContext db,
+        string userId = "user-1")
+    {
+        var jd = new JobDescription
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            CompanyName = "Acme",
+            Role = "Backend Engineer",
+            RawText = "raw",
+            Difficulty = "Mid",
+            EstimatedWeeks = 8
+        };
+        db.JobDescriptions.Add(jd);
+        await db.SaveChangesAsync();
+        return jd;
+    }
+
+    private static async Task SeedWeightAsync(
+        Infrastructure.Persistence.ApplicationDbContext db,
+        Guid jdId,
+        string skillName,
+        float weight)
+    {
+        db.JdSkillWeights.Add(new JdSkillWeight
+        {
+            Id = Guid.NewGuid(),
+            JobDescriptionId = jdId,
+            SkillName = skillName,
+            Weight = weight
+        });
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Builds a handler with a seeded <see cref="Random"/> so the ε roll is
+    /// reproducible. Default seed keeps the pre-#119 tests deterministic
+    /// (their no-JD path never rolls anyway).
+    /// </summary>
     private static GetNextQuestionHandler CreateHandler(
         Infrastructure.Persistence.ApplicationDbContext db,
-        FakeCurrentUserService? user = null)
-        => new(db, user ?? new FakeCurrentUserService());
+        FakeCurrentUserService? user = null,
+        int seed = 0)
+        => new(db, user ?? new FakeCurrentUserService(), new Random(seed));
 
     [Fact]
     public async Task Handle_NoMastery_PicksWeakestConcept()
@@ -317,5 +358,187 @@ public class GetNextQuestionHandlerTests
 
         Assert.Single(response.Data!.VisibleTestCases);
         Assert.Equal(2, response.Data.VisibleTestCases.Length + 1); // 1 visible + 1 hidden = 2 total
+    }
+
+    private static async Task<List<string>> RunPicksAsync(
+        Infrastructure.Persistence.ApplicationDbContext db, int seed, int runs)
+    {
+        var handler = CreateHandler(db, seed: seed);
+        var titles = new List<string>(runs);
+        for (var i = 0; i < runs; i++)
+        {
+            var response = await handler.Handle(new GetNextQuestionQuery(), CancellationToken.None);
+            titles.Add(response.Data!.Title);
+        }
+        return titles;
+    }
+
+    private sealed class ThrowingRandom : Random
+    {
+        public override int Next(int maxValue)
+            => throw new InvalidOperationException("selector rolled without a JD for the current user.");
+
+        public override double NextDouble()
+            => throw new InvalidOperationException("selector rolled without a JD for the current user.");
+    }
+
+    [Fact]
+    public async Task Handle_NoJd_NeverRolls()
+    {
+        using var db = CreateDb();
+        var c1 = await SeedConceptAsync(db, "Arrays");
+        var c2 = await SeedConceptAsync(db, "DP");
+        await SeedQuestionAsync(db, c1.Id, difficulty: 3, title: "ArrayQ");
+        await SeedQuestionAsync(db, c2.Id, difficulty: 5, title: "DPQ");
+        var handler = new GetNextQuestionHandler(
+            db, new FakeCurrentUserService(), new ThrowingRandom());
+
+        var response = await handler.Handle(new GetNextQuestionQuery(), CancellationToken.None);
+
+        // Selection is unchanged by #119 when the user has no JD.
+        Assert.Equal("Arrays", response.Data!.ConceptName);
+    }
+
+    [Fact]
+    public async Task Handle_OtherUsersJd_DoesNotInfluenceSelection()
+    {
+        using var db = CreateDb();
+        var c1 = await SeedConceptAsync(db, "Arrays");
+        var c2 = await SeedConceptAsync(db, "DP");
+        await SeedQuestionAsync(db, c1.Id, difficulty: 3, title: "ArrayQ");
+        await SeedQuestionAsync(db, c2.Id, difficulty: 5, title: "DPQ");
+
+        // Another tenant's JD wants DP. user-1 has no JD, so the IUserOwned
+        // global filter must hide this row entirely.
+        var foreignJd = await SeedJdAsync(db, userId: "user-2");
+        await SeedWeightAsync(db, foreignJd.Id, "DP", 0.95f);
+
+        var handler = new GetNextQuestionHandler(
+            db, new FakeCurrentUserService(), new ThrowingRandom());
+
+        var response = await handler.Handle(new GetNextQuestionQuery(), CancellationToken.None);
+
+        // ThrowingRandom fails the moment the selector rolls, and DP would win
+        // the weighted rank if the foreign JD leaked through.
+        Assert.Equal("Arrays", response.Data!.ConceptName);
+    }
+
+    [Fact]
+    public async Task Handle_WithConceptIdAndJd_NeverEntersSelector()
+    {
+        using var db = CreateDb();
+        var c1 = await SeedConceptAsync(db, "Arrays");
+        var c2 = await SeedConceptAsync(db, "DP");
+        await SeedMasteryAsync(db, "user-1", c1.Id, 0.9f);
+        await SeedMasteryAsync(db, "user-1", c2.Id, 0.1f);
+        await SeedQuestionAsync(db, c1.Id, difficulty: 3, title: "ArrayQ");
+        await SeedQuestionAsync(db, c2.Id, difficulty: 3, title: "DPQ");
+        var jd = await SeedJdAsync(db);
+        await SeedWeightAsync(db, jd.Id, "DP", 0.95f);
+
+        // A pinned conceptId short-circuits the selector, so no ε roll happens
+        // even though this user has a JD.
+        var handler = new GetNextQuestionHandler(
+            db, new FakeCurrentUserService(), new ThrowingRandom());
+
+        var response = await handler.Handle(
+            new GetNextQuestionQuery { ConceptId = c1.Id }, CancellationToken.None);
+
+        Assert.Equal("Arrays", response.Data!.ConceptName);
+        Assert.Equal("ArrayQ", response.Data.Title);
+    }
+
+    [Fact]
+    public async Task Handle_JdWeighted_SameSeed_ProducesIdenticalSequence()
+    {
+        using var db = CreateDb();
+        var c1 = await SeedConceptAsync(db, "Arrays");
+        var c2 = await SeedConceptAsync(db, "DP");
+        var c3 = await SeedConceptAsync(db, "Graphs");
+        var jd = await SeedJdAsync(db);
+        await SeedWeightAsync(db, jd.Id, "Arrays", 0.4f);
+        await SeedWeightAsync(db, jd.Id, "DP", 0.6f);
+        await SeedWeightAsync(db, jd.Id, "Graphs", 0.8f);
+        await SeedQuestionAsync(db, c1.Id, difficulty: 3, title: "ArrayQ");
+        await SeedQuestionAsync(db, c2.Id, difficulty: 5, title: "DPQ");
+        await SeedQuestionAsync(db, c3.Id, difficulty: 7, title: "GraphQ");
+
+        var first = await RunPicksAsync(db, seed: 12345, runs: 40);
+        var second = await RunPicksAsync(db, seed: 12345, runs: 40);
+
+        Assert.Equal(first, second);
+        // A constant sequence would mean ε is dead — the selector never explored.
+        Assert.True(first.Distinct().Count() > 1,
+            $"selector never explored: {string.Join(",", first)}");
+    }
+
+    [Fact]
+    public async Task Handle_JdWeighted_HigherJdWeightBeatsEqualMastery()
+    {
+        using var db = CreateDb();
+        var arrays = await SeedConceptAsync(db, "Arrays");
+        var dp = await SeedConceptAsync(db, "DP");
+        await SeedMasteryAsync(db, "user-1", arrays.Id, 0.5f);
+        await SeedMasteryAsync(db, "user-1", dp.Id, 0.5f); // identical mastery
+        var jd = await SeedJdAsync(db);
+        await SeedWeightAsync(db, jd.Id, "DP", 0.35f); // DP is what the JD asks for
+        await SeedQuestionAsync(db, arrays.Id, difficulty: 6, title: "ArrayQ");
+        await SeedQuestionAsync(db, dp.Id, difficulty: 6, title: "DPQ");
+
+        var dpPicks = 0;
+        var arraysPicks = 0;
+        for (var seed = 0; seed < 200; seed++)
+        {
+            var response = await CreateHandler(db, seed: seed)
+                .Handle(new GetNextQuestionQuery(), CancellationToken.None);
+
+            if (response.Data!.ConceptName == "DP") dpPicks++;
+            else arraysPicks++;
+        }
+
+        // severity: DP = 0.35 × (1 − 0.5) = 0.175 vs Arrays = 0 × (1 − 0.5) = 0,
+        // so the exploit branch (80%) plus its share of exploration favours DP.
+        Assert.True(dpPicks >= 140, $"DP picked only {dpPicks}/200 times.");
+        Assert.True(arraysPicks > 0, "exploration never fired.");
+    }
+
+    [Fact]
+    public async Task Handle_JdWeighted_ExplorationSkipsConceptWithNoUnansweredQuestions()
+    {
+        using var db = CreateDb();
+        var arrays = await SeedConceptAsync(db, "Arrays");
+        var dp = await SeedConceptAsync(db, "DP");
+        await SeedConceptAsync(db, "Empty"); // no questions at all
+        await SeedMasteryAsync(db, "user-1", arrays.Id, 0.9f);
+        await SeedMasteryAsync(db, "user-1", dp.Id, 0.9f); // "Empty" stays unpracticed
+        var jd = await SeedJdAsync(db);
+        await SeedWeightAsync(db, jd.Id, "Arrays", 0.9f);
+        await SeedWeightAsync(db, jd.Id, "DP", 0.5f);
+        // "Empty" carries no JD weight → severity 0, so only a broken
+        // exploration pool could ever select it.
+
+        await SeedQuestionAsync(db, arrays.Id, difficulty: 9, title: "ArrayQ");
+        await SeedQuestionAsync(db, dp.Id, difficulty: 2, title: "DPQ_easy");
+        await SeedQuestionAsync(db, dp.Id, difficulty: 9, title: "DPQ_hard");
+
+        var dpEasy = 0;
+        var dpHard = 0;
+        for (var seed = 0; seed < 200; seed++)
+        {
+            var response = await CreateHandler(db, seed: seed)
+                .Handle(new GetNextQuestionQuery(), CancellationToken.None);
+
+            switch (response.Data!.Title)
+            {
+                case "DPQ_easy": dpEasy++; break;
+                case "DPQ_hard": dpHard++; break;
+            }
+        }
+
+        // Selecting "Empty" (unpracticed → target difficulty 2) would make the
+        // fallback serve DPQ_easy. DP's own target is 9, which picks DPQ_hard.
+        Assert.Equal(0, dpEasy);
+        // ...and exploration must still have fired at all.
+        Assert.True(dpHard > 0, "exploration never fired.");
     }
 }

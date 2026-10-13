@@ -20,6 +20,10 @@ public static class DependencyInjection
 
         services.AddScoped<IBktEngine, BktEngine>();
 
+        // #119: per-request Random for the JD-weighted ε-greedy selector. Scoped
+        // rather than a shared instance — Random isn't thread-safe.
+        services.AddScoped(_ => new Random());
+
         services.AddMediatR(cfg =>
         {
             cfg.RegisterServicesFromAssembly(assembly);
