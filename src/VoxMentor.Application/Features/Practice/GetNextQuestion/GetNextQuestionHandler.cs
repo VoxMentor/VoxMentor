@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using VoxMentor.Application.Common;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
@@ -124,7 +125,8 @@ public class GetNextQuestionHandler : IRequestHandler<GetNextQuestionQuery, ApiR
             candidate.ExampleOutputs,
             candidate.StarterCode,
             visibleTestCases,
-            candidate.Rubric);
+            candidate.Rubric,
+            IsomorphicInstance.Id(userId, candidate.Id, candidate.VariantSeed));
 
         return ApiResponse<NextQuestionDto>.SuccessResult(dto);
     }

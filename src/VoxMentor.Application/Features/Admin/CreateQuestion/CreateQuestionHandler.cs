@@ -58,7 +58,8 @@ public class CreateQuestionHandler : IRequestHandler<CreateQuestionCommand, ApiR
             ExampleInputs = request.ExampleInputs ?? Array.Empty<string>(),
             ExampleOutputs = request.ExampleOutputs ?? Array.Empty<string>(),
             StarterCode = request.StarterCode ?? Array.Empty<string>(),
-            HiddenTestCaseCount = testCases.HiddenCount
+            HiddenTestCaseCount = testCases.HiddenCount,
+            VariantSeed = request.VariantSeed
         };
 
         _db.Questions.Add(question);

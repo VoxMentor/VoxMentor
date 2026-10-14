@@ -105,6 +105,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Title).IsRequired().HasMaxLength(300);
             entity.Property(e => e.QuestionType).IsRequired().HasMaxLength(50).HasDefaultValue("Code");
+            entity.Property(e => e.VariantSeed).HasMaxLength(100);
             entity.ToTable(t =>
             {
                 t.HasCheckConstraint("CK_Questions_HiddenTestCaseCount_NonNegative", "\"HiddenTestCaseCount\" >= 0");
