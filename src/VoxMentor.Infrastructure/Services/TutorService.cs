@@ -14,8 +14,9 @@ namespace VoxMentor.Infrastructure.Services;
 /// <summary>
 /// Minimal RAG pipeline for the AI Tutor (#73): embed the question, take the
 /// top-Rag:TopK textbook chunks by pgvector cosine similarity, render the
-/// shared excerpt prompt, and stream Ollama's NDJSON output. Issue #72 layers
-/// the Hangfire worker and circuit breaker on top of this.
+/// shared excerpt prompt, and stream Ollama's NDJSON output. The HttpClient
+/// carries the #72 circuit breaker; callers are TutorHub (live) and
+/// TutorSessionJob (background).
 /// </summary>
 public class TutorService : ITutorService
 {

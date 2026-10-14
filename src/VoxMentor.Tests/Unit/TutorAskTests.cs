@@ -28,6 +28,23 @@ public class TutorAskTests
         public override DateTimeOffset GetUtcNow() => _now;
     }
 
+    private sealed class FakeCircuit : ITutorCircuit
+    {
+        public bool IsOpen { get; set; }
+    }
+
+    private sealed class FakeQueue : ITutorSessionQueue
+    {
+        public List<Guid> Enqueued { get; } = new();
+        public void Enqueue(Guid sessionId) => Enqueued.Add(sessionId);
+    }
+
+    private sealed class ThrowingQueue : ITutorSessionQueue
+    {
+        public void Enqueue(Guid sessionId)
+            => throw new InvalidOperationException("Background tutor generation is disabled.");
+    }
+
     private static Infrastructure.Persistence.ApplicationDbContext CreateDb()
     {
         var options = new DbContextOptionsBuilder<Infrastructure.Persistence.ApplicationDbContext>()
@@ -39,8 +56,11 @@ public class TutorAskTests
     private static AskTutorHandler CreateAskHandler(
         Infrastructure.Persistence.ApplicationDbContext db,
         FakeCurrentUser user,
-        IRateLimiter? limiter = null)
-        => new(db, user, limiter ?? new InMemorySlidingWindowRateLimiter());
+        IRateLimiter? limiter = null,
+        ITutorSessionQueue? queue = null,
+        ITutorCircuit? circuit = null)
+        => new(db, user, limiter ?? new InMemorySlidingWindowRateLimiter(),
+            queue ?? new FakeQueue(), circuit ?? new FakeCircuit());
 
     [Fact]
     public async Task RateLimit_TenOk_ElevenThrows()
@@ -80,20 +100,43 @@ public class TutorAskTests
     {
         var db = CreateDb();
         var user = new FakeCurrentUser();
-        var handler = CreateAskHandler(db, user);
+        var queue = new FakeQueue();
+        var handler = CreateAskHandler(db, user, queue: queue);
 
         var result = await handler.Handle(new AskTutorCommand("Why is Kadane O(n)?"), CancellationToken.None);
 
         Assert.NotNull(result.Data);
         Assert.NotEqual(Guid.Empty, result.Data!.SessionId);
-        Assert.DoesNotContain("being generated", result.Data.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Pending", result.Data.Message);
+        Assert.Contains("Answer generation started", result.Data.Message);
         Assert.Contains(result.Data.SessionId.ToString(), result.Data.Message);
         Assert.DoesNotContain("{sessionId}", result.Data.Message);
         var session = await db.TutorSessions.SingleAsync(s => s.Id == result.Data.SessionId);
         Assert.Equal(TutorSessionStatus.Pending, session.Status);
         Assert.Equal("user-1", session.UserId);
         Assert.Equal("Why is Kadane O(n)?", session.Question);
+        Assert.Equal(new[] { session.Id }, queue.Enqueued);
+    }
+
+    [Fact]
+    public async Task Ask_CircuitOpen_ThrowsServiceUnavailable_NoSessionCreated()
+    {
+        var db = CreateDb();
+        var handler = CreateAskHandler(db, new FakeCurrentUser(), circuit: new FakeCircuit { IsOpen = true });
+
+        await Assert.ThrowsAsync<ServiceUnavailableException>(
+            () => handler.Handle(new AskTutorCommand("q"), CancellationToken.None));
+        Assert.Equal(0, await db.TutorSessions.CountAsync());
+    }
+
+    [Fact]
+    public async Task Ask_EnqueueFails_SessionRemoved()
+    {
+        var db = CreateDb();
+        var handler = CreateAskHandler(db, new FakeCurrentUser(), queue: new ThrowingQueue());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => handler.Handle(new AskTutorCommand("q"), CancellationToken.None));
+        Assert.Equal(0, await db.TutorSessions.CountAsync());
     }
 
     [Fact]

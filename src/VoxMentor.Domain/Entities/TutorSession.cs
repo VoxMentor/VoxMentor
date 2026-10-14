@@ -12,6 +12,7 @@ public class TutorSession : IUserOwned
     public string Question { get; set; } = string.Empty;
     public string? Answer { get; set; }
     public TutorSessionStatus Status { get; set; } = TutorSessionStatus.Pending;
+    public string? Error { get; set; }
     public int TotalTokens { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
