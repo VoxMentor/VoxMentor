@@ -229,7 +229,7 @@ async def stt(request: Request):
     if not (content_type.startswith("audio/") or content_type == "application/octet-stream"):
         raise HTTPException(415, f"unsupported content type {content_type!r}; send audio/*")
 
-    data = audio.file.read(MAX_UPLOAD_BYTES + 1)  # defense in depth; the checks above bound the body
+    data = await audio.read(MAX_UPLOAD_BYTES + 1)  # defense in depth; the checks above bound the body
     if not data:
         raise HTTPException(400, "empty audio upload")
     if len(data) > MAX_UPLOAD_BYTES:
@@ -375,4 +375,4 @@ async def tts(request: Request):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=_get_int_env("VOICE_PORT", 8001))
+    uvicorn.run("main:app", host="127.0.0.1", port=_get_int_env("VOICE_PORT", 8001))
