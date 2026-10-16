@@ -375,4 +375,4 @@ async def tts(request: Request):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=int(os.environ.get("VOICE_PORT", "8001")))
+    uvicorn.run("main:app", host="0.0.0.0", port=_get_int_env("VOICE_PORT", 8001))
