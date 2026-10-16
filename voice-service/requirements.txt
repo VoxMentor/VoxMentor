@@ -1,4 +1,5 @@
 fastapi>=0.110
+starlette>=0.44  # Request.form(max_part_size=...) needs Starlette 0.44+
 uvicorn>=0.29
 python-multipart>=0.0.9
 faster-whisper==1.2.1
