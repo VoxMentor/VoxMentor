@@ -16,6 +16,7 @@ namespace VoxMentor.Application.Features.Admin.CreateQuestion;
 /// <param name="ExampleInputs">Public example inputs shown to students.</param>
 /// <param name="ExampleOutputs">Public example outputs shown to students.</param>
 /// <param name="StarterCode">Starter code templates per language.</param>
+/// <param name="VariantSeed">Optional per-student variant seed (#120); max 100 chars.</param>
 public record CreateQuestionCommand(
     Guid ConceptId,
     string Title,
@@ -26,5 +27,6 @@ public record CreateQuestionCommand(
     string[]? ExampleOutputs,
     string[]? StarterCode,
     string QuestionType = "Code",
-    string[]? Rubric = null
+    string[]? Rubric = null,
+    string? VariantSeed = null
 ) : IRequest<ApiResponse<CreateQuestionResultDto>>;

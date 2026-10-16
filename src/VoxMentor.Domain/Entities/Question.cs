@@ -22,5 +22,10 @@ public class Question
     /// <summary>Number of trailing test cases hidden from students (aggregate counts still shown).</summary>
     public int HiddenTestCaseCount { get; set; }
 
+    /// <summary>Optional seed for per-student question variants (#120). Drives the
+    /// deterministic isomorphic instance id; parameterized substitution lands
+    /// with the template-engine issue.</summary>
+    public string? VariantSeed { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
