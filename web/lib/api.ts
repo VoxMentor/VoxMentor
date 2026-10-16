@@ -163,6 +163,13 @@ export interface QuestionDetail {
   hiddenTestCaseCount: number;
 }
 
+export interface AdminUser {
+  id: string;
+  email: string | null;
+  fullName: string;
+  roles: string[];
+}
+
 export const api = {
   register: (data: RegisterRequest) =>
     request<RegisterResponse>("/v1/auth/register", {
@@ -204,6 +211,24 @@ export const api = {
   },
 
   question: (id: string) => request<QuestionDetail>(`/v1/questions/${encodeURIComponent(id)}`),
+
+  // --- admin (#105): SuperAdmin-only via ManageRoles policy; 401/403 enforced server-side ---
+  adminUsers: (page = 1, pageSize = 50) =>
+    request<AdminUser[]>(`/v1/admin/users?page=${page}&pageSize=${pageSize}`),
+
+  adminRoles: () => request<string[]>("/v1/admin/roles"),
+
+  adminAssignRole: (userId: string, role: string) =>
+    request<AdminUser>(`/v1/admin/users/${encodeURIComponent(userId)}/roles`, {
+      method: "POST",
+      body: JSON.stringify({ role }),
+    }),
+
+  adminRemoveRole: (userId: string, role: string) =>
+    request<AdminUser>(
+      `/v1/admin/users/${encodeURIComponent(userId)}/roles/${encodeURIComponent(role)}`,
+      { method: "DELETE" }
+    ),
 };
 
 export { ApiError };

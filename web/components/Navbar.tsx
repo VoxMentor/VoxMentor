@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 
-const links = [
+const navLinks = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/practice", label: "Practice" },
   { href: "/dashboard#tutor", label: "Tutor" },
@@ -13,6 +13,10 @@ const links = [
 export default function Navbar() {
   const { user, logout } = useAuth();
   const pathname = usePathname();
+  // #105: SuperAdmins get the users page until #102 adds the full admin shell/sidebar.
+  const links = user?.roles?.includes("SuperAdmin")
+    ? [...navLinks, { href: "/admin/users", label: "Admin" }]
+    : navLinks;
 
   return (
     <header className="navbar scrolled">
