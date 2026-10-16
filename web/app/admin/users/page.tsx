@@ -120,8 +120,11 @@ function UsersContent() {
           const me = await api.me();
           setUser(me);
           if (!me.roles.includes("SuperAdmin")) router.replace("/dashboard");
-        } catch {
-          router.replace("/login");
+        } catch (e) {
+          // the role change already succeeded; only a 401 ends the session.
+          // anything else (network blip, 5xx) is transient, so stay put and warn.
+          if (e instanceof ApiError && e.status === 401) setUser(null);
+          else setBanner("Role updated, but refreshing your session failed. Reload the page.");
         }
       }
     } catch (e) {
