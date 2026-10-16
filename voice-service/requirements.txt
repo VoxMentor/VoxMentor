@@ -3,3 +3,5 @@ uvicorn>=0.29
 python-multipart>=0.0.9
 faster-whisper==1.2.1
 piper-tts==1.8.0
+# faster-whisper 1.2.1 calls av.open(..., metadata_errors="ignore"); av 19 removed the kwarg
+av<19
