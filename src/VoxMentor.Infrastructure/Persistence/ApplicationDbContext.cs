@@ -194,6 +194,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.HasQueryFilter(e => e.UserId == CurrentUserId);
             entity.Property(e => e.Question).IsRequired().HasMaxLength(2000);
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.Error).HasMaxLength(1000);
             entity.HasIndex(e => new { e.UserId, e.CreatedAt });
         });
 

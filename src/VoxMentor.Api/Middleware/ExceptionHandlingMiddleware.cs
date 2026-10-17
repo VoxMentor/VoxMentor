@@ -66,6 +66,10 @@ public class ExceptionHandlingMiddleware
                 message = rateLimitException.Message;
                 context.Response.Headers.RetryAfter = rateLimitException.RetryAfterSeconds.ToString();
                 break;
+            case ServiceUnavailableException:
+                statusCode = HttpStatusCode.ServiceUnavailable;
+                message = exception.Message;
+                break;
         }
 
         context.Response.StatusCode = (int)statusCode;

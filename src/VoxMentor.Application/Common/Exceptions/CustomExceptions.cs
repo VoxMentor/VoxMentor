@@ -36,3 +36,11 @@ public class RateLimitException : Exception
         RetryAfterSeconds = Math.Max(1, retryAfterSeconds);
     }
 }
+
+public class ServiceUnavailableException : Exception
+{
+    public ServiceUnavailableException(string message)
+        : base(message)
+    {
+    }
+}

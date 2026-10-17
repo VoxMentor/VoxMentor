@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tutor retrieval + prompt evaluation harness ([#77](https://github.com/VoxMentor/VoxMentor/issues/77)): `scripts/eval-tutor.py` seeds a tagged eval corpus and scores 20 golden Q&As (recall@k/MRR sweep at k=3/5/7, citation precision, keyphrase coverage, latency) with pass/fail gates; baseline snapshot in `scripts/eval/baseline.md`
 - Hangfire nightly BKT parameter tuning job (EM algorithm) ([#57](https://github.com/VoxMentor/VoxMentor/issues/57))
 - Hangfire nightly spaced repetition decay job ([#57](https://github.com/VoxMentor/VoxMentor/issues/57))
+- AI Tutor background answer generation ([#72](https://github.com/VoxMentor/VoxMentor/issues/72)): `POST /api/v1/tutor/ask` enqueues a Hangfire job that runs the RAG pipeline and persists answer + token count (Completed) or a stored error message (Failed — new `TutorSessions.Error` column); Polly circuit breaker on the tutor Ollama client (5 failures → open 30s → ask returns 503); minute-level reconciliation sweep re-queues lost Pending sessions and fails stale Streaming ones
 
 ### Changed
 - Tutor prompt moved to single-source `prompts/tutor-prompt.txt` (embedded by C#, rendered by the eval): numbered `[n]` citations, refuse-to-guess instruction ([#77](https://github.com/VoxMentor/VoxMentor/issues/77))

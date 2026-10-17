@@ -9,23 +9,30 @@ using VoxMentor.Domain.Enums;
 namespace VoxMentor.Application.Features.Tutor.AskTutor;
 
 /// <summary>
-/// Creates a Pending tutor session for the authenticated student after rate-limiting
-/// and optional concept validation. Answer generation is deferred (#72).
+/// Creates a Pending tutor session for the authenticated student, then queues
+/// background answer generation (#72). Fails fast with 503 while the Ollama
+/// circuit breaker is open so no session can strand ungenerated.
 /// </summary>
 public class AskTutorHandler : IRequestHandler<AskTutorCommand, ApiResponse<AskTutorResultDto>>
 {
     private readonly IApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IRateLimiter _rateLimiter;
+    private readonly ITutorSessionQueue _queue;
+    private readonly ITutorCircuit _circuit;
 
     public AskTutorHandler(
         IApplicationDbContext db,
         ICurrentUserService currentUser,
-        IRateLimiter rateLimiter)
+        IRateLimiter rateLimiter,
+        ITutorSessionQueue queue,
+        ITutorCircuit circuit)
     {
         _db = db;
         _currentUser = currentUser;
         _rateLimiter = rateLimiter;
+        _queue = queue;
+        _circuit = circuit;
     }
 
     public async Task<ApiResponse<AskTutorResultDto>> Handle(AskTutorCommand request, CancellationToken cancellationToken)
@@ -34,6 +41,13 @@ public class AskTutorHandler : IRequestHandler<AskTutorCommand, ApiResponse<AskT
         if (string.IsNullOrEmpty(userId))
         {
             throw new UnauthorizedAccessException("User must be authenticated to ask the tutor.");
+        }
+
+        // Before rate limiting: an Ollama outage shouldn't burn the student's quota.
+        if (_circuit.IsOpen)
+        {
+            throw new ServiceUnavailableException(
+                "The tutor is temporarily unavailable. Please try again in a few seconds.");
         }
 
         await _rateLimiter.CheckAsync($"tutor:ask:{userId}", cancellationToken);
@@ -59,7 +73,29 @@ public class AskTutorHandler : IRequestHandler<AskTutorCommand, ApiResponse<AskT
         _db.TutorSessions.Add(session);
         await _db.SaveChangesAsync(cancellationToken);
 
-        var message = $"Session saved as Pending. Answer generation is not available yet. Poll GET /api/v1/tutor/sessions/{session.Id}.";
+        try
+        {
+            _queue.Enqueue(session.Id);
+        }
+        catch
+        {
+            // Enqueue failed after the row committed: remove it so the poll
+            // endpoint can't return a Pending session that will never run
+            // (mirrors UploadTextbookHandler).
+            try
+            {
+                _db.TutorSessions.Remove(session);
+                await _db.SaveChangesAsync(CancellationToken.None);
+            }
+            catch
+            {
+                // best effort — preserve the original failure
+            }
+
+            throw;
+        }
+
+        var message = $"Answer generation started. Poll GET /api/v1/tutor/sessions/{session.Id}.";
         return ApiResponse<AskTutorResultDto>.SuccessResult(
             new AskTutorResultDto(session.Id, message),
             "Accepted");
