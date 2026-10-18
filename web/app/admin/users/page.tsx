@@ -4,25 +4,16 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError, type AdminUser } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import ProtectedRoute from "@/components/ProtectedRoute";
-import Navbar from "@/components/Navbar";
 import FetchError from "@/components/FetchError";
 
 const PAGE_SIZE = 50;
 
 export default function AdminUsersPage() {
+  // #102: guard, Navbar and sidebar come from app/admin/layout.tsx
   return (
-    <ProtectedRoute>
-      <div className="min-h-screen bg-bg-light">
-        <Navbar />
-        <main className="max-w-6xl mx-auto px-6 py-10">
-          {/* Next 16: useSearchParams needs a Suspense boundary in prerendered client routes */}
-          <Suspense fallback={<UsersSkeleton />}>
-            <UsersContent />
-          </Suspense>
-        </main>
-      </div>
-    </ProtectedRoute>
+    <Suspense fallback={<UsersSkeleton />}>
+      <UsersContent />
+    </Suspense>
   );
 }
 
@@ -53,7 +44,10 @@ function UsersContent() {
   const users = state?.ok ? state.users : [];
   const roles = state?.ok ? state.roles : [];
 
-  // signed-in non-admins are bounced; anonymous is ProtectedRoute's job
+  // Deliberate guard layering (Issue #102): the admin shell admits any admin
+  // role, but this page is SuperAdmin-only per the ManageRoles policy — the
+  // server 403s everyone else, this redirect just keeps the UI honest.
+  // Anonymous routing is AdminRoute's + AuthProvider's job.
   useEffect(() => {
     if (user && !isSuperAdmin) router.replace("/dashboard");
   }, [user, isSuperAdmin, router]);

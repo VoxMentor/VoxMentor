@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { hasAdminRole } from "@/lib/admin-nav";
 
 const navLinks = [
   { href: "/dashboard", label: "Dashboard" },
@@ -13,9 +14,9 @@ const navLinks = [
 export default function Navbar() {
   const { user, logout } = useAuth();
   const pathname = usePathname();
-  // #105: SuperAdmins get the users page until #102 adds the full admin shell/sidebar.
-  const links = user?.roles?.includes("SuperAdmin")
-    ? [...navLinks, { href: "/admin/users", label: "Admin" }]
+  // #102: every admin role gets the admin area; the shell lays out its sections.
+  const links = hasAdminRole(user?.roles)
+    ? [...navLinks, { href: "/admin", label: "Admin" }]
     : navLinks;
 
   return (
@@ -34,7 +35,12 @@ export default function Navbar() {
 
         <nav className="hidden sm:flex items-center gap-1">
           {links.map((link) => {
-            const active = pathname === link.href;
+            // #102: "Admin" is a parent route (/admin, /admin/users, ...), so it
+            // must prefix-match; the other links are leaves.
+            const active =
+              link.href === "/admin"
+                ? pathname === "/admin" || pathname.startsWith("/admin/")
+                : pathname === link.href;
             return (
               <Link
                 key={link.href}
