@@ -141,11 +141,9 @@ function NavLinks({
   return (
     <ul className="flex flex-col gap-1">
       {items.map((item) => {
-        // Overview (href="/admin") is a parent route — prefix-match like Navbar;
-        // leaf items (questions, corpus, etc.) use exact match.
-        const active = item.href === "/admin"
-          ? pathname === "/admin" || pathname.startsWith("/admin/")
-          : pathname === item.href;
+        // Exact match only: at most one sidebar item gets aria-current="page",
+        // so /admin/users no longer highlights both Overview and Users & roles.
+        const active = pathname === item.href;
         return (
           <li key={item.href}>
             <Link

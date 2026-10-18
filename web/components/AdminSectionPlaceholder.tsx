@@ -13,6 +13,8 @@ export default function AdminSectionPlaceholder({
         This section is part of{" "}
         <a
           href={`https://github.com/VoxMentor/VoxMentor/issues/${issue}`}
+          target="_blank"
+          rel="noopener noreferrer"
           className="text-primary hover:underline"
         >
           Issue #{issue}

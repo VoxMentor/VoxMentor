@@ -7,12 +7,6 @@ export function hasAdminRole(roles?: string[]): boolean {
   return !!roles?.some((role) => (ADMIN_ROLES as readonly string[]).includes(role));
 }
 
-// Single source for "which admin sections does this user see" — used by the
-// sidebar and the /admin overview so the two can never drift.
-export function visibleNavItems(userRoles?: string[]): AdminNavItem[] {
-  return ADMIN_NAV.filter((item) => item.roles.some((role) => userRoles?.includes(role)));
-}
-
 const CONTENT_ADMINS = ["SuperAdmin", "ContentAdmin"];
 const PLATFORM_ADMINS = ["SuperAdmin", "PlatformAdmin"];
 
@@ -73,3 +67,9 @@ export const ADMIN_NAV: AdminNavItem[] = [
     roles: ["SuperAdmin"],
   },
 ];
+
+// Single source for "which admin sections does this user see" — used by the
+// sidebar and the /admin overview so the two can never drift.
+export function visibleNavItems(userRoles?: string[]): AdminNavItem[] {
+  return ADMIN_NAV.filter((item) => item.roles.some((role) => userRoles?.includes(role)));
+}
