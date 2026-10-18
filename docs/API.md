@@ -539,7 +539,7 @@ Response `200`:
 
 ---
 
-# 9. Voice Service (Python FastAPI, port 8001) — 🚧 To be built
+# 9. Voice Service (Python FastAPI, port 8001)
 
 | Method + Route | Body | Response |
 |---|---|---|
@@ -548,6 +548,7 @@ Response `200`:
 | `GET /health` | — | `{ "status": "Healthy" }` |
 
 Stack: faster-whisper (STT) + Piper (TTS). Used by the interview flow when `voiceMode=true`.
+Models load lazily on first request and download into `VOICE_MODELS_DIR` (`/models` in compose), so the first call is slower. Both endpoints return `503` when the model backend is unavailable.
 
 ---
 

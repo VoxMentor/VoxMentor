@@ -128,6 +128,27 @@ services:
     volumes:
       - seq-data:/data
 
+  voice-service:
+    build:
+      context: ./voice-service
+    container_name: voxmentor-voice
+    ports:
+      - "127.0.0.1:8001:8001"
+    environment:
+      - VOICE_MODELS_DIR=/models
+      - WHISPER_MODEL=${WHISPER_MODEL:-base}
+      - PIPER_VOICE=${PIPER_VOICE:-en_US-amy-medium}
+    volumes:
+      - voice-models:/models
+    healthcheck:
+      # slim image has no curl; urllib is the language-native probe
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      # first `up` builds/pip-installs; models download lazily after healthy
+      start_period: 30s
+
   # Gateway — uncomment and set env vars when running in Docker.
   # In containers, use service DNS names instead of localhost.
   # gateway:
@@ -139,6 +160,7 @@ services:
   #     - ReverseProxy__Clusters__core-api__Destinations__d1__Address=http://api:5000/
   #     - ReverseProxy__Clusters__tutor-service__Destinations__d1__Address=http://tutor:5001/
   #     - ReverseProxy__Clusters__codeexec-service__Destinations__d1__Address=http://codeexec:5002/
+  #     - ReverseProxy__Clusters__voice-service__Destinations__d1__Address=http://voice-service:8001/
   #     - Serilog__WriteTo__1__Args__serverUrl=http://seq:80
   #   ports:
   #     - "127.0.0.1:8080:8080"
@@ -150,3 +172,4 @@ volumes:
   redis-data:
   ollama-data:
   seq-data:
+  voice-models:
