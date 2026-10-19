@@ -10,11 +10,16 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import FetchError from "@/components/FetchError";
+import {
+  isGuid,
+  parseDifficulty,
+  parsePageParam,
+  splitEntries,
+  validateRubricLines,
+  validateTestCaseLines,
+} from "@/lib/question-form";
 
 const PAGE_SIZE = 20; // server caps pageSize at 100
-
-const GUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const SAMPLE_TEST_CASE = '{"input": "3 4", "expected": "7"}';
 
@@ -42,106 +47,12 @@ function formatDate(iso: string): string {
     : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
-/**
- * One JSON entry per line, with two conveniences: blank lines are ignored and a
- * whole-array paste (`[{"input":...}, ...]`, objects or strings) is accepted and
- * normalized to the string entries the backend expects.
- */
-function splitEntries(text: string): string[] {
-  const trimmed = text.trim();
-  if (!trimmed) return [];
-  if (trimmed.startsWith("[")) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(trimmed);
-    } catch {
-      parsed = null;
-    }
-    if (Array.isArray(parsed)) {
-      return parsed.map((entry) => (typeof entry === "string" ? entry : JSON.stringify(entry)));
-    }
-  }
-  return trimmed
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-}
-
-// Mirrors TestCasePayload.Parse: required string input/expected, optional bool
-// hidden trailing behind every visible case; index-based messages match backend.
-function validateTestCaseLines(entries: string[]): string[] {
-  const errors: string[] = [];
-  let seenHidden = false;
-  entries.forEach((raw, i) => {
-    const n = i + 1;
-    let obj: unknown;
-    try {
-      obj = JSON.parse(raw);
-    } catch {
-      errors.push(`Test case ${n} is not valid JSON.`);
-      return;
-    }
-    if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {
-      errors.push(`Test case ${n} must be a JSON object.`);
-      return;
-    }
-    const o = obj as Record<string, unknown>;
-    if (typeof o.input !== "string") {
-      errors.push(`Test case ${n} is missing a string "input" field.`);
-    }
-    if (typeof o.expected !== "string") {
-      errors.push(`Test case ${n} is missing a string "expected" field.`);
-    }
-    if (o.hidden !== undefined) {
-      if (typeof o.hidden !== "boolean") {
-        errors.push(`Test case ${n} "hidden" must be a boolean.`);
-      } else if (o.hidden) {
-        seenHidden = true;
-      }
-    }
-    if (!(o.hidden === true) && seenHidden) {
-      errors.push(
-        `Test case ${n} is not hidden but follows a hidden case; hidden cases must be trailing.`
-      );
-    }
-  });
-  return errors;
-}
-
-// Mirrors RubricPayload.Parse: nonempty string criterion + numeric points.
-function validateRubricLines(entries: string[]): string[] {
-  const errors: string[] = [];
-  entries.forEach((raw, i) => {
-    const n = i + 1;
-    let obj: unknown;
-    try {
-      obj = JSON.parse(raw);
-    } catch {
-      errors.push(`Rubric entry ${n} is not valid JSON.`);
-      return;
-    }
-    if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {
-      errors.push(`Rubric entry ${n} must be a JSON object.`);
-      return;
-    }
-    const o = obj as Record<string, unknown>;
-    if (typeof o.criterion !== "string" || o.criterion.trim().length === 0) {
-      errors.push(`Rubric entry ${n} is missing a nonempty string "criterion" field.`);
-    }
-    if (typeof o.points !== "number") {
-      errors.push(`Rubric entry ${n} is missing a numeric "points" field.`);
-    }
-  });
-  return errors;
-}
-
 function QuestionsContent() {
   const { user, setUser } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const pageParam = parseInt(searchParams.get("page") ?? "1", 10);
-  const page = Number.isFinite(pageParam) && pageParam > 1 ? pageParam : 1;
+  const page = parsePageParam(searchParams.get("page"));
 
   const [list, setList] = useState<ListState | null>(null);
   const [reload, setReload] = useState(0);
@@ -211,6 +122,7 @@ function QuestionsContent() {
   }, [isContentAdmin, page, key, setUser]);
 
   function goToPage(next: number) {
+    setSuccess(null); // same-route navigation keeps this component mounted
     router.push(next <= 1 ? "/admin/questions" : `/admin/questions?page=${next}`);
   }
 
@@ -397,13 +309,6 @@ function QuestionCard({ q }: { q: AdminQuestion }) {
   );
 }
 
-const FIELD_CLASS =
-  "w-full px-4 py-3 text-[0.9375rem] text-text-heading bg-white border-[1.5px] rounded-[14px] outline-none transition-colors placeholder:text-text-muted focus:border-primary";
-
-function fieldClass(hasError: boolean): string {
-  return `${FIELD_CLASS} ${hasError ? "border-[#EF4444]" : "border-border"}`;
-}
-
 function FieldError({ id, message }: { id: string; message: string | undefined }) {
   if (!message) return null;
   return (
@@ -442,15 +347,19 @@ function CreateQuestionForm({
     headingRef.current?.focus();
   }, []);
 
-  function validate(conceptIdValue: string, testCaseEntries: string[], rubricEntries: string[]): Record<string, string> {
+  function validate(
+    conceptIdValue: string,
+    difficultyValue: number | null,
+    testCaseEntries: string[],
+    rubricEntries: string[]
+  ): Record<string, string> {
     const errors: Record<string, string> = {};
-    if (!GUID_PATTERN.test(conceptIdValue)) {
+    if (!isGuid(conceptIdValue)) {
       errors.ConceptId = "Concept ID is required and must be a valid GUID.";
     }
     if (!title.trim()) errors.Title = "Title is required.";
     if (!description.trim()) errors.Description = "Description is required.";
-    const diff = Number.parseInt(difficulty, 10);
-    if (!Number.isInteger(diff) || diff < 1 || diff > 10) {
+    if (difficultyValue === null) {
       errors.Difficulty = "Difficulty must be between 1 and 10.";
     }
     if (testCaseEntries.length === 0) {
@@ -469,11 +378,13 @@ function CreateQuestionForm({
 
     // client-side mirror of CreateQuestionValidator — avoids a round trip for
     // errors the server would reject anyway; server errors still take precedence.
+    const parsedDifficulty = parseDifficulty(difficulty);
     const testCaseEntries = splitEntries(testCasesText);
     const rubricEntries = splitEntries(rubricText);
-    const errors = validate(conceptId.trim(), testCaseEntries, rubricEntries);
-    if (Object.keys(errors).length > 0) {
+    const errors = validate(conceptId.trim(), parsedDifficulty, testCaseEntries, rubricEntries);
+    if (Object.keys(errors).length > 0 || parsedDifficulty === null) {
       setFieldErrors(errors);
+      setBanner(null); // never let a previous attempt's banner outlive the fix
       return;
     }
     setFieldErrors({});
@@ -484,7 +395,7 @@ function CreateQuestionForm({
         conceptId: conceptId.trim(),
         title: title.trim(),
         description: description.trim(),
-        difficulty: Number.parseInt(difficulty, 10),
+        difficulty: parsedDifficulty,
         questionType,
         testCases: testCaseEntries,
         ...(rubricEntries.length > 0 ? { rubric: rubricEntries } : {}),
@@ -509,9 +420,16 @@ function CreateQuestionForm({
             setUser(null);
           });
       } else if (err instanceof ApiError && err.status === 404) {
-        setFieldErrors({
-          ConceptId: "Concept not found. Check the Concept ID and try again.",
-        });
+        // Not every 404 is a missing concept: a routed miss (an API build without
+        // this endpoint) answers 404 as well, so only blame the Concept ID when
+        // the server's own message says the concept was the problem.
+        if (/concept/i.test(err.message)) {
+          setFieldErrors({
+            ConceptId: "Concept not found. Check the Concept ID and try again.",
+          });
+        } else {
+          setBanner(err.message);
+        }
       } else if (err instanceof ApiError && err.errors && Object.keys(err.errors).length > 0) {
         const mapped: Record<string, string> = {};
         for (const [field, messages] of Object.entries(err.errors)) {
@@ -581,7 +499,6 @@ function CreateQuestionForm({
               maxLength={300}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Merge two sorted lists"
-              className={fieldClass(!!fieldErrors.Title)}
               aria-invalid={!!fieldErrors.Title}
               aria-describedby={fieldErrors.Title ? "q-title-error" : undefined}
             />
@@ -596,7 +513,6 @@ function CreateQuestionForm({
               value={conceptId}
               onChange={(e) => setConceptId(e.target.value)}
               placeholder="e.g. 3f2504e0-4f89-11d3-9a0c-0305e82c3301"
-              className={fieldClass(!!fieldErrors.ConceptId)}
               aria-invalid={!!fieldErrors.ConceptId}
               aria-describedby={fieldErrors.ConceptId ? "q-conceptId-error" : undefined}
             />
@@ -612,7 +528,7 @@ function CreateQuestionForm({
             rows={4}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Full problem statement shown to students"
-            className={`${FIELD_CLASS} resize-y ${fieldErrors.Description ? "border-[#EF4444]" : "border-border"}`}
+            className="resize-y"
             aria-invalid={!!fieldErrors.Description}
             aria-describedby={fieldErrors.Description ? "q-description-error" : undefined}
           />
@@ -632,7 +548,6 @@ function CreateQuestionForm({
               value={difficulty}
               onChange={(e) => setDifficulty(e.target.value)}
               placeholder="e.g. 5"
-              className={fieldClass(!!fieldErrors.Difficulty)}
               aria-invalid={!!fieldErrors.Difficulty}
               aria-describedby={fieldErrors.Difficulty ? "q-difficulty-error" : undefined}
             />
@@ -645,7 +560,6 @@ function CreateQuestionForm({
               id="q-type"
               value={questionType}
               onChange={(e) => setQuestionType(e.target.value)}
-              className={FIELD_CLASS}
             >
               <option value="Code">Code</option>
               <option value="MCQ">MCQ</option>
@@ -660,9 +574,9 @@ function CreateQuestionForm({
             value={testCasesText}
             rows={4}
             onChange={(e) => setTestCasesText(e.target.value)}
-            className={`${FIELD_CLASS} resize-y font-mono text-sm ${fieldErrors.TestCases ? "border-[#EF4444]" : "border-border"}`}
+            className="resize-y font-mono text-sm"
             aria-invalid={!!fieldErrors.TestCases}
-            aria-describedby="q-testCases-hint"
+            aria-describedby={fieldErrors.TestCases ? "q-testCases-hint q-testCases-error" : "q-testCases-hint"}
           />
           <p id="q-testCases-hint" className="mt-1.5 text-xs text-text-muted">
             One JSON object per line, e.g.{" "}
@@ -681,9 +595,9 @@ function CreateQuestionForm({
             value={rubricText}
             rows={3}
             onChange={(e) => setRubricText(e.target.value)}
-            className={`${FIELD_CLASS} resize-y font-mono text-sm ${fieldErrors.Rubric ? "border-[#EF4444]" : "border-border"}`}
+            className="resize-y font-mono text-sm"
             aria-invalid={!!fieldErrors.Rubric}
-            aria-describedby="q-rubric-hint"
+            aria-describedby={fieldErrors.Rubric ? "q-rubric-hint q-rubric-error" : "q-rubric-hint"}
           />
           <p id="q-rubric-hint" className="mt-1.5 text-xs text-text-muted">
             One JSON object per line, e.g.{" "}
