@@ -57,7 +57,7 @@ function QuestionsContent() {
   const [list, setList] = useState<ListState | null>(null);
   const [reload, setReload] = useState(0);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [success, setSuccess] = useState<{ page: number; text: string } | null>(null);
 
   const isContentAdmin =
     !!user?.roles?.includes("SuperAdmin") || !!user?.roles?.includes("ContentAdmin");
@@ -86,6 +86,11 @@ function QuestionsContent() {
     api.adminQuestions(page, PAGE_SIZE)
       .then((result) => {
         if (cancelled) return;
+        const totalPages = Math.max(1, Math.ceil(result.totalCount / PAGE_SIZE));
+        if (page > totalPages) {
+          router.push("/admin/questions");
+          return;
+        }
         setList({ key, ok: true, result });
       })
       .catch((e) => {
@@ -119,7 +124,7 @@ function QuestionsContent() {
     return () => {
       cancelled = true;
     };
-  }, [isContentAdmin, page, key, setUser]);
+  }, [isContentAdmin, page, key, setUser, router]);
 
   function goToPage(next: number) {
     setSuccess(null); // same-route navigation keeps this component mounted
@@ -132,7 +137,7 @@ function QuestionsContent() {
   }
 
   function onCreated() {
-    setSuccess("Question created.");
+    setSuccess({ page, text: "Question created." });
     setPanelOpen(false);
     // newest-first list: show the new row by refetching page 1
     if (page > 1) router.push("/admin/questions");
@@ -160,7 +165,7 @@ function QuestionsContent() {
         </button>
       </div>
 
-      {success && (
+      {success && success.page === page && (
         <div
           role="status"
           className="flex items-center gap-2.5 rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-4 py-3 text-sm font-medium text-[#15803D] mb-5"
@@ -178,7 +183,7 @@ function QuestionsContent() {
           >
             <path d="M20 6 9 17l-5-5" />
           </svg>
-          {success}
+          {success.text}
         </div>
       )}
 
@@ -375,6 +380,7 @@ function CreateQuestionForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting) return;
 
     // client-side mirror of CreateQuestionValidator — avoids a round trip for
     // errors the server would reject anyway; server errors still take precedence.
