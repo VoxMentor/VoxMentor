@@ -749,6 +749,11 @@ namespace VoxMentor.Infrastructure.Migrations
                     b.Property<Guid?>("ConceptId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -773,6 +778,8 @@ namespace VoxMentor.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ContentHash", "ConceptId");
 
                     b.ToTable("TextbookJobs");
                 });

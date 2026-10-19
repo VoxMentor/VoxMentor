@@ -518,6 +518,7 @@ Response `202`:
 ```json
 { "jobId": "uuid", "message": "Background job started. Check GET /api/v1/admin/textbook/status/{jobId}." }
 ```
+Idempotent retries: re-uploading the identical file with the same optional `conceptId` reuses the existing job — while that job is `Pending`/`Processing` the response is `202` with **"An ingestion job for this file is already running."**, and `Completed` returns **"This file was already ingested."** (same `jobId`, no new job). A `Failed` job or a different `conceptId` starts a fresh job.
 
 ### GET /api/v1/admin/textbook/status/{jobId}
 Poll ingestion job progress.

@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
@@ -53,11 +54,49 @@ public class UploadTextbookHandler : IRequestHandler<UploadTextbookCommand, ApiR
                 await request.Content.CopyToAsync(fileStream, cancellationToken);
             }
 
+            // Idempotent retries (#104): a lost 202 response makes the admin
+            // re-upload the same file; keying on (content, concept) reuses the
+            // existing job instead of queueing a duplicate. Failed jobs are
+            // NOT reused (failed work never re-runs — they want a fresh run),
+            // and a different ConceptId is a deliberate re-index.
+            var contentHash = await ComputeContentHashAsync(filePath, cancellationToken);
+            var inFlight = await _db.TextbookJobs
+                .Where(j => j.ContentHash == contentHash
+                    && j.ConceptId == request.ConceptId
+                    && (j.Status == TextbookJobStatus.Pending
+                        || j.Status == TextbookJobStatus.Processing))
+                .OrderByDescending(j => j.CreatedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (inFlight is not null)
+            {
+                DeleteStagedFileBestEffort(filePath);
+                return ApiResponse<UploadTextbookResultDto>.SuccessResult(
+                    new UploadTextbookResultDto(inFlight.Id,
+                        $"An ingestion job for this file is already running. Check GET /api/v1/admin/textbook/status/{inFlight.Id}."),
+                    "Accepted");
+            }
+
+            var completed = await _db.TextbookJobs
+                .Where(j => j.ContentHash == contentHash
+                    && j.ConceptId == request.ConceptId
+                    && j.Status == TextbookJobStatus.Completed)
+                .OrderByDescending(j => j.CompletedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (completed is not null)
+            {
+                DeleteStagedFileBestEffort(filePath);
+                return ApiResponse<UploadTextbookResultDto>.SuccessResult(
+                    new UploadTextbookResultDto(completed.Id,
+                        $"This file was already ingested. Check GET /api/v1/admin/textbook/status/{completed.Id}."),
+                    "Accepted");
+            }
+
             job = new TextbookJob
             {
                 Id = jobId,
                 FileName = request.FileName,
                 ConceptId = request.ConceptId,
+                ContentHash = contentHash,
                 Status = TextbookJobStatus.Pending
             };
             _db.TextbookJobs.Add(job);
@@ -100,5 +139,27 @@ public class UploadTextbookHandler : IRequestHandler<UploadTextbookCommand, ApiR
         return ApiResponse<UploadTextbookResultDto>.SuccessResult(
             new UploadTextbookResultDto(jobId, message),
             "Accepted");
+    }
+
+    private static async Task<string> ComputeContentHashAsync(
+        string filePath, CancellationToken cancellationToken)
+    {
+        await using var stream = File.OpenRead(filePath);
+        using var sha = SHA256.Create();
+        var bytes = await sha.ComputeHashAsync(stream, cancellationToken);
+        return Convert.ToHexString(bytes);
+    }
+
+    // ponytail: best effort — orphan cleanup beats masking the reuse result
+    private static void DeleteStagedFileBestEffort(string filePath)
+    {
+        try
+        {
+            File.Delete(filePath);
+        }
+        catch
+        {
+            // Ignore: the staged duplicate will be cleaned by the reuse path owner.
+        }
     }
 }

@@ -146,4 +146,117 @@ public class UploadTextbookHandlerTests
 
         Assert.Empty(await db.TextbookJobs.ToListAsync());
     }
+
+    // Idempotent retries (#104 CodeRabbit): same content + same concept must
+    // reuse the existing job instead of queueing a duplicate.
+
+    [Fact]
+    public async Task Upload_SameContentRetried_ReusesPendingJob_NoNewRow_NoEnqueue()
+    {
+        var db = CreateDb();
+        var queue = new FakeQueue();
+        var handler = new UploadTextbookHandler(db, queue);
+
+        var first = await handler.Handle(Command(), CancellationToken.None);
+        var second = await handler.Handle(Command(), CancellationToken.None);
+
+        Assert.Equal(first.Data!.JobId, second.Data!.JobId);
+        Assert.Contains("already running", second.Data!.Message);
+        Assert.Single(await db.TextbookJobs.ToListAsync());
+        Assert.Equal(first.Data.JobId, queue.JobId); // enqueued exactly once
+
+        File.Delete(queue.FilePath!);
+    }
+
+    [Fact]
+    public async Task Upload_SameContentAlreadyCompleted_ReturnsCompletedJobId()
+    {
+        var db = CreateDb();
+        var queue = new FakeQueue();
+        var handler = new UploadTextbookHandler(db, queue);
+
+        var first = await handler.Handle(Command(), CancellationToken.None);
+        var job = await db.TextbookJobs.SingleAsync(j => j.Id == first.Data!.JobId);
+        job.Status = TextbookJobStatus.Completed;
+        job.CompletedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        var second = await handler.Handle(Command(), CancellationToken.None);
+
+        Assert.Equal(first.Data!.JobId, second.Data!.JobId);
+        Assert.Contains("already ingested", second.Data!.Message);
+        Assert.Single(await db.TextbookJobs.ToListAsync());
+
+        File.Delete(queue.FilePath!);
+    }
+
+    [Fact]
+    public async Task Upload_SameContentFailedJob_CreatesFreshJob()
+    {
+        var db = CreateDb();
+        var queue = new FakeQueue();
+        var handler = new UploadTextbookHandler(db, queue);
+
+        var first = await handler.Handle(Command(), CancellationToken.None);
+        var firstPath = queue.FilePath!;
+        var job = await db.TextbookJobs.SingleAsync(j => j.Id == first.Data!.JobId);
+        job.Status = TextbookJobStatus.Failed;
+        job.Error = "Ollama down";
+        await db.SaveChangesAsync();
+
+        var second = await handler.Handle(Command(), CancellationToken.None);
+
+        Assert.NotEqual(first.Data!.JobId, second.Data!.JobId);
+        Assert.Equal(2, (await db.TextbookJobs.ToListAsync()).Count);
+        Assert.Equal(second.Data!.JobId, queue.JobId); // freshest run is the queued one
+        Assert.Contains("Background job started", second.Data.Message);
+
+        File.Delete(firstPath);
+        File.Delete(queue.FilePath!);
+    }
+
+    [Fact]
+    public async Task Upload_SameContentDifferentConcept_CreatesFreshJob()
+    {
+        var db = CreateDb();
+        var conceptA = Guid.NewGuid();
+        var conceptB = Guid.NewGuid();
+        db.Concepts.Add(new Concept { Id = conceptA, Name = "Arrays", Category = "DSA" });
+        db.Concepts.Add(new Concept { Id = conceptB, Name = "Graphs", Category = "DSA" });
+        await db.SaveChangesAsync();
+
+        var queue = new FakeQueue();
+        var handler = new UploadTextbookHandler(db, queue);
+
+        var first = await handler.Handle(Command(conceptId: conceptA), CancellationToken.None);
+        var firstPath = queue.FilePath!;
+
+        var second = await handler.Handle(Command(conceptId: conceptB), CancellationToken.None);
+
+        Assert.NotEqual(first.Data!.JobId, second.Data!.JobId);
+        Assert.Equal(2, (await db.TextbookJobs.ToListAsync()).Count);
+        Assert.Equal(conceptB, await db.TextbookJobs
+            .Where(j => j.Id == second.Data!.JobId)
+            .Select(j => j.ConceptId)
+            .SingleAsync());
+
+        File.Delete(firstPath);
+        File.Delete(queue.FilePath!);
+    }
+
+    [Fact]
+    public async Task Upload_StoresContentHashOnJob()
+    {
+        var db = CreateDb();
+        var queue = new FakeQueue();
+        var handler = new UploadTextbookHandler(db, queue);
+
+        var result = await handler.Handle(Command(), CancellationToken.None);
+
+        var job = await db.TextbookJobs.SingleAsync(j => j.Id == result.Data!.JobId);
+        Assert.Equal(64, job.ContentHash.Length);
+        Assert.Matches("^[0-9A-F]{64}$", job.ContentHash);
+
+        File.Delete(queue.FilePath!);
+    }
 }
