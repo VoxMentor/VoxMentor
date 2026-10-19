@@ -216,8 +216,11 @@ public class UploadTextbookDedupSqliteTests : IDisposable
     [Fact]
     public async Task Upload_RaceOnRealSqliteCollision_ReturnsWinnerId_AndSkipsEnqueue()
     {
-        // Per-test Guid keeps the shared staging dir parallel-safe.
-        var content = $"dedup race coverage {Guid.NewGuid():N}";
+        // Per-test Guid: unique staged-file content (parallel-safe identity for
+        // the cleanup assert — a directory diff would race other test classes
+        // staging into the same shared dir, see Upload_PostWriteFailure's note).
+        var marker = Guid.NewGuid().ToString("N");
+        var content = $"dedup race coverage {marker}";
         var options = new DbContextOptionsBuilder<TextbookDedupSqliteDbContext>()
             .UseSqlite(_connection)
             .Options;
@@ -227,7 +230,6 @@ public class UploadTextbookDedupSqliteTests : IDisposable
         await seedDb.SaveChangesAsync();
 
         var stagingDir = Path.Combine(Path.GetTempPath(), ITextbookIngestionQueue.TempDirectoryName);
-        var filesBefore = Directory.GetFiles(stagingDir).ToHashSet();
 
         var winnerId = Guid.NewGuid();
         var raceDb = new RaceOnSaveDbContext(options, new TextbookJob
@@ -248,7 +250,21 @@ public class UploadTextbookDedupSqliteTests : IDisposable
         Assert.Equal(Guid.Empty, queue.JobId); // the losing duplicate is never queued
         Assert.Equal(1, await raceDb.TextbookJobs.CountAsync()); // only the winner persisted
 
-        // The handler deleted its own staged duplicate (ReuseResponse).
-        Assert.Empty(Directory.GetFiles(stagingDir).Except(filesBefore));
+        // The handler deleted its own staged duplicate (ReuseResponse): no file
+        // in the shared dir still carries this test's unique content.
+        Assert.DoesNotContain(Directory.GetFiles(stagingDir), path => ContainsMarker(path, marker));
+    }
+
+    private static bool ContainsMarker(string path, string marker)
+    {
+        try
+        {
+            return File.ReadAllText(path).Contains(marker, StringComparison.Ordinal);
+        }
+        catch (IOException)
+        {
+            // Deleted or mid-write by a parallel test class — not ours.
+            return false;
+        }
     }
 }
