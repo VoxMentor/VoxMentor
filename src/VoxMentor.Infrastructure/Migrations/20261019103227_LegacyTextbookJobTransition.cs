@@ -14,7 +14,8 @@ namespace VoxMentor.Infrastructure.Migrations
             // Rows predating content-hash tracking keep ContentHash = '' forever
             // (their staged files may be gone — a backfill is impossible), so
             // they can never match a retry. Pending ones are handed an explicit
-            // end state; Processing ones are left to their worker, and Completed
+            // end state with CompletedAt set (matching every other Failed
+            // transition); Processing ones are left to their worker, and Completed
             // ones are left ingested (a retry of that content re-ingests once —
             // accepted one-off cost, see docs/API.md textbook section).
             // The earlier migration only had a NON-unique index, so concurrent
@@ -25,6 +26,12 @@ namespace VoxMentor.Infrastructure.Migrations
             // starts its Hangfire server, and the lock freezes any other
             // instance for the duration of reconciliation + index build.
             migrationBuilder.Sql("""
+                -- lock_timeout aborts this boot quickly if a concurrent session
+                -- holds a conflicting lock, instead of blocking indefinitely
+                -- (candidate deadlock: worker holds chunk rows while waiting on
+                -- this lock, this migration waits on those chunks).
+                SET lock_timeout = '5s';
+
                 LOCK TABLE "TextbookJobs" IN ACCESS EXCLUSIVE MODE;
 
                 WITH ranked AS (
@@ -52,7 +59,8 @@ namespace VoxMentor.Infrastructure.Migrations
                 )
                 UPDATE "TextbookJobs" t
                 SET "Status" = 'Failed',
-                    "Error" = 'Duplicate ingestion job reconciled before dedup enforcement. Re-upload the file to ingest it.'
+                    "Error" = 'Duplicate ingestion job reconciled before dedup enforcement. Re-upload the file to ingest it.',
+                    "CompletedAt" = now()
                 FROM ranked d
                 WHERE t."Id" = d."Id" AND d.rn > 1;
 
@@ -64,7 +72,8 @@ namespace VoxMentor.Infrastructure.Migrations
 
                 UPDATE "TextbookJobs"
                 SET "Status" = 'Failed',
-                    "Error" = 'Job created before content-hash tracking. Re-upload the file to ingest it.'
+                    "Error" = 'Job created before content-hash tracking. Re-upload the file to ingest it.',
+                    "CompletedAt" = now()
                 WHERE "Status" = 'Pending' AND "ContentHash" = '';
                 """);
 

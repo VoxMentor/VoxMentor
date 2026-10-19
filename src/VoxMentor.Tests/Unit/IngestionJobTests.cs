@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Pgvector;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Domain.Entities;
 using VoxMentor.Domain.Enums;
@@ -147,6 +148,41 @@ public class IngestionJobTests
 
         Assert.Empty(await db.TextbookChunks.ToListAsync());
         Assert.False(File.Exists(path), "temp file should be deleted even on failure");
+    }
+
+    [Fact]
+    public async Task Execute_ProcessingRow_RerunsAndPurgesStaleChunks()
+    {
+        var db = CreateDb();
+        var conceptId = Guid.NewGuid();
+        var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText(), conceptId);
+        var staleChunk = new TextbookChunk
+        {
+            Id = Guid.NewGuid(),
+            JobId = job.Id,
+            ConceptId = conceptId,
+            Content = "stale",
+            Source = "book.txt",
+            Embedding = new Vector(new float[768]),
+        };
+        db.TextbookChunks.Add(staleChunk);
+        job.Status = TextbookJobStatus.Processing;
+        job.ProcessedChunks = 3;
+        await db.SaveChangesAsync();
+        var handler = new StubHandler(EmbedResponse);
+
+        await CreateJob(db, handler).Execute(job.Id, path, CancellationToken.None);
+
+        var result = await db.TextbookJobs.SingleAsync(j => j.Id == job.Id);
+        Assert.Equal(TextbookJobStatus.Completed, result.Status);
+        Assert.Equal(2, result.TotalChunks);
+        Assert.Equal(2, result.ProcessedChunks);
+        Assert.NotNull(result.CompletedAt);
+        var chunks = await db.TextbookChunks.Where(c => c.JobId == job.Id).ToListAsync();
+        Assert.Equal(2, chunks.Count);
+        Assert.DoesNotContain(chunks, c => c.Content == "stale");
+        Assert.Equal(2, handler.RequestCount);
+        Assert.False(File.Exists(path), "temp file should be deleted after processing");
     }
 
     [Fact]
