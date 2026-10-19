@@ -103,6 +103,50 @@ export function validateTestCaseLines(entries: string[]): string[] {
   return errors;
 }
 
+// Server error keys the create form renders next to a field. Everything else
+// the server can put in `errors` (validator-only keys like QuestionType or
+// VariantSeed, ProblemDetails JSON paths like "$.difficulty", envelope-less
+// keys like "command", or camelCase variants under another JSON naming policy)
+// has no rendered field — those must surface in the banner or the admin
+// submits blind.
+const FORM_FIELD_KEYS = [
+  "Title",
+  "ConceptId",
+  "Description",
+  "Difficulty",
+  "TestCases",
+  "Rubric",
+] as const;
+
+// ponytail: canonical lookup by lowercase key; one synonym table for the
+// PascalCase name this API emits (verified live) plus camelCase variants.
+const CANONICAL_FIELD_KEY = new Map(
+  FORM_FIELD_KEYS.map((key) => [key.toLowerCase(), key])
+);
+
+/**
+ * Splits the server's `errors` map (PascalCase property names, ProblemDetails
+ * paths, or anything else) into field-scoped errors the form can render and a
+ * single banner message for every key no form field can display. Messages for
+ * one key are joined with " ".
+ */
+export function splitServerFieldErrors(errors: Record<string, string[]>): {
+  fieldErrors: Record<string, string>;
+  unmatchedMessage: string | null;
+} {
+  const fieldErrors: Record<string, string> = {};
+  const unmatched: string[] = [];
+  for (const [rawKey, messages] of Object.entries(errors)) {
+    const canonicalKey = CANONICAL_FIELD_KEY.get(rawKey.toLowerCase());
+    if (canonicalKey) {
+      fieldErrors[canonicalKey] = messages.join(" ");
+    } else {
+      unmatched.push(...messages);
+    }
+  }
+  return { fieldErrors, unmatchedMessage: unmatched.length > 0 ? unmatched.join(" ") : null };
+}
+
 // Mirrors RubricPayload.Parse: nonempty string criterion + numeric points.
 export function validateRubricLines(entries: string[]): string[] {
   const errors: string[] = [];

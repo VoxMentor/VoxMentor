@@ -8,6 +8,7 @@ import {
   isGuid,
   parseDifficulty,
   parsePageParam,
+  splitServerFieldErrors,
   splitEntries,
   validateRubricLines,
   validateTestCaseLines,
@@ -63,6 +64,59 @@ test("page past the last page is out of range; the last page and page 1 are not"
   assert.equal(2 > computeTotalPages(20, 20), true);
   assert.equal(2 > computeTotalPages(21, 20), false);
   assert.equal(1 > computeTotalPages(0, 20), false); // page 1 must never self-redirect
+});
+
+test("splitServerFieldErrors routes known fields and drops nothing into silence", () => {
+  // every known key maps to its field error, messages joined
+  const result = splitServerFieldErrors({
+    Title: ["Title is required."],
+    ConceptId: ["not a valid GUID", "does not exist"],
+  });
+  assert.deepEqual(
+    result.fieldErrors,
+    { Title: "Title is required.", ConceptId: "not a valid GUID does not exist" }
+  );
+  assert.equal(result.unmatchedMessage, null);
+});
+
+test("splitServerFieldErrors surfaces server keys no form field can render", () => {
+  // validator keys (QuestionType, VariantSeed), ProblemDetails JSON paths
+  // ("$.difficulty"), envelope-less keys ("command") — none has a rendered
+  // field; they must land in the banner or the admin submits blind.
+  const result = splitServerFieldErrors({
+    QuestionType: ["Question type is not supported."],
+    "$.difficulty": ["The difficulty value is invalid."],
+    command: ["Unable to process the request."],
+  });
+  assert.deepEqual(result.fieldErrors, {});
+  assert.equal(
+    result.unmatchedMessage,
+    "Question type is not supported. The difficulty value is invalid. Unable to process the request."
+  );
+});
+
+test("splitServerFieldErrors matches camelCase server keys to their canonical field", () => {
+  const result = splitServerFieldErrors({ title: ["Title is required."], description: ["Too long."] });
+  assert.deepEqual(
+    result.fieldErrors,
+    { Title: "Title is required.", Description: "Too long." }
+  );
+  assert.equal(result.unmatchedMessage, null);
+});
+
+test("splitServerFieldErrors splits a mixed response between fields and banner", () => {
+  const result = splitServerFieldErrors({
+    TestCases: ["Test case is not valid JSON."],
+    VariantSeed: ["Seed is out of range."],
+  });
+  assert.deepEqual(result.fieldErrors, { TestCases: "Test case is not valid JSON." });
+  assert.equal(result.unmatchedMessage, "Seed is out of range.");
+});
+
+test("splitServerFieldErrors degrades an empty error map to no output at all", () => {
+  const result = splitServerFieldErrors({});
+  assert.deepEqual(result.fieldErrors, {});
+  assert.equal(result.unmatchedMessage, null);
 });
 
 test("splitEntries drops blank lines and keeps one JSON entry per line", () => {

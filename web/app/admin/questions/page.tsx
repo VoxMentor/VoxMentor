@@ -16,6 +16,7 @@ import {
   parseDifficulty,
   parsePageParam,
   splitEntries,
+  splitServerFieldErrors,
   validateRubricLines,
   validateTestCaseLines,
 } from "@/lib/question-form";
@@ -440,11 +441,11 @@ function CreateQuestionForm({
           setBanner(err.message);
         }
       } else if (err instanceof ApiError && err.errors && Object.keys(err.errors).length > 0) {
-        const mapped: Record<string, string> = {};
-        for (const [field, messages] of Object.entries(err.errors)) {
-          mapped[field] = messages.join(" ");
-        }
-        setFieldErrors(mapped);
+        // keys with a rendered field go next to it; the rest land in the banner
+        // so a failed submit never leaves the admin without an explanation
+        const { fieldErrors, unmatchedMessage } = splitServerFieldErrors(err.errors);
+        setFieldErrors(fieldErrors);
+        if (unmatchedMessage) setBanner(unmatchedMessage);
       } else {
         setBanner(
           err instanceof ApiError ? err.message : "Something went wrong. Please try again."
