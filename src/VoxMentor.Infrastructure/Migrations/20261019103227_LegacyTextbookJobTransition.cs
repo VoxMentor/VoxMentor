@@ -21,16 +21,18 @@ namespace VoxMentor.Infrastructure.Migrations
             // The earlier migration only had a NON-unique index, so concurrent
             // identical uploads could have written duplicate reusable rows;
             // reconcile them (and their chunks — TextbookChunks has no FK)
-            // before the unique index is created. LOCK TABLE is the write gate:
-            // migrations run at startup before this instance serves traffic or
-            // starts its Hangfire server, and the lock freezes any other
-            // instance for the duration of reconciliation + index build.
+            // before the unique index is created. LOCK TABLE blocks reads and
+            // writes on TextbookJobs: migrations run at startup before this
+            // instance serves traffic or starts its Hangfire server, so no
+            // live request path waits on it; other instances are frozen for
+            // the duration of reconciliation + index build.
             migrationBuilder.Sql("""
-                -- lock_timeout aborts this boot quickly if a concurrent session
-                -- holds a conflicting lock, instead of blocking indefinitely
-                -- (candidate deadlock: worker holds chunk rows while waiting on
-                -- this lock, this migration waits on those chunks).
-                SET lock_timeout = '5s';
+                -- lock_timeout aborts this boot quickly if a conflicting lock
+                -- is held, instead of blocking indefinitely. Lock order is
+                -- consistent (TextbookJobs first; workers only take row locks
+                -- they already hold), so there is no circular wait — only
+                -- one-way blocking bounded by the timeout.
+                SET LOCAL lock_timeout = '5s';
 
                 LOCK TABLE "TextbookJobs" IN ACCESS EXCLUSIVE MODE;
 
