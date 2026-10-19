@@ -170,6 +170,44 @@ export interface AdminUser {
   roles: string[];
 }
 
+// --- Admin question bank (#103): GET/POST /v1/admin/questions, ManageContent policy ---
+
+export interface AdminQuestion {
+  id: string;
+  conceptId: string;
+  title: string;
+  description: string;
+  difficulty: number;
+  testCaseCount: number;
+  createdAt: string;
+}
+
+export interface AdminQuestionListResult {
+  questions: AdminQuestion[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface CreateAdminQuestionInput {
+  conceptId: string;
+  title: string;
+  description: string;
+  difficulty: number;
+  questionType: string;
+  /** Each entry is a JSON string: {"input": string, "expected": string, "hidden"?: bool} — hidden must be trailing. */
+  testCases: string[];
+  /** Each entry is a JSON string: {"criterion": string, "points": number}. */
+  rubric?: string[];
+}
+
+export interface AdminQuestionCreated {
+  questionId: string;
+  conceptId: string;
+  title: string;
+  difficulty: number;
+}
+
 export const api = {
   register: (data: RegisterRequest) =>
     request<RegisterResponse>("/v1/auth/register", {
@@ -229,6 +267,16 @@ export const api = {
       `/v1/admin/users/${encodeURIComponent(userId)}/roles/${encodeURIComponent(role)}`,
       { method: "DELETE" }
     ),
+
+  // --- admin questions (#103): ContentAdmin + SuperAdmin via ManageContent policy ---
+  adminQuestions: (page = 1, pageSize = 20) =>
+    request<AdminQuestionListResult>(`/v1/admin/questions?page=${page}&pageSize=${pageSize}`),
+
+  adminCreateQuestion: (input: CreateAdminQuestionInput) =>
+    request<AdminQuestionCreated>("/v1/admin/questions", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
 };
 
 export { ApiError };

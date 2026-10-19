@@ -54,12 +54,16 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 24 for `npm test`: Node runs lib/*.test.ts with native type stripping
+          # (>= 23.6), so there is no test framework to install.
+          node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Install
         run: npm ci
       - name: Lint
         run: npm run lint
+      - name: Test
+        run: npm test
       - name: Build
         run: npm run build
