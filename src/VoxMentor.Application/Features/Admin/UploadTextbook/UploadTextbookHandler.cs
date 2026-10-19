@@ -100,13 +100,18 @@ public class UploadTextbookHandler : IRequestHandler<UploadTextbookCommand, ApiR
         }
         catch
         {
-            // Enqueue failed after the row committed: remove it so the status
-            // endpoint can't poll a Pending job that will never run.
+            // Enqueue failed after the row committed: end it as Failed so the
+            // status endpoint can't poll a Pending job that will never run.
+            // Deleting it would 404 a concurrent duplicate that the dedup path
+            // already answered with this jobId; Failed stays pollable and a
+            // re-upload starts fresh.
             if (jobSaved && job is not null)
             {
                 try
                 {
-                    _db.TextbookJobs.Remove(job);
+                    job.Status = TextbookJobStatus.Failed;
+                    job.Error = "The ingestion queue was unavailable. Re-upload the file to retry.";
+                    job.CompletedAt = DateTime.UtcNow;
                     await _db.SaveChangesAsync(CancellationToken.None);
                 }
                 catch

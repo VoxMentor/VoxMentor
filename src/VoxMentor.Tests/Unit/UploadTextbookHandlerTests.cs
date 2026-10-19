@@ -132,11 +132,19 @@ public class UploadTextbookHandlerTests
         // create/delete files in the same shared staging dir in parallel.
         Assert.NotNull(queue.FilePath);
         Assert.False(File.Exists(queue.FilePath), "staged file must be deleted when enqueue fails");
-        Assert.Empty(await db.TextbookJobs.ToListAsync());
+
+        // The committed row survives as Failed, not 404: a concurrent duplicate
+        // may already have been handed this jobId by the dedup reuse path.
+        // Clear first so this reads the store, not the handler's tracked entity.
+        db.ChangeTracker.Clear();
+        var job = Assert.Single(await db.TextbookJobs.ToListAsync());
+        Assert.Equal(TextbookJobStatus.Failed, job.Status);
+        Assert.False(string.IsNullOrWhiteSpace(job.Error));
+        Assert.NotNull(job.CompletedAt);
     }
 
     [Fact]
-    public async Task Upload_HangfireDisabledQueue_Throws_LeavesNoPendingRow()
+    public async Task Upload_HangfireDisabledQueue_Throws_LeavesFailedRow()
     {
         var db = CreateDb();
         var handler = new UploadTextbookHandler(db, new Infrastructure.Services.NullTextbookIngestionQueue());
@@ -144,7 +152,11 @@ public class UploadTextbookHandlerTests
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => handler.Handle(Command(), CancellationToken.None));
 
-        Assert.Empty(await db.TextbookJobs.ToListAsync());
+        db.ChangeTracker.Clear();
+        var job = Assert.Single(await db.TextbookJobs.ToListAsync());
+        Assert.Equal(TextbookJobStatus.Failed, job.Status);
+        Assert.False(string.IsNullOrWhiteSpace(job.Error));
+        Assert.NotNull(job.CompletedAt);
     }
 
     // Idempotent retries (#104 CodeRabbit): same content + same concept must

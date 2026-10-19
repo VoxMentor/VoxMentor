@@ -5,8 +5,8 @@ namespace VoxMentor.Infrastructure.Services;
 /// <summary>
 /// Registered when Hangfire storage is disabled (integration tests, bare
 /// deployments). Fails fast so uploads are rejected instead of returning 202
-/// with a Pending job that can never run; the handler's catch cleans up the
-/// staged file and the saved row.
+/// with a Pending job that can never run; the handler's catch deletes the
+/// staged file and marks the saved row Failed.
 /// </summary>
 public sealed class NullTextbookIngestionQueue : ITextbookIngestionQueue
 {
