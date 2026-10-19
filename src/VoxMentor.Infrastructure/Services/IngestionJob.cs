@@ -121,6 +121,21 @@ public class IngestionJob
                 await _db.SaveChangesAsync(cancellationToken);
             }
 
+            // A concurrent migration or handler may have ended this job while we
+            // were mid-run (legacy transition, duplicate reconciliation). Never
+            // publish Completed over a terminal row — that would mask a truncated
+            // corpus behind dedup's "already ingested" answer.
+            var current = await _db.TextbookJobs
+                .AsNoTracking()
+                .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+            if (current is null || current.Status != TextbookJobStatus.Processing)
+            {
+                _logger.LogWarning(
+                    "Textbook job {JobId} is no longer Processing ({Status}); aborting without publishing Completed.",
+                    jobId, current?.Status);
+                return;
+            }
+
             job.Status = TextbookJobStatus.Completed;
             job.CompletedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync(cancellationToken);

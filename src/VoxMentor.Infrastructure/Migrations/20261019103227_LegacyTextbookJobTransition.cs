@@ -56,6 +56,12 @@ namespace VoxMentor.Infrastructure.Migrations
                 FROM ranked d
                 WHERE t."Id" = d."Id" AND d.rn > 1;
 
+                -- Keep rule (Completed first, then newest CreatedAt, then Id) is identical to the
+                -- copy above: this CTE cannot span statements, so both must stay in sync. It drives
+                -- both the chunk delete and the Failed transition. Precedence differs from
+                -- FindReusableJobAsync (in-flight beats completed) deliberately: a completed corpus
+                -- already serves retrieval, so it wins dedup.
+
                 UPDATE "TextbookJobs"
                 SET "Status" = 'Failed',
                     "Error" = 'Job created before content-hash tracking. Re-upload the file to ingest it.'
