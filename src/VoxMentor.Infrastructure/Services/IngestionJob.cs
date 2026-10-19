@@ -67,6 +67,16 @@ public class IngestionJob
                 return;
             }
 
+            // Failed is sticky (#104 CodeRabbit): the legacy migration and the
+            // upload handler's cleanup end rows as Failed, but Hangfire may
+            // still hold a queued job for them. Re-running would resurrect
+            // failed work; the finally block cleans the staged file.
+            if (job.Status == TextbookJobStatus.Failed)
+            {
+                _logger.LogWarning("Textbook job {JobId} is already Failed; skipping.", jobId);
+                return;
+            }
+
             job.Status = TextbookJobStatus.Processing;
             job.ProcessedChunks = 0;
             // Crash-requeue idempotency: drop chunks from any previous partial run.

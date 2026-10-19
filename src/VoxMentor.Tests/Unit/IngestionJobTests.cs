@@ -150,6 +150,26 @@ public class IngestionJobTests
     }
 
     [Fact]
+    public async Task Execute_FailedJob_SkipsWork_LeavesRowFailed_AndCleansUpFile()
+    {
+        var db = CreateDb();
+        var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText());
+        job.Status = TextbookJobStatus.Failed;
+        job.Error = "Job created before content-hash tracking. Re-upload the file to ingest it.";
+        await db.SaveChangesAsync();
+        var handler = new StubHandler(EmbedResponse);
+
+        await CreateJob(db, handler).Execute(job.Id, path, CancellationToken.None);
+
+        var result = await db.TextbookJobs.SingleAsync(j => j.Id == job.Id);
+        Assert.Equal(TextbookJobStatus.Failed, result.Status);
+        Assert.Contains("before content-hash tracking", result.Error);
+        Assert.Equal(0, handler.RequestCount);
+        Assert.Empty(await db.TextbookChunks.ToListAsync());
+        Assert.False(File.Exists(path), "staged file of a failed job is still cleaned up");
+    }
+
+    [Fact]
     public async Task Execute_NoExtractableText_FailsWithClearError()
     {
         var db = CreateDb();
