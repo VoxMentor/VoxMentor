@@ -83,9 +83,10 @@ public class UploadTextbookHandler : IRequestHandler<UploadTextbookCommand, ApiR
             {
                 // The unique (ContentHash, ConceptId) index caught the two-admin
                 // race: an identical upload committed its row between our lookup
-                // and this save. Re-look it up row and reuse it instead of
-                // queueing a duplicate ingestion. An unrelated DbUpdateException
-                // finds no winner here and rethrows below (#104 CodeRabbit).
+                // and this save. Re-look up the winning row and reuse it
+                // instead of queueing a duplicate ingestion. An unrelated
+                // DbUpdateException finds no winner here and rethrows below
+                // (#104 CodeRabbit).
                 var winner = await FindReusableJobAsync(contentHash, request.ConceptId, cancellationToken);
                 if (winner is null)
                 {
