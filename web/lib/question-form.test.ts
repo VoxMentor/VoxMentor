@@ -4,6 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  computeTotalPages,
   isGuid,
   parseDifficulty,
   parsePageParam,
@@ -50,6 +51,18 @@ test("parsePageParam degrades to page 1 for anything the API cannot bind", () =>
   // Overflows the API's int32 binding, which answers 400 and strands the page.
   assert.equal(parsePageParam("3000000000"), 1);
   assert.equal(parsePageParam("999999999999999999999"), 1);
+});
+
+test("computeTotalPages floors at 1 and the redirect guard hits exactly past the last page", () => {
+  assert.equal(computeTotalPages(0, 20), 1);
+  assert.equal(computeTotalPages(20, 20), 1); // full page 1: page 2 is out of range
+  assert.equal(computeTotalPages(21, 20), 2);
+});
+
+test("page past the last page is out of range; the last page and page 1 are not", () => {
+  assert.equal(2 > computeTotalPages(20, 20), true);
+  assert.equal(2 > computeTotalPages(21, 20), false);
+  assert.equal(1 > computeTotalPages(0, 20), false); // page 1 must never self-redirect
 });
 
 test("splitEntries drops blank lines and keeps one JSON entry per line", () => {

@@ -11,6 +11,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import FetchError from "@/components/FetchError";
 import {
+  computeTotalPages,
   isGuid,
   parseDifficulty,
   parsePageParam,
@@ -70,7 +71,7 @@ function QuestionsContent() {
   const result = state?.ok ? state.result : null;
   const questions = result?.questions ?? [];
   const totalCount = result?.totalCount ?? 0;
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const totalPages = computeTotalPages(totalCount, PAGE_SIZE);
 
   // Deliberate guard layering (#82): the shell admits any admin role, but this
   // page maps the ManageContent policy (ContentAdmin, SuperAdmin) — the server
@@ -86,9 +87,9 @@ function QuestionsContent() {
     api.adminQuestions(page, PAGE_SIZE)
       .then((result) => {
         if (cancelled) return;
-        const totalPages = Math.max(1, Math.ceil(result.totalCount / PAGE_SIZE));
-        if (page > totalPages) {
-          router.push("/admin/questions");
+        if (page > computeTotalPages(result.totalCount, PAGE_SIZE)) {
+          // correction, not navigation: replace so Back doesn't land on the dead URL
+          router.replace("/admin/questions");
           return;
         }
         setList({ key, ok: true, result });
@@ -137,7 +138,9 @@ function QuestionsContent() {
   }
 
   function onCreated() {
-    setSuccess({ page, text: "Question created." });
+    // banner belongs to the destination, not the origin: page-1 refetch shows
+    // the new row, and Back from page 1 no longer resurrects a stale banner
+    setSuccess({ page: 1, text: "Question created." });
     setPanelOpen(false);
     // newest-first list: show the new row by refetching page 1
     if (page > 1) router.push("/admin/questions");

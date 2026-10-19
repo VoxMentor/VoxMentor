@@ -24,6 +24,12 @@ export function parsePageParam(raw: string | null): number {
   return Number.isInteger(n) && n > 1 && n <= MAX_PAGE ? n : 1;
 }
 
+// One definition for "how many pages there are" — used by both the pagination
+// display and the out-of-range redirect guard in admin/questions page.
+export function computeTotalPages(totalCount: number, pageSize: number): number {
+  return Math.max(1, Math.ceil(totalCount / pageSize));
+}
+
 // Number(), not parseInt(): parseInt("7.5") is 7, which would silently create the
 // question at a difficulty the admin never picked.
 export function parseDifficulty(raw: string): number | null {
