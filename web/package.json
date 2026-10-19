@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test lib/question-form.test.ts"
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test lib/question-form.test.ts lib/corpus-job.test.ts"
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.11",
