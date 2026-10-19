@@ -60,35 +60,10 @@ public class UploadTextbookHandler : IRequestHandler<UploadTextbookCommand, ApiR
             // NOT reused (failed work never re-runs — they want a fresh run),
             // and a different ConceptId is a deliberate re-index.
             var contentHash = await ComputeContentHashAsync(filePath, cancellationToken);
-            var inFlight = await _db.TextbookJobs
-                .Where(j => j.ContentHash == contentHash
-                    && j.ConceptId == request.ConceptId
-                    && (j.Status == TextbookJobStatus.Pending
-                        || j.Status == TextbookJobStatus.Processing))
-                .OrderByDescending(j => j.CreatedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-            if (inFlight is not null)
+            var reusable = await FindReusableJobAsync(contentHash, request.ConceptId, cancellationToken);
+            if (reusable is not null)
             {
-                DeleteStagedFileBestEffort(filePath);
-                return ApiResponse<UploadTextbookResultDto>.SuccessResult(
-                    new UploadTextbookResultDto(inFlight.Id,
-                        $"An ingestion job for this file is already running. Check GET /api/v1/admin/textbook/status/{inFlight.Id}."),
-                    "Accepted");
-            }
-
-            var completed = await _db.TextbookJobs
-                .Where(j => j.ContentHash == contentHash
-                    && j.ConceptId == request.ConceptId
-                    && j.Status == TextbookJobStatus.Completed)
-                .OrderByDescending(j => j.CompletedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-            if (completed is not null)
-            {
-                DeleteStagedFileBestEffort(filePath);
-                return ApiResponse<UploadTextbookResultDto>.SuccessResult(
-                    new UploadTextbookResultDto(completed.Id,
-                        $"This file was already ingested. Check GET /api/v1/admin/textbook/status/{completed.Id}."),
-                    "Accepted");
+                return ReuseResponse(reusable, filePath);
             }
 
             job = new TextbookJob
@@ -100,7 +75,24 @@ public class UploadTextbookHandler : IRequestHandler<UploadTextbookCommand, ApiR
                 Status = TextbookJobStatus.Pending
             };
             _db.TextbookJobs.Add(job);
-            await _db.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                // The unique (ContentHash, ConceptId) index caught the two-admin
+                // race: an identical upload committed its row between our lookup
+                // and this save. Re-look it up row and reuse it instead of
+                // queueing a duplicate ingestion. An unrelated DbUpdateException
+                // finds no winner here and rethrows below (#104 CodeRabbit).
+                var winner = await FindReusableJobAsync(contentHash, request.ConceptId, cancellationToken);
+                if (winner is null)
+                {
+                    throw;
+                }
+                return ReuseResponse(winner, filePath);
+            }
             jobSaved = true;
 
             _queue.Enqueue(jobId, filePath);
@@ -148,6 +140,41 @@ public class UploadTextbookHandler : IRequestHandler<UploadTextbookCommand, ApiR
         using var sha = SHA256.Create();
         var bytes = await sha.ComputeHashAsync(stream, cancellationToken);
         return Convert.ToHexString(bytes);
+    }
+
+    // The dedup key: in-flight beats completed; most recent wins within a status.
+    private async Task<TextbookJob?> FindReusableJobAsync(
+        string contentHash, Guid? conceptId, CancellationToken cancellationToken)
+    {
+        var inFlight = await _db.TextbookJobs
+            .Where(j => j.ContentHash == contentHash
+                && j.ConceptId == conceptId
+                && (j.Status == TextbookJobStatus.Pending
+                    || j.Status == TextbookJobStatus.Processing))
+            .OrderByDescending(j => j.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (inFlight is not null)
+        {
+            return inFlight;
+        }
+
+        return await _db.TextbookJobs
+            .Where(j => j.ContentHash == contentHash
+                && j.ConceptId == conceptId
+                && j.Status == TextbookJobStatus.Completed)
+            .OrderByDescending(j => j.CompletedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private static ApiResponse<UploadTextbookResultDto> ReuseResponse(
+        TextbookJob job, string stagedFile)
+    {
+        DeleteStagedFileBestEffort(stagedFile);
+        var message = job.Status == TextbookJobStatus.Completed
+            ? $"This file was already ingested. Check GET /api/v1/admin/textbook/status/{job.Id}."
+            : $"An ingestion job for this file is already running. Check GET /api/v1/admin/textbook/status/{job.Id}.";
+        return ApiResponse<UploadTextbookResultDto>.SuccessResult(
+            new UploadTextbookResultDto(job.Id, message), "Accepted");
     }
 
     // ponytail: best effort — orphan cleanup beats masking the reuse result

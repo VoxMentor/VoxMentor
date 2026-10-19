@@ -779,7 +779,11 @@ namespace VoxMentor.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ContentHash", "ConceptId");
+                    b.HasIndex("ContentHash", "ConceptId")
+                        .IsUnique()
+                        .HasFilter("\"Status\" IN ('Pending', 'Processing', 'Completed') AND \"ContentHash\" <> ''");
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("ContentHash", "ConceptId"), false);
 
                     b.ToTable("TextbookJobs");
                 });

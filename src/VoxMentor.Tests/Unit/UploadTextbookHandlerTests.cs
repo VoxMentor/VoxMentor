@@ -259,4 +259,75 @@ public class UploadTextbookHandlerTests
 
         File.Delete(queue.FilePath!);
     }
+
+    // Two-admin race (#104 CodeRabbit): the unique (ContentHash, ConceptId)
+    // index rejects the colliding insert; the handler must return the winner.
+
+    /// <summary>
+    /// InMemory can't enforce unique indexes, so the race is simulated in the
+    /// one window where a concurrent upload could commit: from inside the
+    /// handler's own SaveChanges (after its lookup ran, before its insert
+    /// lands). The winner is committed through the same InMemory store, then
+    /// the unique-index failure its presence causes is thrown.
+    /// </summary>
+    private sealed class RaceWinnerDbContext : Infrastructure.Persistence.ApplicationDbContext
+    {
+        private readonly DbContextOptions<Infrastructure.Persistence.ApplicationDbContext> _options;
+        private readonly ICurrentUserService _user;
+
+        public TextbookJob Winner { get; init; } = null!;
+        public int SaveAttempts { get; private set; }
+
+        public RaceWinnerDbContext(
+            DbContextOptions<Infrastructure.Persistence.ApplicationDbContext> options,
+            ICurrentUserService user)
+            : base(options, user)
+        {
+            _options = options;
+            _user = user;
+        }
+
+        public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            if (++SaveAttempts == 1)
+            {
+                await using var winnerDb = new Infrastructure.Persistence.ApplicationDbContext(_options, _user);
+                winnerDb.TextbookJobs.Add(Winner);
+                await winnerDb.SaveChangesAsync(cancellationToken);
+                throw new DbUpdateException("unique index collision (simulated)");
+            }
+            return await base.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task Upload_DuplicateInsertLosesRace_ReturnsWinnerId_AndSkipsEnqueue()
+    {
+        var options = new DbContextOptionsBuilder<Infrastructure.Persistence.ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var winnerHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes("some textbook content")));
+        var winnerId = Guid.NewGuid();
+        var db = new RaceWinnerDbContext(options, new TestCurrentUser())
+        {
+            Winner = new TextbookJob
+            {
+                Id = winnerId,
+                FileName = "book.txt",
+                ContentHash = winnerHash,
+                Status = TextbookJobStatus.Pending
+            }
+        };
+        var queue = new FakeQueue();
+        var handler = new UploadTextbookHandler(db, queue);
+
+        var result = await handler.Handle(Command(), CancellationToken.None);
+
+        Assert.Equal(winnerId, result.Data!.JobId);
+        Assert.Contains("already running", result.Data!.Message);
+        Assert.Equal(Guid.Empty, queue.JobId); // the losing duplicate is never queued
+        Assert.Single(await db.TextbookJobs.ToListAsync()); // only the winner persisted
+        // The handler deleted its own staged duplicate in ReuseResponse.
+    }
 }

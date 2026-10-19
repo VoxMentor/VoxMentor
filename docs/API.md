@@ -520,6 +520,8 @@ Response `202`:
 ```
 Idempotent retries: re-uploading the identical file with the same optional `conceptId` reuses the existing job — while that job is `Pending`/`Processing` the response is `202` with **"An ingestion job for this file is already running."**, and `Completed` returns **"This file was already ingested."** (same `jobId`, no new job). A `Failed` job or a different `conceptId` starts a fresh job.
 
+Dedup is DB-enforced: a unique index on `(content hash, concept)` rejects the colliding insert if two identical uploads race inside the lookup window — the losing request responds `202` with the winning job's `jobId` and the "already running" message instead of queueing a duplicate. Jobs created before content-hash tracking (migrated `LegacyTextbookJobTransition`, 2026-10-19) are transitioned to `Failed` ("Re-upload the file to ingest it.") and never participate in dedup.
+
 ### GET /api/v1/admin/textbook/status/{jobId}
 Poll ingestion job progress.
 
