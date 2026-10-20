@@ -104,8 +104,6 @@ public class IngestionJob
                 {
                     _logger.LogWarning(
                         "Textbook job {JobId} claim by {RunId} is stale; reclaiming.", jobId, job.RunId);
-                    job.RunId = runId;
-                    job.ClaimedAt = DateTime.UtcNow;
                 }
                 else
                 {
