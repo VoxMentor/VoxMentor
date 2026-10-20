@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError, type JdDetail } from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -329,31 +329,34 @@ function JdRoute() {
   const router = useRouter();
   const jdId = searchParams.get("jd") ?? undefined;
 
-  const [detail, setDetail] = useState<JdDetail | null>(null);
+  // Keyed by the requested id (not the server echo) so stale/normalised ids can't wedge loading.
+  const [detail, setDetail] = useState<{ jdId: string; data: JdDetail } | null>(null);
   // Failure is keyed by id so a stale message never shows for a different JD.
   const [failure, setFailure] = useState<{ jdId: string; message: string } | null>(null);
   const [attempt, setAttempt] = useState(0);
 
-  const load = useCallback(() => {
+  useEffect(() => {
     if (!jdId) return;
+    let cancelled = false;
     api
       .jd(jdId)
       .then((data) => {
-        setDetail(data);
+        if (cancelled) return;
+        setDetail({ jdId, data });
         setFailure(null);
       })
       .catch((e) => {
+        if (cancelled) return;
         setFailure({
           jdId,
           message:
             e instanceof ApiError ? e.message : "Could not load this job description.",
         });
       });
-  }, [jdId]);
-
-  useEffect(() => {
-    load();
-  }, [load, attempt]);
+    return () => {
+      cancelled = true;
+    };
+  }, [jdId, attempt]);
 
   const error = failure && failure.jdId === jdId ? failure.message : null;
   const loading = Boolean(jdId) && !error && detail?.jdId !== jdId;
@@ -383,7 +386,7 @@ function JdRoute() {
             ) : loading || !detail ? (
               <PageSkeleton />
             ) : (
-              <JdDetailView jd={detail} onReset={() => router.replace("/jd")} />
+              <JdDetailView jd={detail.data} onReset={() => router.replace("/jd")} />
             )
           ) : (
             <UploadForm
