@@ -13,4 +13,8 @@ public sealed class NullTextbookIngestionQueue : ITextbookIngestionQueue
     public void Enqueue(Guid jobId, string filePath)
         => throw new InvalidOperationException(
             "Background ingestion is disabled (no Hangfire storage configured).");
+
+    public void Schedule(Guid jobId, string filePath, TimeSpan delay)
+        => throw new InvalidOperationException(
+            "Background ingestion is disabled (no Hangfire storage configured).");
 }

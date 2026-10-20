@@ -41,15 +41,18 @@ public class IngestionJob
 
     private readonly ApplicationDbContext _db;
     private readonly CodeEmbeddingService _embedder;
+    private readonly ITextbookIngestionQueue _schedule;
     private readonly ILogger<IngestionJob> _logger;
 
     public IngestionJob(
         ApplicationDbContext db,
         CodeEmbeddingService embedder,
+        ITextbookIngestionQueue schedule,
         ILogger<IngestionJob> logger)
     {
         _db = db;
         _embedder = embedder;
+        _schedule = schedule;
         _logger = logger;
     }
 
@@ -65,6 +68,11 @@ public class IngestionJob
 
         var savedChunkIds = new List<Guid>();
         var runId = Guid.NewGuid();
+        // ponytail: only the run that claims the row may delete the staged
+        // file — replayed executions of one Hangfire job share the same
+        // filePath, and losing runs must leave the input for the owner and
+        // any scheduled recovery run (#104 CodeRabbit round 5).
+        var ownsStagedFile = true;
         try
         {
             var job = await _db.TextbookJobs
@@ -109,6 +117,19 @@ public class IngestionJob
                 {
                     _logger.LogWarning(
                         "Textbook job {JobId} is owned by another run; backing off.", jobId);
+                    // The claim is fresh — either a live owner is processing
+                    // it, or the owner crashed minutes ago and Hangfire's
+                    // invisibility-timeout requeue sent this run before the
+                    // claim went stale. With Attempts=0 this invocation is
+                    // the last one, so schedule a recovery run for the claim
+                    // expiry; the staged file survives this run for it.
+                    // ponytail: remaining ≥ 0 here (the stale check ran on
+                    // the same clock); a 0-delay just re-runs immediately
+                    // and reclaims once the claim crosses the threshold.
+                    var remaining =
+                        StaleClaimThreshold - (DateTime.UtcNow - job.ClaimedAt!.Value);
+                    _schedule.Schedule(jobId, filePath, remaining);
+                    ownsStagedFile = false;
                     return;
                 }
             }
@@ -133,6 +154,10 @@ public class IngestionJob
             {
                 _logger.LogWarning(
                     "Textbook job {JobId} was claimed by another run; backing off.", jobId);
+                // Just lost the claim race to a run that committed a moment
+                // ago — by definition a live owner; it finishes the job, so
+                // no scheduled recovery is needed.
+                ownsStagedFile = false;
                 return;
             }
 
@@ -170,6 +195,11 @@ public class IngestionJob
                 });
                 savedChunkIds.Add(chunkId);
                 job.ProcessedChunks = i + 1;
+                // Keep the claim fresh: a live run that outlives
+                // StaleClaimThreshold must never look stale — scheduled
+                // recoveries would otherwise reclaim a healthy claim
+                // (#104 CodeRabbit round 5).
+                job.ClaimedAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync(cancellationToken);
             }
 
@@ -207,8 +237,10 @@ public class IngestionJob
 
             // Publish only while still the claimant (#104 CodeRabbit): a
             // superseded run drops only its own chunks and returns without
-            // touching the winner's row or corpus.
-            if (job.Status != TextbookJobStatus.Processing || job.RunId != runId)
+            // touching the winner's row or corpus. Compare against the store
+            // read above — the tracked instance always matches this run's
+            // own writes, so it can never detect a mid-run claim rotation.
+            if (current.RunId is not null && current.RunId != runId)
             {
                 if (savedChunkIds.Count > 0)
                 {
@@ -241,16 +273,19 @@ public class IngestionJob
         }
         finally
         {
-            try
+            if (ownsStagedFile)
             {
-                if (File.Exists(filePath))
+                try
                 {
-                    File.Delete(filePath);
+                    if (File.Exists(filePath))
+                    {
+                        File.Delete(filePath);
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Could not delete temp file {FilePath}.", filePath);
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Could not delete temp file {FilePath}.", filePath);
+                }
             }
         }
     }
@@ -310,6 +345,11 @@ public class IngestionJob
         // purge its corpus behind dedup's "already ingested" reuse.
         if (stored?.Status == TextbookJobStatus.Completed)
         {
+            // ponytail: this run's tracked row still carries the RunId-
+            // rejected update; detach it so the purge's SaveChanges flushes
+            // only the chunk deletes instead of re-throwing and rolling
+            // them back (#104 CodeRabbit round 5).
+            _db.Entry(job).State = EntityState.Detached;
             if (savedChunkIds.Count > 0)
             {
                 // Winner published first: clean only this run's persisted
@@ -327,6 +367,9 @@ public class IngestionJob
         // persisted chunks and return.
         if (stored?.RunId is not null && stored?.RunId != runId)
         {
+            // Same detached-update problem as the Completed branch above:
+            // the rejected save must not be re-flushed by the cleanup.
+            _db.Entry(job).State = EntityState.Detached;
             if (savedChunkIds.Count > 0)
             {
                 await PurgeJobChunksAsync(jobId, savedChunkIds);

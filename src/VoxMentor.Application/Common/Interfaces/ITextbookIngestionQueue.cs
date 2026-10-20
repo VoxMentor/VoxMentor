@@ -14,4 +14,10 @@ public interface ITextbookIngestionQueue
 
     /// <summary>Queues chunk-and-embed processing for an already-persisted job.</summary>
     void Enqueue(Guid jobId, string filePath);
+
+    /// <summary>
+    /// Queues a delayed recovery run for an already-persisted job (a
+    /// losing run backs off and hands the job back at the claim expiry).
+    /// </summary>
+    void Schedule(Guid jobId, string filePath, TimeSpan delay);
 }

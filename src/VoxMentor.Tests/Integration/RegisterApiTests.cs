@@ -72,10 +72,17 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 public sealed class RecordingTextbookIngestionQueue : ITextbookIngestionQueue
 {
     private readonly ConcurrentQueue<(Guid JobId, string FilePath)> _enqueued = new();
+    private readonly ConcurrentQueue<(Guid JobId, string FilePath, TimeSpan Delay)> _scheduled = new();
 
     public IReadOnlyCollection<(Guid JobId, string FilePath)> Enqueued => _enqueued.ToArray();
 
+    public IReadOnlyCollection<(Guid JobId, string FilePath, TimeSpan Delay)> Scheduled
+        => _scheduled.ToArray();
+
     public void Enqueue(Guid jobId, string filePath) => _enqueued.Enqueue((jobId, filePath));
+
+    public void Schedule(Guid jobId, string filePath, TimeSpan delay)
+        => _scheduled.Enqueue((jobId, filePath, delay));
 }
 
 public class RegisterApiTests : IClassFixture<CustomWebApplicationFactory>

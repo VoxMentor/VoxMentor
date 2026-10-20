@@ -66,8 +66,19 @@ public class IngestionJobTests
                 .Build(),
             NullLogger<CodeEmbeddingService>.Instance);
 
-    private static IngestionJob CreateJob(ApplicationDbContext db, StubHandler handler)
-        => new(db, CreateEmbedder(handler), NullLogger<IngestionJob>.Instance);
+    private static IngestionJob CreateJob(ApplicationDbContext db, StubHandler handler, FakeQueue? queue = null)
+        => new(db, CreateEmbedder(handler), queue ?? new FakeQueue(), NullLogger<IngestionJob>.Instance);
+
+    /// <summary>Records Schedule calls (stale-claim recovery) instead of dialing Hangfire.</summary>
+    private sealed class FakeQueue : ITextbookIngestionQueue
+    {
+        public List<(Guid JobId, string Path, TimeSpan Delay)> Scheduled { get; } = new();
+
+        public void Enqueue(Guid jobId, string filePath) { }
+
+        public void Schedule(Guid jobId, string filePath, TimeSpan delay)
+            => Scheduled.Add((jobId, filePath, delay));
+    }
 
     private static string TempDirFile(string name)
     {
@@ -271,8 +282,9 @@ public class IngestionJobTests
         });
         await db.SaveChangesAsync();
         var handler = new StubHandler(EmbedResponse);
+        var queue = new FakeQueue();
 
-        await CreateJob(db, handler).Execute(job.Id, path, CancellationToken.None);
+        await CreateJob(db, handler, queue).Execute(job.Id, path, CancellationToken.None);
 
         var result = await db.TextbookJobs.SingleAsync(j => j.Id == job.Id);
         Assert.Equal(TextbookJobStatus.Processing, result.Status);
@@ -281,7 +293,18 @@ public class IngestionJobTests
         var chunks = await db.TextbookChunks.Where(c => c.JobId == job.Id).ToListAsync();
         Assert.Single(chunks);
         Assert.Equal("winner chunk", chunks[0].Content);
-        Assert.False(File.Exists(path), "temp file should be deleted after processing");
+        // A losing run must NOT delete the staged file: replayed Hangfire
+        // executions share the same filePath, and the scheduled recovery
+        // needs it (#104 CodeRabbit round 5).
+        Assert.True(File.Exists(path), "a non-owner run must not delete the staged file");
+        Assert.True(File.ReadAllText(path) == SampleText(), "staged file content intact");
+        var scheduled = Assert.Single(queue.Scheduled);
+        Assert.Equal(job.Id, scheduled.JobId);
+        Assert.Equal(path, scheduled.Path);
+        Assert.True(scheduled.Delay > TimeSpan.Zero, "recovery scheduled after the claim expiry");
+        Assert.True(
+            scheduled.Delay <= TimeSpan.FromHours(1),
+            "recovery scheduled within the staleness threshold");
     }
 
     [Fact]
@@ -320,6 +343,39 @@ public class IngestionJobTests
         var chunks = await db.TextbookChunks.Where(c => c.JobId == job.Id).ToListAsync();
         Assert.Equal(2, chunks.Count);
         Assert.DoesNotContain(chunks, c => c.Content == "stale chunk");
+        Assert.False(File.Exists(path), "temp file should be deleted after processing");
+    }
+
+    [Fact]
+    public async Task Execute_ClaimRotatedMidRun_DoesNotPublish_KeepsNewOwner()
+    {
+        // Mid-run the fresh claim rotated: another actor now owns the still-
+        // Processing row. This run must NOT publish over it — the tracked
+        // instance always matches its own writes, so the gate compares the
+        // store read (current.RunId) — and must drop only its own chunks.
+        var db = CreateDb();
+        var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText());
+        var newOwnerRunId = Guid.NewGuid();
+        var calls = 0;
+        var handler = new StubHandler(() =>
+        {
+            if (++calls == 2)
+            {
+                job.RunId = newOwnerRunId;
+                job.ClaimedAt = DateTime.UtcNow; // fresh claim by the new owner
+                db.SaveChanges();
+            }
+            return EmbedResponse();
+        });
+
+        await CreateJob(db, handler).Execute(job.Id, path, CancellationToken.None);
+
+        var result = await db.TextbookJobs.AsNoTracking().SingleAsync(j => j.Id == job.Id);
+        Assert.Equal(TextbookJobStatus.Processing, result.Status);
+        Assert.Equal(newOwnerRunId, result.RunId);
+        Assert.Null(result.CompletedAt);
+        Assert.Equal(2, handler.RequestCount);
+        Assert.Empty(await db.TextbookChunks.ToListAsync());
         Assert.False(File.Exists(path), "temp file should be deleted after processing");
     }
 

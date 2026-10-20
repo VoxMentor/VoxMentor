@@ -17,4 +17,7 @@ public class TextbookIngestionQueue : ITextbookIngestionQueue
 
     public void Enqueue(Guid jobId, string filePath)
         => _client.Enqueue<IngestionJob>(job => job.Execute(jobId, filePath, CancellationToken.None));
+
+    public void Schedule(Guid jobId, string filePath, TimeSpan delay)
+        => _client.Schedule<IngestionJob>(job => job.Execute(jobId, filePath, CancellationToken.None), delay);
 }

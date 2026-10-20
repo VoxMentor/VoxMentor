@@ -20,6 +20,8 @@ public class UploadTextbookHandlerTests
             JobId = jobId;
             FilePath = filePath;
         }
+
+        public void Schedule(Guid jobId, string filePath, TimeSpan delay) { }
     }
 
     private sealed class ThrowingQueue : ITextbookIngestionQueue
@@ -31,6 +33,9 @@ public class UploadTextbookHandlerTests
             FilePath = filePath;
             throw new InvalidOperationException("queue down");
         }
+
+        public void Schedule(Guid jobId, string filePath, TimeSpan delay)
+            => throw new InvalidOperationException("queue down");
     }
 
     private static Infrastructure.Persistence.ApplicationDbContext CreateDb()

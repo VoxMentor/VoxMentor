@@ -134,6 +134,8 @@ public class UploadTextbookDedupSqliteTests : IDisposable
             JobId = jobId;
             FilePath = filePath;
         }
+
+        public void Schedule(Guid jobId, string filePath, TimeSpan delay) { }
     }
 
     /// <summary>
