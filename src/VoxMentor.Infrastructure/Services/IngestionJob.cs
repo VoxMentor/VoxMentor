@@ -132,7 +132,7 @@ public class IngestionJob
                     ownsStagedFile = false;
                     var remaining =
                         StaleClaimThreshold - (DateTime.UtcNow - job.ClaimedAt!.Value);
-                    _schedule.Schedule(jobId, filePath, remaining);
+                    TryScheduleRecovery(jobId, filePath, remaining);
                     return;
                 }
             }
@@ -158,11 +158,21 @@ public class IngestionJob
                 _logger.LogWarning(
                     "Textbook job {JobId} was claimed by another run; backing off.", jobId);
                 // Just lost the claim race to a run that committed a moment
-                // ago — by definition a live owner; it finishes the job, so
-                // no scheduled recovery is needed.
+                // ago — usually a live owner that finishes the job, but it
+                // can die before scheduling its own watchdog, so hand one in
+                // as well (a no-op once the row is terminal).
                 ownsStagedFile = false;
+                TryScheduleRecovery(jobId, filePath, StaleClaimThreshold);
                 return;
             }
+
+            // Every claim carries its own expiry watchdog: a hung worker
+            // (alive past the threshold, but silent) keeps Hangfire's
+            // heartbeat, so no invisibility requeue ever replays the job and
+            // no losing run ever exists to schedule recovery. The watchdog
+            // fires at the claim expiry — terminal rows no-op on it, a live
+            // run heartbeats past it, a dead one is reclaimed.
+            TryScheduleRecovery(jobId, filePath, StaleClaimThreshold);
 
             var text = await TextExtractor.ExtractAsync(filePath, cancellationToken);
             var chunks = TextChunker.Chunk(text);
@@ -198,9 +208,10 @@ public class IngestionJob
                 });
                 savedChunkIds.Add(chunkId);
                 job.ProcessedChunks = i + 1;
-                // Keep the claim fresh: a live run that outlives
-                // StaleClaimThreshold must never look stale — scheduled
-                // recoveries would otherwise reclaim a healthy claim
+                // Heartbeat the claim per chunk: recoveries treat the row as
+                // abandoned only after a full threshold with no save, so a
+                // live run is not reclaimed mid-work unless one
+                // extract/embed gap outlives the threshold
                 // (#104 CodeRabbit round 5).
                 job.ClaimedAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync(cancellationToken);
@@ -279,7 +290,13 @@ public class IngestionJob
             }
             catch (Exception markEx)
             {
-                // Never let error handling fault the Hangfire worker.
+                // The failure write is unconfirmed — the row may still be
+                // Processing with a claim someone else can reclaim. Keep the
+                // staged file: a leaked temp file is better than deleting the
+                // input a future run needs (#104 review gate: CR5 R1,
+                // SEC6 O1). Never let error handling fault the Hangfire
+                // worker either.
+                ownsStagedFile = false;
                 _logger.LogError(markEx, "Could not mark job {JobId} as failed.", jobId);
             }
         }
@@ -327,6 +344,23 @@ public class IngestionJob
         var extension = Path.GetExtension(fullPath);
         return extension.Equals(".txt", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Best-effort recovery scheduling: the recovery run is a backstop, so a
+    /// queue/storage hiccup must never fail (or mask) the current run.
+    /// </summary>
+    private void TryScheduleRecovery(Guid jobId, string filePath, TimeSpan delay)
+    {
+        try
+        {
+            _schedule.Schedule(jobId, filePath, delay);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex, "Could not schedule a recovery run for textbook job {JobId}.", jobId);
+        }
     }
 
     /// <summary>
@@ -396,7 +430,9 @@ public class IngestionJob
             _logger.LogWarning(
                 "Textbook job {JobId} is owned by another run; not marking Failed.",
                 jobId);
-            return true;
+            // Keep the staged file only while the foreign run can still work:
+            // a row it already ended as Failed has no consumer left.
+            return stored.Status != TextbookJobStatus.Failed;
         }
 
         // An already-Failed row carries its ender's explanatory Error

@@ -306,6 +306,7 @@ public class IngestionJobTests
         Assert.True(
             scheduled.Delay <= TimeSpan.FromHours(1),
             "recovery scheduled within the staleness threshold");
+        File.Delete(path);
     }
 
     [Fact]
@@ -350,11 +351,15 @@ public class IngestionJobTests
     [Fact]
     public async Task Execute_ClaimRotatedMidRun_DoesNotPublish_KeepsNewOwner()
     {
-        // Mid-run the fresh claim rotated: another actor now owns the still-
-        // Processing row. This run must NOT publish over it — the tracked
-        // instance always matches its own writes, so the gate compares the
-        // store read (current.RunId) — and must drop only its own chunks.
-        var db = CreateDb();
+        // Mid-run the fresh claim rotates out-of-band: another actor owns the
+        // still-Processing row. The gate must compare the STORE read — this
+        // run's tracked instance still carries its own RunId, so a tracked
+        // comparison would publish Completed over the new owner — and this
+        // run must drop only its own chunks and keep the staged file.
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var db = new ApplicationDbContext(options, new TestCurrentUser());
         var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText());
         var newOwnerRunId = Guid.NewGuid();
         var calls = 0;
@@ -362,9 +367,13 @@ public class IngestionJobTests
         {
             if (++calls == 2)
             {
-                job.RunId = newOwnerRunId;
-                job.ClaimedAt = DateTime.UtcNow; // fresh claim by the new owner
-                db.SaveChanges();
+                // A sibling context so this run's tracked copy stays stale —
+                // the production shape of a write from another connection.
+                using var newOwner = new ApplicationDbContext(options, new TestCurrentUser());
+                var stored = newOwner.TextbookJobs.Single(j => j.Id == job.Id);
+                stored.RunId = newOwnerRunId;
+                stored.ClaimedAt = DateTime.UtcNow; // fresh claim by the new owner
+                newOwner.SaveChanges();
             }
             return EmbedResponse();
         });
@@ -380,6 +389,43 @@ public class IngestionJobTests
         Assert.True(
             File.Exists(path),
             "a live owner may still be mid-extraction; the staged file is kept");
+        File.Delete(path);
+    }
+
+    [Fact]
+    public async Task Execute_EmbedFailsAfterClaimRotation_KeepsFileAndOwnerRow()
+    {
+        // Embed failure while a foreign run owns the still-Processing row:
+        // MarkFailedAsync must not fail that row or purge beyond this run's
+        // chunks, and must keep the staged file — the owner may still be
+        // mid-extraction (#104 round-5 keep-file contract).
+        var db = CreateDb();
+        var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText());
+        var newOwnerRunId = Guid.NewGuid();
+        var calls = 0;
+        var handler = new StubHandler(() =>
+        {
+            if (++calls == 2)
+            {
+                job.RunId = newOwnerRunId;
+                job.ClaimedAt = DateTime.UtcNow; // fresh claim by the new owner
+                db.SaveChanges();
+                return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+            }
+            return EmbedResponse();
+        });
+
+        await CreateJob(db, handler).Execute(job.Id, path, CancellationToken.None);
+
+        var result = await db.TextbookJobs.AsNoTracking().SingleAsync(j => j.Id == job.Id);
+        Assert.Equal(TextbookJobStatus.Processing, result.Status);
+        Assert.Equal(newOwnerRunId, result.RunId);
+        Assert.Null(result.CompletedAt);
+        Assert.Null(result.Error);
+        Assert.Equal(2, handler.RequestCount);
+        Assert.Empty(await db.TextbookChunks.ToListAsync());
+        Assert.True(File.Exists(path), "a foreign owner may still need the staged file");
+        File.Delete(path);
     }
 
     [Fact]

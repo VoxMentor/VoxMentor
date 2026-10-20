@@ -27,8 +27,8 @@ public class TextbookJob
 
     /// <summary>
     /// Time the claim at <see cref="RunId"/> was set or last refreshed: the
-    /// claiming run heartbeats this per chunk, so only an abandoned claim
-    /// (older than the lock timeout) is reclaimed by the next run
+    /// claiming run heartbeats this after every embedded chunk, so recoveries
+    /// treat the row as abandoned only after a full threshold with no save
     /// (#104 CodeRabbit).
     /// </summary>
     public DateTime? ClaimedAt { get; set; }
