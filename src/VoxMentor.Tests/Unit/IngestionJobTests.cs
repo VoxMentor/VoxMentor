@@ -117,8 +117,9 @@ public class IngestionJobTests
         var conceptId = Guid.NewGuid();
         var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText(), conceptId);
         var handler = new StubHandler(EmbedResponse);
+        var queue = new FakeQueue();
 
-        await CreateJob(db, handler)
+        await CreateJob(db, handler, queue)
             .Execute(job.Id, path, CancellationToken.None);
 
         var result = await db.TextbookJobs.SingleAsync(j => j.Id == job.Id);
@@ -138,6 +139,14 @@ public class IngestionJobTests
             Assert.False(string.IsNullOrWhiteSpace(c.Content));
         });
         Assert.Equal(2, handler.RequestCount);
+
+        // The claim scheduled its expiry watchdog (#104 review gate): a hung
+        // owner keeps Hangfire's heartbeat, so without this no replay would
+        // ever exist to schedule recovery.
+        var watchdog = Assert.Single(queue.Scheduled);
+        Assert.Equal(job.Id, watchdog.JobId);
+        Assert.Equal(path, watchdog.Path);
+        Assert.Equal(TimeSpan.FromHours(1), watchdog.Delay);
 
         Assert.False(File.Exists(path), "temp file should be deleted after processing");
     }
