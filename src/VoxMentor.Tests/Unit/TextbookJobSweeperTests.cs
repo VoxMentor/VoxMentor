@@ -41,40 +41,52 @@ public class TextbookJobSweeperTests
     }
 
     [Fact]
-    public async Task Sweep_ReenqueuesOnlyStaleProcessingRow()
+    public async Task Sweep_ReenqueuesOnlyStaleRows()
     {
         var db = CreateDb();
-        var staleId = Guid.NewGuid();
-        var freshId = Guid.NewGuid();
-        var pendingId = Guid.NewGuid();
-        var staleFile = await StageFileAsync(staleId);
-        var freshFile = await StageFileAsync(freshId);
-        var pendingFile = await StageFileAsync(pendingId);
+        var staleProcessingId = Guid.NewGuid();
+        var freshProcessingId = Guid.NewGuid();
+        var stalePendingId = Guid.NewGuid();
+        var freshPendingId = Guid.NewGuid();
+        var staleProcessingFile = await StageFileAsync(staleProcessingId);
+        var freshProcessingFile = await StageFileAsync(freshProcessingId);
+        var stalePendingFile = await StageFileAsync(stalePendingId);
+        var freshPendingFile = await StageFileAsync(freshPendingId);
         try
         {
+            var twoHoursAgo = DateTime.UtcNow - TimeSpan.FromHours(2);
             db.TextbookJobs.AddRange(
                 new TextbookJob
                 {
-                    Id = staleId,
-                    FileName = "stale.txt",
+                    Id = staleProcessingId,
+                    FileName = "stale-processing.txt",
                     Status = TextbookJobStatus.Processing,
                     RunId = Guid.NewGuid(),
-                    ClaimedAt = DateTime.UtcNow - TimeSpan.FromHours(2)
+                    ClaimedAt = twoHoursAgo,
+                    CreatedAt = twoHoursAgo
                 },
                 new TextbookJob
                 {
-                    Id = freshId,
-                    FileName = "fresh.txt",
+                    Id = freshProcessingId,
+                    FileName = "fresh-processing.txt",
                     Status = TextbookJobStatus.Processing,
                     RunId = Guid.NewGuid(),
-                    ClaimedAt = DateTime.UtcNow
+                    ClaimedAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow
                 },
                 new TextbookJob
                 {
-                    Id = pendingId,
-                    FileName = "pending.txt",
+                    Id = stalePendingId,
+                    FileName = "stale-pending.txt",
                     Status = TextbookJobStatus.Pending,
-                    ClaimedAt = DateTime.UtcNow - TimeSpan.FromHours(2)
+                    CreatedAt = twoHoursAgo
+                },
+                new TextbookJob
+                {
+                    Id = freshPendingId,
+                    FileName = "fresh-pending.txt",
+                    Status = TextbookJobStatus.Pending,
+                    CreatedAt = DateTime.UtcNow
                 });
             await db.SaveChangesAsync();
 
@@ -82,15 +94,18 @@ public class TextbookJobSweeperTests
             await new TextbookJobSweeper(db, queue, NullLogger<TextbookJobSweeper>.Instance)
                 .SweepAsync(CancellationToken.None);
 
-            var entry = Assert.Single(queue.Enqueued);
-            Assert.Equal(staleId, entry.JobId);
-            Assert.Equal(staleFile, entry.Path);
+            Assert.Equal(2, queue.Enqueued.Count);
+            Assert.Contains(queue.Enqueued,
+                e => e.JobId == staleProcessingId && e.Path == staleProcessingFile);
+            Assert.Contains(queue.Enqueued,
+                e => e.JobId == stalePendingId && e.Path == stalePendingFile);
         }
         finally
         {
-            File.Delete(staleFile);
-            File.Delete(freshFile);
-            File.Delete(pendingFile);
+            File.Delete(staleProcessingFile);
+            File.Delete(freshProcessingFile);
+            File.Delete(stalePendingFile);
+            File.Delete(freshPendingFile);
         }
     }
 
