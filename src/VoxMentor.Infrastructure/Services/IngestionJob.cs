@@ -31,7 +31,10 @@ public class IngestionJob
     // abandoned (worker crashed or its connection dropped) and may be
     // reclaimed by the next run, so a dead claimant cannot strand a job
     // as Processing forever (#104 CodeRabbit).
-    private static readonly TimeSpan StaleClaimThreshold = TimeSpan.FromHours(1);
+    // Shared with TextbookJobSweeper (#104 round 6): the sweep only re-enqueues
+    // rows whose claim is at least this old, matching the staleness the
+    // reclaim path applies here.
+    internal static readonly TimeSpan StaleClaimThreshold = TimeSpan.FromHours(1);
 
     // ponytail: lexical confinement only — reconstruct path from jobId if job
     // arguments ever become untrusted cross-tenant.

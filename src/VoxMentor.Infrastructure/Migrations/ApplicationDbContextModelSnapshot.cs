@@ -758,6 +758,7 @@ namespace VoxMentor.Infrastructure.Migrations
                         .HasColumnType("character varying(64)");
 
                     b.Property<Guid?>("RunId")
+                        .IsConcurrencyToken()
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
