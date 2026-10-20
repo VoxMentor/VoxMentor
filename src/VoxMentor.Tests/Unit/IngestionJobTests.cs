@@ -313,6 +313,37 @@ public class IngestionJobTests
     }
 
     [Fact]
+    public async Task Execute_CompletedAtEntry_SkipsWork_KeepsCorpus()
+    {
+        // Operator requeue of a finished job must not resurrect work: the
+        // stale-chunk purge would otherwise wipe the winner's corpus and the
+        // extractor would then fail on the already-deleted temp file.
+        var db = CreateDb();
+        var conceptId = Guid.NewGuid();
+        var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText(), conceptId);
+        db.TextbookChunks.Add(new TextbookChunk
+        {
+            Id = Guid.NewGuid(),
+            JobId = job.Id,
+            ConceptId = conceptId,
+            Content = "winner chunk",
+            Source = "book.txt"
+        });
+        job.Status = TextbookJobStatus.Completed;
+        job.CompletedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        var handler = new StubHandler(EmbedResponse);
+
+        await CreateJob(db, handler).Execute(job.Id, path, CancellationToken.None);
+
+        var result = await db.TextbookJobs.SingleAsync(j => j.Id == job.Id);
+        Assert.Equal(TextbookJobStatus.Completed, result.Status);
+        Assert.Equal(0, handler.RequestCount);
+        Assert.Equal("winner chunk", (await db.TextbookChunks.SingleAsync(c => c.JobId == job.Id)).Content);
+        Assert.False(File.Exists(path), "temp file should be deleted after processing");
+    }
+
+    [Fact]
     public async Task Execute_FailedJob_SkipsWork_LeavesRowFailed_AndCleansUpFile()
     {
         var db = CreateDb();
