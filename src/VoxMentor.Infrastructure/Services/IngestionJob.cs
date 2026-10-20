@@ -57,6 +57,7 @@ public class IngestionJob
             return;
         }
 
+        var savedChunkIds = new List<Guid>();
         try
         {
             var job = await _db.TextbookJobs
@@ -112,15 +113,17 @@ public class IngestionJob
                         $"Embedding failed for chunk {i + 1}/{chunks.Count} (Ollama unavailable or nomic-embed-text not pulled?).");
                 }
 
+                var chunkId = Guid.NewGuid();
                 _db.TextbookChunks.Add(new TextbookChunk
                 {
-                    Id = Guid.NewGuid(),
+                    Id = chunkId,
                     JobId = job.Id,
                     ConceptId = job.ConceptId,
                     Content = chunks[i],
                     Source = job.FileName,
                     Embedding = new Vector(embedding)
                 });
+                savedChunkIds.Add(chunkId);
                 job.ProcessedChunks = i + 1;
                 await _db.SaveChangesAsync(cancellationToken);
             }
@@ -141,12 +144,18 @@ public class IngestionJob
                 // after the reconciliation deleted the earlier ones
                 // (TextbookChunks has no FK back to the job). Drop the
                 // residue so a Failed row never carries a partial corpus
-                // into retrieval (#104 CodeRabbit). Only Failed is purged:
-                // a duplicate/zombie worker aborting against a Completed
-                // row must not wipe the winner's published corpus.
+                // into retrieval (#104 CodeRabbit). Only Failed is purged
+                // wholesale: a Completed row means a winner published, and
+                // only this run's persisted chunks (tracked by Id) are
+                // dropped — the winner's published corpus stays intact.
                 if (current?.Status == TextbookJobStatus.Failed)
                 {
                     await PurgeJobChunksAsync(jobId);
+                }
+                else if (current?.Status == TextbookJobStatus.Completed &&
+                         savedChunkIds.Count > 0)
+                {
+                    await PurgeJobChunksAsync(jobId, savedChunkIds);
                 }
                 return;
             }
@@ -165,7 +174,7 @@ public class IngestionJob
             // ponytail: no rethrow — failure lives on the row; Hangfire retry is off anyway.
             try
             {
-                await MarkFailedAsync(jobId, ex, CancellationToken.None);
+                await MarkFailedAsync(jobId, ex, CancellationToken.None, savedChunkIds);
             }
             catch (Exception markEx)
             {
@@ -216,7 +225,9 @@ public class IngestionJob
             || extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task MarkFailedAsync(Guid jobId, Exception error, CancellationToken cancellationToken)
+    private async Task MarkFailedAsync(Guid jobId, Exception error,
+                                       CancellationToken cancellationToken,
+                                       IReadOnlyList<Guid> savedChunkIds)
     {
         var job = await _db.TextbookJobs
             .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
@@ -241,6 +252,12 @@ public class IngestionJob
         // purge its corpus behind dedup's "already ingested" reuse.
         if (stored == TextbookJobStatus.Completed)
         {
+            if (savedChunkIds.Count > 0)
+            {
+                // Winner published first: clean only this run's persisted
+                // chunks and keep the winner's corpus intact.
+                await PurgeJobChunksAsync(jobId, savedChunkIds);
+            }
             _logger.LogWarning(
                 "Textbook job {JobId} is already Completed; not marking Failed and keeping its corpus.",
                 jobId);
@@ -271,6 +288,13 @@ public class IngestionJob
 
     private async Task PurgeJobChunksAsync(Guid jobId)
     {
+        // Full purge: used when this run owns every chunk of the job
+        // (normal failure path, or a Failed-abort where no winner exists).
+        await PurgeJobChunksAsync(jobId, null);
+    }
+
+    private async Task PurgeJobChunksAsync(Guid jobId, IReadOnlyList<Guid>? chunkIds)
+    {
         // Pending in-memory inserts first — re-saving them would rethrow the
         // original error and escape, faulting the Hangfire worker.
         foreach (var entry in _db.ChangeTracker.Entries<TextbookChunk>()
@@ -285,7 +309,9 @@ public class IngestionJob
         var residue = await _db.TextbookChunks
             .Where(c => c.JobId == jobId)
             .ToListAsync(CancellationToken.None);
-        _db.TextbookChunks.RemoveRange(residue);
+        _db.TextbookChunks.RemoveRange(chunkIds is null
+            ? residue
+            : residue.Where(c => chunkIds.Contains(c.Id)));
 
         await _db.SaveChangesAsync(CancellationToken.None);
     }

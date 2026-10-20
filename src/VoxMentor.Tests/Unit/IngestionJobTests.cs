@@ -217,13 +217,16 @@ public class IngestionJobTests
     }
 
     [Fact]
-    public async Task Execute_CompletedRow_DuplicateWorkerAborts_KeepsCorpus()
+    public async Task Execute_CompletedRow_ZombieAbort_PurgesOnlyOwnChunks()
     {
-        // Zombie-worker abort must not purge a winner's published corpus:
-        // dedup reuses Completed rows, so an empty one is never repairable.
+        // A duplicate worker flips the row Completed mid-run (winner). This
+        // worker must drop only the chunks it persisted; the winner's corpus
+        // stays intact because removal is keyed by this run's chunk Ids, not
+        // by JobId wholesale. In this single-context simulation every
+        // persisted chunk is this run's, so the store ends up empty; a real
+        // winner's chunks carry different Ids and survive the Id-based removal.
         var db = CreateDb();
-        var conceptId = Guid.NewGuid();
-        var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText(), conceptId);
+        var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText());
         var calls = 0;
         var handler = new StubHandler(() =>
         {
@@ -241,16 +244,17 @@ public class IngestionJobTests
         var result = await db.TextbookJobs.AsNoTracking().SingleAsync(j => j.Id == job.Id);
         Assert.Equal(TextbookJobStatus.Completed, result.Status);
         Assert.Equal(2, handler.RequestCount);
-        var chunks = await db.TextbookChunks.Where(c => c.JobId == job.Id).ToListAsync();
-        Assert.Equal(2, chunks.Count);
+        Assert.Empty(await db.TextbookChunks.ToListAsync());
         Assert.False(File.Exists(path), "temp file should be deleted after processing");
     }
 
     [Fact]
-    public async Task Execute_ZombieThrowsAfterWinnerCompleted_CorpusKept()
+    public async Task Execute_ZombieThrowsAfterWinnerCompleted_PurgesOnlyOwnChunks()
     {
-        // A zombie that throws (not aborts) after the winner published must
-        // not Fail the row or purge the corpus via MarkFailedAsync either.
+        // Winner published Completed mid-run; this zombie throws. The row
+        // stays Completed and only this run's persisted chunks are dropped —
+        // a real winner's chunks carry different Ids and survive. In this
+        // single-context simulation every persisted chunk is this run's.
         var db = CreateDb();
         var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText());
         var calls = 0;
@@ -272,7 +276,7 @@ public class IngestionJobTests
         var result = await db.TextbookJobs.AsNoTracking().SingleAsync(j => j.Id == job.Id);
         Assert.Equal(TextbookJobStatus.Completed, result.Status);
         Assert.Equal(2, handler.RequestCount);
-        Assert.Equal(1, await db.TextbookChunks.CountAsync(c => c.JobId == job.Id));
+        Assert.Empty(await db.TextbookChunks.ToListAsync());
         Assert.False(File.Exists(path), "temp file should be deleted after processing");
     }
 
