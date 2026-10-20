@@ -216,11 +216,18 @@ public class IngestionJob
             return;
         }
 
+        var wasFailed = job.Status == TextbookJobStatus.Failed;
         job.Status = TextbookJobStatus.Failed;
-        job.Error = error.Message.Length > MaxErrorMessageLength
-            ? error.Message[..MaxErrorMessageLength]
-            : error.Message;
-        job.CompletedAt = DateTime.UtcNow;
+        // An already-Failed row carries the reconciler's explanatory Error;
+        // a re-mark (double failure after a mid-run reconciliation, e.g. the
+        // abort purge itself throwing) must not overwrite that metadata.
+        if (!wasFailed)
+        {
+            job.Error = error.Message.Length > MaxErrorMessageLength
+                ? error.Message[..MaxErrorMessageLength]
+                : error.Message;
+        }
+        job.CompletedAt ??= DateTime.UtcNow;
 
         // Drop pending in-memory inserts + the partial corpus so retrieval
         // never sees a half-embedded file. The helper's SaveChanges also
