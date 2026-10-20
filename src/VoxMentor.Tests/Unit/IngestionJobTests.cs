@@ -217,6 +217,36 @@ public class IngestionJobTests
     }
 
     [Fact]
+    public async Task Execute_CompletedRow_DuplicateWorkerAborts_KeepsCorpus()
+    {
+        // Zombie-worker abort must not purge a winner's published corpus:
+        // dedup reuses Completed rows, so an empty one is never repairable.
+        var db = CreateDb();
+        var conceptId = Guid.NewGuid();
+        var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText(), conceptId);
+        var calls = 0;
+        var handler = new StubHandler(() =>
+        {
+            if (++calls == 2)
+            {
+                job.Status = TextbookJobStatus.Completed;
+                job.CompletedAt = DateTime.UtcNow;
+                db.SaveChanges();
+            }
+            return EmbedResponse();
+        });
+
+        await CreateJob(db, handler).Execute(job.Id, path, CancellationToken.None);
+
+        var result = await db.TextbookJobs.AsNoTracking().SingleAsync(j => j.Id == job.Id);
+        Assert.Equal(TextbookJobStatus.Completed, result.Status);
+        Assert.Equal(2, handler.RequestCount);
+        Assert.True(await db.TextbookChunks.AnyAsync(c => c.JobId == job.Id));
+        Assert.Equal(2, await db.TextbookChunks.CountAsync(c => c.JobId == job.Id));
+        Assert.False(File.Exists(path), "temp file should be deleted after processing");
+    }
+
+    [Fact]
     public async Task Execute_FailedJob_SkipsWork_LeavesRowFailed_AndCleansUpFile()
     {
         var db = CreateDb();

@@ -137,8 +137,13 @@ public class IngestionJob
                 // after the reconciliation deleted the earlier ones
                 // (TextbookChunks has no FK back to the job). Drop the
                 // residue so a Failed row never carries a partial corpus
-                // into retrieval (#104 CodeRabbit).
-                await PurgeJobChunksAsync(jobId);
+                // into retrieval (#104 CodeRabbit). Only Failed is purged:
+                // a duplicate/zombie worker aborting against a Completed
+                // row must not wipe the winner's published corpus.
+                if (current?.Status == TextbookJobStatus.Failed)
+                {
+                    await PurgeJobChunksAsync(jobId);
+                }
                 return;
             }
 
