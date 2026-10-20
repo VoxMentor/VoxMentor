@@ -241,8 +241,74 @@ public class IngestionJobTests
         var result = await db.TextbookJobs.AsNoTracking().SingleAsync(j => j.Id == job.Id);
         Assert.Equal(TextbookJobStatus.Completed, result.Status);
         Assert.Equal(2, handler.RequestCount);
-        Assert.True(await db.TextbookChunks.AnyAsync(c => c.JobId == job.Id));
-        Assert.Equal(2, await db.TextbookChunks.CountAsync(c => c.JobId == job.Id));
+        var chunks = await db.TextbookChunks.Where(c => c.JobId == job.Id).ToListAsync();
+        Assert.Equal(2, chunks.Count);
+        Assert.False(File.Exists(path), "temp file should be deleted after processing");
+    }
+
+    [Fact]
+    public async Task Execute_ZombieThrowsAfterWinnerCompleted_CorpusKept()
+    {
+        // A zombie that throws (not aborts) after the winner published must
+        // not Fail the row or purge the corpus via MarkFailedAsync either.
+        var db = CreateDb();
+        var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText());
+        var calls = 0;
+        var handler = new StubHandler(() =>
+        {
+            if (++calls == 2)
+            {
+                job.Status = TextbookJobStatus.Completed;
+                job.CompletedAt = DateTime.UtcNow;
+                db.SaveChanges();
+            }
+            return calls == 2
+                ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                : EmbedResponse();
+        });
+
+        await CreateJob(db, handler).Execute(job.Id, path, CancellationToken.None);
+
+        var result = await db.TextbookJobs.AsNoTracking().SingleAsync(j => j.Id == job.Id);
+        Assert.Equal(TextbookJobStatus.Completed, result.Status);
+        Assert.Equal(2, handler.RequestCount);
+        Assert.Equal(1, await db.TextbookChunks.CountAsync(c => c.JobId == job.Id));
+        Assert.False(File.Exists(path), "temp file should be deleted after processing");
+    }
+
+    [Fact]
+    public async Task Execute_FailedMidRun_SecondFailure_KeepsReconcilersMetadata()
+    {
+        // A re-mark keeps the row-ender's Error/CompletedAt: the reconciler
+        // already explained why this run is over.
+        var db = CreateDb();
+        var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText());
+        var reconcilerError = "Job created before content-hash tracking. Re-upload the file to ingest it.";
+        using var cts = new CancellationTokenSource();
+        var calls = 0;
+        var handler = new StubHandler(() =>
+        {
+            if (++calls == 1)
+            {
+                // A separate connection in production: end the row between
+                // the worker's saves, then kill the worker's embed call.
+                job.Status = TextbookJobStatus.Failed;
+                job.Error = reconcilerError;
+                job.CompletedAt = DateTime.UtcNow;
+                db.SaveChanges();
+                cts.Cancel();
+            }
+            return EmbedResponse();
+        });
+
+        await CreateJob(db, handler).Execute(job.Id, path, cts.Token);
+
+        var result = await db.TextbookJobs.AsNoTracking().SingleAsync(j => j.Id == job.Id);
+        Assert.Equal(TextbookJobStatus.Failed, result.Status);
+        Assert.Contains("before content-hash tracking", result.Error);
+        Assert.NotNull(result.CompletedAt);
+        Assert.Equal(1, handler.RequestCount);
+        Assert.Empty(await db.TextbookChunks.ToListAsync());
         Assert.False(File.Exists(path), "temp file should be deleted after processing");
     }
 

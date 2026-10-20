@@ -71,9 +71,13 @@ public class IngestionJob
             // upload handler's cleanup end rows as Failed, but Hangfire may
             // still hold a queued job for them. Re-running would resurrect
             // failed work; the finally block cleans the staged file.
-            if (job.Status == TextbookJobStatus.Failed)
+            // Completed is sticky for the same reason: a re-queued Completed
+            // run deletes the winner's published corpus at the stale-chunk
+            // purge and dies on the already-deleted temp file, and an empty
+            // Completed row is never repairable (dedup blocks the re-upload).
+            if (job.Status is TextbookJobStatus.Failed or TextbookJobStatus.Completed)
             {
-                _logger.LogWarning("Textbook job {JobId} is already Failed; skipping.", jobId);
+                _logger.LogWarning("Textbook job {JobId} is already {Status}; skipping.", jobId, job.Status);
                 return;
             }
 
@@ -221,18 +225,43 @@ public class IngestionJob
             return;
         }
 
-        var wasFailed = job.Status == TextbookJobStatus.Failed;
+        // Identity resolution can hand back this worker's own tracked
+        // instance, whose Status is stale against the store: a reconciler
+        // on a separate connection (or a zombie winner) may have ended the
+        // row while this run was in-flight, and EF does not refresh tracked
+        // instances from the database. Probe the store to decide what this
+        // failure may write.
+        var stored = await _db.TextbookJobs
+            .AsNoTracking()
+            .Where(j => j.Id == jobId)
+            .Select(j => (TextbookJobStatus?)j.Status)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        // A winner published out from under this run: never Fail its row or
+        // purge its corpus behind dedup's "already ingested" reuse.
+        if (stored == TextbookJobStatus.Completed)
+        {
+            _logger.LogWarning(
+                "Textbook job {JobId} is already Completed; not marking Failed and keeping its corpus.",
+                jobId);
+            return;
+        }
+
+        // An already-Failed row carries its ender's explanatory Error
+        // (reconciler or another failure route); a re-mark must not
+        // overwrite that metadata, nor its CompletedAt.
+        var wasFailed = stored == TextbookJobStatus.Failed;
         job.Status = TextbookJobStatus.Failed;
-        // An already-Failed row carries the reconciler's explanatory Error;
-        // a re-mark (double failure after a mid-run reconciliation, e.g. the
-        // abort purge itself throwing) must not overwrite that metadata.
         if (!wasFailed)
         {
             job.Error = error.Message.Length > MaxErrorMessageLength
                 ? error.Message[..MaxErrorMessageLength]
                 : error.Message;
+            if (job.CompletedAt is null)
+            {
+                job.CompletedAt = DateTime.UtcNow;
+            }
         }
-        job.CompletedAt ??= DateTime.UtcNow;
 
         // Drop pending in-memory inserts + the partial corpus so retrieval
         // never sees a half-embedded file. The helper's SaveChanges also
