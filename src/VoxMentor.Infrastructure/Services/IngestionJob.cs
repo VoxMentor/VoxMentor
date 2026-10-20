@@ -27,6 +27,12 @@ public class IngestionJob
 {
     private const int MaxErrorMessageLength = 1000;
 
+    // ponytail: a claim older than the Hangfire lock timeout is treated as
+    // abandoned (worker crashed or its connection dropped) and may be
+    // reclaimed by the next run, so a dead claimant cannot strand a job
+    // as Processing forever (#104 CodeRabbit).
+    private static readonly TimeSpan StaleClaimThreshold = TimeSpan.FromHours(1);
+
     // ponytail: lexical confinement only — reconstruct path from jobId if job
     // arguments ever become untrusted cross-tenant.
     private static readonly string TempDirectory =
@@ -86,18 +92,32 @@ public class IngestionJob
             // RunId ownership (#104 CodeRabbit): Hangfire's
             // DisableConcurrentExecution is a best-effort storage lock, so a
             // connection loss can let two Execute calls overlap on the same
-            // row. Only the run that claimed the job (Pending or an
-            // unclaimed Processing row) may publish or fail it; every other
-            // run backs off here without touching the row or its chunks.
+            // row. Only the run that claimed the job may publish or fail it;
+            // every other run backs off — unless the claim is stale
+            // (ClaimedAt older than the lock timeout), in which case the
+            // claiming worker is dead and this run takes over.
             if (job.RunId is not null && job.RunId != runId)
             {
-                _logger.LogWarning(
-                    "Textbook job {JobId} is owned by another run; backing off.", jobId);
-                return;
+                var stale = job.ClaimedAt is null
+                    || job.ClaimedAt < DateTime.UtcNow - StaleClaimThreshold;
+                if (stale)
+                {
+                    _logger.LogWarning(
+                        "Textbook job {JobId} claim by {RunId} is stale; reclaiming.", jobId, job.RunId);
+                    job.RunId = runId;
+                    job.ClaimedAt = DateTime.UtcNow;
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "Textbook job {JobId} is owned by another run; backing off.", jobId);
+                    return;
+                }
             }
 
             job.Status = TextbookJobStatus.Processing;
             job.RunId = runId;
+            job.ClaimedAt = DateTime.UtcNow;
             job.ProcessedChunks = 0;
             // Crash-requeue idempotency: drop chunks from any previous partial run.
             var staleChunks = await _db.TextbookChunks

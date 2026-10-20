@@ -26,12 +26,19 @@ public class TextbookJob
     public DateTime? CompletedAt { get; set; }
 
     /// <summary>
+    /// Time the claim at <see cref="RunId"/> was set. A <see cref="Processing"/>
+    /// row whose claim is older than the lock timeout is treated as abandoned
+    /// and may be reclaimed by the next run (#104 CodeRabbit).
+    /// </summary>
+    public DateTime? ClaimedAt { get; set; }
+
+    /// <summary>
     /// Per-run ownership token, set once when a worker claims the job
-    /// (Pending/Processing-unclaimed -> Processing + RunId). Concurrency token
+    /// (Pending or stale Processing -> Processing + RunId). Concurrency token
     /// so two overlapping Execute runs cannot both claim the same row
     /// (Hangfire's DisableConcurrentExecution is best-effort only). Only the
     /// claimant may publish Completed or mark the row Failed; any other run
-    /// backs off and removes only its own persisted chunks.
+    /// backs off, or reclaims once the claim is stale.
     /// </summary>
     public Guid? RunId { get; set; }
 }

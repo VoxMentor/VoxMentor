@@ -260,6 +260,7 @@ public class IngestionJobTests
         var otherRunId = Guid.NewGuid();
         job.Status = TextbookJobStatus.Processing;
         job.RunId = otherRunId;
+        job.ClaimedAt = DateTime.UtcNow; // active claim: the other run is still alive
         db.TextbookChunks.Add(new TextbookChunk
         {
             Id = Guid.NewGuid(),
@@ -280,6 +281,45 @@ public class IngestionJobTests
         var chunks = await db.TextbookChunks.Where(c => c.JobId == job.Id).ToListAsync();
         Assert.Single(chunks);
         Assert.Equal("winner chunk", chunks[0].Content);
+        Assert.False(File.Exists(path), "temp file should be deleted after processing");
+    }
+
+    [Fact]
+    public async Task Execute_StaleClaimedRow_ReclaimsAndProcesses()
+    {
+        // A worker crashed after claiming: the row is Processing + RunId +
+        // an old ClaimedAt. A new run reclaims it, purges the stale corpus,
+        // and completes fresh.
+        var db = CreateDb();
+        var conceptId = Guid.NewGuid();
+        var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText(), conceptId);
+        var deadRunId = Guid.NewGuid();
+        var staleClaim = DateTime.UtcNow - TimeSpan.FromHours(2);
+        job.Status = TextbookJobStatus.Processing;
+        job.RunId = deadRunId;
+        job.ClaimedAt = staleClaim;
+        db.TextbookChunks.Add(new TextbookChunk
+        {
+            Id = Guid.NewGuid(),
+            JobId = job.Id,
+            ConceptId = conceptId,
+            Content = "stale chunk",
+            Source = "book.txt"
+        });
+        await db.SaveChangesAsync();
+        var handler = new StubHandler(EmbedResponse);
+
+        await CreateJob(db, handler).Execute(job.Id, path, CancellationToken.None);
+
+        var result = await db.TextbookJobs.SingleAsync(j => j.Id == job.Id);
+        Assert.Equal(TextbookJobStatus.Completed, result.Status);
+        Assert.NotEqual(deadRunId, result.RunId);
+        Assert.NotNull(result.ClaimedAt);
+        Assert.True(result.ClaimedAt > staleClaim, "the reclaim refreshed ClaimedAt");
+        Assert.Equal(2, handler.RequestCount);
+        var chunks = await db.TextbookChunks.Where(c => c.JobId == job.Id).ToListAsync();
+        Assert.Equal(2, chunks.Count);
+        Assert.DoesNotContain(chunks, c => c.Content == "stale chunk");
         Assert.False(File.Exists(path), "temp file should be deleted after processing");
     }
 
