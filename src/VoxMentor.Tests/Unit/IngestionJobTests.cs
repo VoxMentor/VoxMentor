@@ -186,6 +186,37 @@ public class IngestionJobTests
     }
 
     [Fact]
+    public async Task Execute_FailedMidRun_AbortsAndPurgesChunkResidue()
+    {
+        var db = CreateDb();
+        var conceptId = Guid.NewGuid();
+        var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText(), conceptId);
+        var calls = 0;
+        var handler = new StubHandler(() =>
+        {
+            // Simulate the migration reconciling this row between the
+            // worker's per-chunk saves: flip it Failed mid-run.
+            if (++calls == 2)
+            {
+                job.Status = TextbookJobStatus.Failed;
+                db.SaveChanges();
+            }
+            return EmbedResponse();
+        });
+
+        await CreateJob(db, handler).Execute(job.Id, path, CancellationToken.None);
+
+        // Store read (not the tracked instance) proves the worker did not
+        // resurrect Completed over the reconciled Failed row.
+        var result = await db.TextbookJobs.AsNoTracking().SingleAsync(j => j.Id == job.Id);
+        Assert.Equal(TextbookJobStatus.Failed, result.Status);
+        Assert.Equal(2, handler.RequestCount);
+        Assert.False(await db.TextbookChunks.AnyAsync(c => c.JobId == job.Id),
+            "the abort must purge chunks the worker re-saved after the reconciliation delete");
+        Assert.False(File.Exists(path), "temp file should be deleted after processing");
+    }
+
+    [Fact]
     public async Task Execute_FailedJob_SkipsWork_LeavesRowFailed_AndCleansUpFile()
     {
         var db = CreateDb();

@@ -133,6 +133,12 @@ public class IngestionJob
                 _logger.LogWarning(
                     "Textbook job {JobId} is no longer Processing ({Status}); aborting without publishing Completed.",
                     jobId, current?.Status);
+                // A worker between per-chunk saves can have re-saved chunks
+                // after the reconciliation deleted the earlier ones
+                // (TextbookChunks has no FK back to the job). Drop the
+                // residue so a Failed row never carries a partial corpus
+                // into retrieval (#104 CodeRabbit).
+                await PurgeJobChunksAsync(jobId);
                 return;
             }
 
@@ -216,8 +222,16 @@ public class IngestionJob
             : error.Message;
         job.CompletedAt = DateTime.UtcNow;
 
-        // Drop pending in-memory inserts first — re-saving them would rethrow
-        // the original error and escape, faulting the Hangfire worker.
+        // Drop pending in-memory inserts + the partial corpus so retrieval
+        // never sees a half-embedded file. The helper's SaveChanges also
+        // flushes the Failed fields above in the same atomic batch.
+        await PurgeJobChunksAsync(jobId);
+    }
+
+    private async Task PurgeJobChunksAsync(Guid jobId)
+    {
+        // Pending in-memory inserts first — re-saving them would rethrow the
+        // original error and escape, faulting the Hangfire worker.
         foreach (var entry in _db.ChangeTracker.Entries<TextbookChunk>()
                      .Where(e => e.State == EntityState.Added)
                      .ToList())
@@ -225,12 +239,13 @@ public class IngestionJob
             entry.State = EntityState.Detached;
         }
 
-        // Drop the partial corpus so retrieval never sees a half-embedded file.
-        var partialChunks = await _db.TextbookChunks
+        // ponytail: tracked purge (not ExecuteDelete) — the InMemory test
+        // contexts can't run relational bulk ops; swap if the suite moves to SQLite.
+        var residue = await _db.TextbookChunks
             .Where(c => c.JobId == jobId)
-            .ToListAsync(cancellationToken);
-        _db.TextbookChunks.RemoveRange(partialChunks);
+            .ToListAsync(CancellationToken.None);
+        _db.TextbookChunks.RemoveRange(residue);
 
-        await _db.SaveChangesAsync(cancellationToken);
+        await _db.SaveChangesAsync(CancellationToken.None);
     }
 }
