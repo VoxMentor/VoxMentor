@@ -66,8 +66,8 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 }
 
 /// <summary>
-/// Records enqueues instead of dialing Hangfire, so upload success paths are
-/// testable with the storage-free factory above.
+/// Records enqueues and scheduled recovery runs instead of dialing Hangfire,
+/// so upload success paths are testable with the storage-free factory above.
 /// </summary>
 public sealed class RecordingTextbookIngestionQueue : ITextbookIngestionQueue
 {

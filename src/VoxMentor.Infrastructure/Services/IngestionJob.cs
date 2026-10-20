@@ -123,13 +123,16 @@ public class IngestionJob
                     // claim went stale. With Attempts=0 this invocation is
                     // the last one, so schedule a recovery run for the claim
                     // expiry; the staged file survives this run for it.
-                    // ponytail: remaining ≥ 0 here (the stale check ran on
-                    // the same clock); a 0-delay just re-runs immediately
-                    // and reclaims once the claim crosses the threshold.
+                    // Non-owner first: a throwing Schedule must not fall
+                    // through to the file-deleting finally.
+                    // ponytail: remaining is ≥ 0 to within the µs between
+                    // the two UtcNow reads; a zero/negative delay just
+                    // re-runs immediately and reclaims once the claim
+                    // crosses the threshold.
+                    ownsStagedFile = false;
                     var remaining =
                         StaleClaimThreshold - (DateTime.UtcNow - job.ClaimedAt!.Value);
                     _schedule.Schedule(jobId, filePath, remaining);
-                    ownsStagedFile = false;
                     return;
                 }
             }
@@ -242,6 +245,10 @@ public class IngestionJob
             // own writes, so it can never detect a mid-run claim rotation.
             if (current.RunId is not null && current.RunId != runId)
             {
+                // A live owner holds the row now (fresh claim rotation); it
+                // may still be mid-extraction, so this run must not delete
+                // the staged file.
+                ownsStagedFile = false;
                 if (savedChunkIds.Count > 0)
                 {
                     await PurgeJobChunksAsync(jobId, savedChunkIds);
@@ -263,7 +270,12 @@ public class IngestionJob
             // ponytail: no rethrow — failure lives on the row; Hangfire retry is off anyway.
             try
             {
-                await MarkFailedAsync(jobId, ex, CancellationToken.None, savedChunkIds, runId);
+                if (await MarkFailedAsync(jobId, ex, CancellationToken.None, savedChunkIds, runId))
+                {
+                    // The failure probe found a foreign owner that may still
+                    // be processing; the staged file is kept for it.
+                    ownsStagedFile = false;
+                }
             }
             catch (Exception markEx)
             {
@@ -317,7 +329,13 @@ public class IngestionJob
             || extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task MarkFailedAsync(Guid jobId, Exception error,
+    /// <summary>
+    /// Records the failure under the row's ownership rules. Returns true when
+    /// the probe found a foreign owner that may still be processing the job —
+    /// the caller must then keep the staged file for it (#104 CodeRabbit
+    /// round 5); false when this run ended the row or there is nothing left.
+    /// </summary>
+    private async Task<bool> MarkFailedAsync(Guid jobId, Exception error,
                                        CancellationToken cancellationToken,
                                        IReadOnlyList<Guid> savedChunkIds,
                                        Guid runId)
@@ -326,7 +344,7 @@ public class IngestionJob
             .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
         if (job is null)
         {
-            return;
+            return false;
         }
 
         // Identity resolution can hand back this worker's own tracked
@@ -359,12 +377,13 @@ public class IngestionJob
             _logger.LogWarning(
                 "Textbook job {JobId} is already Completed; not marking Failed and keeping its corpus.",
                 jobId);
-            return;
+            return false;
         }
 
         // A different run owns this job (or ended it with another RunId):
         // never mark Failed or purge wholesale — drop only this run's
-        // persisted chunks and return.
+        // persisted chunks and return. The row may still be Processing under
+        // that run, which can be mid-extraction: keep the staged file for it.
         if (stored?.RunId is not null && stored?.RunId != runId)
         {
             // Same detached-update problem as the Completed branch above:
@@ -377,7 +396,7 @@ public class IngestionJob
             _logger.LogWarning(
                 "Textbook job {JobId} is owned by another run; not marking Failed.",
                 jobId);
-            return;
+            return true;
         }
 
         // An already-Failed row carries its ender's explanatory Error
@@ -400,6 +419,7 @@ public class IngestionJob
         // never sees a half-embedded file. The helper's SaveChanges also
         // flushes the Failed fields above in the same atomic batch.
         await PurgeJobChunksAsync(jobId, savedChunkIds);
+        return false;
     }
 
     private async Task PurgeJobChunksAsync(Guid jobId)

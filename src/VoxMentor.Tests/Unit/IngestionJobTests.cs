@@ -264,7 +264,8 @@ public class IngestionJobTests
     {
         // Run B finds the row already claimed by run A (Processing + RunId
         // set): it must not re-claim, purge, embed, or publish — the winner's
-        // corpus stays intact and the staged file is still cleaned up.
+        // corpus stays intact and the staged file survives for the scheduled
+        // recovery run.
         var db = CreateDb();
         var conceptId = Guid.NewGuid();
         var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText(), conceptId);
@@ -297,7 +298,7 @@ public class IngestionJobTests
         // executions share the same filePath, and the scheduled recovery
         // needs it (#104 CodeRabbit round 5).
         Assert.True(File.Exists(path), "a non-owner run must not delete the staged file");
-        Assert.True(File.ReadAllText(path) == SampleText(), "staged file content intact");
+        Assert.Equal(SampleText(), File.ReadAllText(path));
         var scheduled = Assert.Single(queue.Scheduled);
         Assert.Equal(job.Id, scheduled.JobId);
         Assert.Equal(path, scheduled.Path);
@@ -376,7 +377,9 @@ public class IngestionJobTests
         Assert.Null(result.CompletedAt);
         Assert.Equal(2, handler.RequestCount);
         Assert.Empty(await db.TextbookChunks.ToListAsync());
-        Assert.False(File.Exists(path), "temp file should be deleted after processing");
+        Assert.True(
+            File.Exists(path),
+            "a live owner may still be mid-extraction; the staged file is kept");
     }
 
     [Fact]

@@ -26,9 +26,10 @@ public class TextbookJob
     public DateTime? CompletedAt { get; set; }
 
     /// <summary>
-    /// Time the claim at <see cref="RunId"/> was set. A <see cref="Processing"/>
-    /// row whose claim is older than the lock timeout is treated as abandoned
-    /// and may be reclaimed by the next run (#104 CodeRabbit).
+    /// Time the claim at <see cref="RunId"/> was set or last refreshed: the
+    /// claiming run heartbeats this per chunk, so only an abandoned claim
+    /// (older than the lock timeout) is reclaimed by the next run
+    /// (#104 CodeRabbit).
     /// </summary>
     public DateTime? ClaimedAt { get; set; }
 
