@@ -205,6 +205,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
             entity.Property(e => e.Error).HasMaxLength(1000);
             entity.Property(e => e.ContentHash).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.RunId).IsConcurrencyToken();
             // DB-enforced dedup key (#104): exactly ONE reusable job per
             // (content, concept). Reusable = Pending/Processing/Completed
             // (Failed rows stay re-runable). Two concurrent identical uploads

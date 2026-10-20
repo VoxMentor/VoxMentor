@@ -58,6 +58,7 @@ public class IngestionJob
         }
 
         var savedChunkIds = new List<Guid>();
+        var runId = Guid.NewGuid();
         try
         {
             var job = await _db.TextbookJobs
@@ -82,14 +83,40 @@ public class IngestionJob
                 return;
             }
 
+            // RunId ownership (#104 CodeRabbit): Hangfire's
+            // DisableConcurrentExecution is a best-effort storage lock, so a
+            // connection loss can let two Execute calls overlap on the same
+            // row. Only the run that claimed the job (Pending or an
+            // unclaimed Processing row) may publish or fail it; every other
+            // run backs off here without touching the row or its chunks.
+            if (job.RunId is not null && job.RunId != runId)
+            {
+                _logger.LogWarning(
+                    "Textbook job {JobId} is owned by another run; backing off.", jobId);
+                return;
+            }
+
             job.Status = TextbookJobStatus.Processing;
+            job.RunId = runId;
             job.ProcessedChunks = 0;
             // Crash-requeue idempotency: drop chunks from any previous partial run.
             var staleChunks = await _db.TextbookChunks
                 .Where(c => c.JobId == jobId)
                 .ToListAsync(cancellationToken);
             _db.TextbookChunks.RemoveRange(staleChunks);
-            await _db.SaveChangesAsync(cancellationToken);
+            try
+            {
+                // The RunId concurrency token makes this claim atomic: a
+                // concurrent claim on the same Pending row fails here and the
+                // loser backs off above on its next load.
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                _logger.LogWarning(
+                    "Textbook job {JobId} was claimed by another run; backing off.", jobId);
+                return;
+            }
 
             var text = await TextExtractor.ExtractAsync(filePath, cancellationToken);
             var chunks = TextChunker.Chunk(text);
@@ -160,6 +187,18 @@ public class IngestionJob
                 return;
             }
 
+            // Publish only while still the claimant (#104 CodeRabbit): a
+            // superseded run drops only its own chunks and returns without
+            // touching the winner's row or corpus.
+            if (job.Status != TextbookJobStatus.Processing || job.RunId != runId)
+            {
+                if (savedChunkIds.Count > 0)
+                {
+                    await PurgeJobChunksAsync(jobId, savedChunkIds);
+                }
+                return;
+            }
+
             job.Status = TextbookJobStatus.Completed;
             job.CompletedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync(cancellationToken);
@@ -174,7 +213,7 @@ public class IngestionJob
             // ponytail: no rethrow — failure lives on the row; Hangfire retry is off anyway.
             try
             {
-                await MarkFailedAsync(jobId, ex, CancellationToken.None, savedChunkIds);
+                await MarkFailedAsync(jobId, ex, CancellationToken.None, savedChunkIds, runId);
             }
             catch (Exception markEx)
             {
@@ -227,7 +266,8 @@ public class IngestionJob
 
     private async Task MarkFailedAsync(Guid jobId, Exception error,
                                        CancellationToken cancellationToken,
-                                       IReadOnlyList<Guid> savedChunkIds)
+                                       IReadOnlyList<Guid> savedChunkIds,
+                                       Guid runId)
     {
         var job = await _db.TextbookJobs
             .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
@@ -245,12 +285,12 @@ public class IngestionJob
         var stored = await _db.TextbookJobs
             .AsNoTracking()
             .Where(j => j.Id == jobId)
-            .Select(j => (TextbookJobStatus?)j.Status)
+            .Select(j => new { j.Status, j.RunId })
             .FirstOrDefaultAsync(cancellationToken);
 
         // A winner published out from under this run: never Fail its row or
         // purge its corpus behind dedup's "already ingested" reuse.
-        if (stored == TextbookJobStatus.Completed)
+        if (stored?.Status == TextbookJobStatus.Completed)
         {
             if (savedChunkIds.Count > 0)
             {
@@ -264,10 +304,25 @@ public class IngestionJob
             return;
         }
 
+        // A different run owns this job (or ended it with another RunId):
+        // never mark Failed or purge wholesale — drop only this run's
+        // persisted chunks and return.
+        if (stored?.RunId is not null && stored?.RunId != runId)
+        {
+            if (savedChunkIds.Count > 0)
+            {
+                await PurgeJobChunksAsync(jobId, savedChunkIds);
+            }
+            _logger.LogWarning(
+                "Textbook job {JobId} is owned by another run; not marking Failed.",
+                jobId);
+            return;
+        }
+
         // An already-Failed row carries its ender's explanatory Error
         // (reconciler or another failure route); a re-mark must not
         // overwrite that metadata, nor its CompletedAt.
-        var wasFailed = stored == TextbookJobStatus.Failed;
+        var wasFailed = stored?.Status == TextbookJobStatus.Failed;
         job.Status = TextbookJobStatus.Failed;
         if (!wasFailed)
         {
@@ -283,7 +338,7 @@ public class IngestionJob
         // Drop pending in-memory inserts + the partial corpus so retrieval
         // never sees a half-embedded file. The helper's SaveChanges also
         // flushes the Failed fields above in the same atomic batch.
-        await PurgeJobChunksAsync(jobId);
+        await PurgeJobChunksAsync(jobId, savedChunkIds);
     }
 
     private async Task PurgeJobChunksAsync(Guid jobId)

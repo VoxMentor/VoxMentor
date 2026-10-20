@@ -24,4 +24,14 @@ public class TextbookJob
     public string? Error { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
+
+    /// <summary>
+    /// Per-run ownership token, set once when a worker claims the job
+    /// (Pending/Processing-unclaimed -> Processing + RunId). Concurrency token
+    /// so two overlapping Execute runs cannot both claim the same row
+    /// (Hangfire's DisableConcurrentExecution is best-effort only). Only the
+    /// claimant may publish Completed or mark the row Failed; any other run
+    /// backs off and removes only its own persisted chunks.
+    /// </summary>
+    public Guid? RunId { get; set; }
 }

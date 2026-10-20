@@ -249,6 +249,41 @@ public class IngestionJobTests
     }
 
     [Fact]
+    public async Task Execute_AlreadyClaimedByAnotherRun_BacksOffWithoutTouchingCorpus()
+    {
+        // Run B finds the row already claimed by run A (Processing + RunId
+        // set): it must not re-claim, purge, embed, or publish — the winner's
+        // corpus stays intact and the staged file is still cleaned up.
+        var db = CreateDb();
+        var conceptId = Guid.NewGuid();
+        var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText(), conceptId);
+        var otherRunId = Guid.NewGuid();
+        job.Status = TextbookJobStatus.Processing;
+        job.RunId = otherRunId;
+        db.TextbookChunks.Add(new TextbookChunk
+        {
+            Id = Guid.NewGuid(),
+            JobId = job.Id,
+            ConceptId = conceptId,
+            Content = "winner chunk",
+            Source = "book.txt"
+        });
+        await db.SaveChangesAsync();
+        var handler = new StubHandler(EmbedResponse);
+
+        await CreateJob(db, handler).Execute(job.Id, path, CancellationToken.None);
+
+        var result = await db.TextbookJobs.SingleAsync(j => j.Id == job.Id);
+        Assert.Equal(TextbookJobStatus.Processing, result.Status);
+        Assert.Equal(otherRunId, result.RunId);
+        Assert.Equal(0, handler.RequestCount);
+        var chunks = await db.TextbookChunks.Where(c => c.JobId == job.Id).ToListAsync();
+        Assert.Single(chunks);
+        Assert.Equal("winner chunk", chunks[0].Content);
+        Assert.False(File.Exists(path), "temp file should be deleted after processing");
+    }
+
+    [Fact]
     public async Task Execute_ZombieThrowsAfterWinnerCompleted_PurgesOnlyOwnChunks()
     {
         // Winner published Completed mid-run; this zombie throws. The row
