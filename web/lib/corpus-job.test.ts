@@ -13,6 +13,8 @@ import {
 
 test("validateCorpusFile mirrors the server's extension rule", () => {
   assert.equal(validateCorpusFile({ name: "ctci.pdf", size: 10 }), null);
+  // multipart filenames may carry stray spaces; both sides trim (#104 F-1)
+  assert.equal(validateCorpusFile({ name: "  ctci.pdf  ", size: 10 }), null);
   assert.equal(validateCorpusFile({ name: "notes.TXT", size: 10 }), null);
   assert.match(String(validateCorpusFile({ name: "slides.pptx", size: 10 })), /pdf and .txt/);
   // no extension at all — Path.GetExtension would be "" server-side

@@ -157,6 +157,9 @@ public class IngestionJobTests
         Assert.Equal(2, result.ProcessedChunks);
         Assert.Null(result.Error);
         Assert.NotNull(result.CompletedAt);
+        // The Completed publish rotates the ownership token (#104 v3 CS-5):
+        // an earlier-loaded recovery's claim save must no longer match.
+        Assert.Null(result.RunId);
         // Per-chunk ClaimedAt heartbeat stays set through the run (#104
         // review gate INGEST-002): recoveries treat the row as abandoned only
         // after a full threshold without a save.
@@ -198,6 +201,7 @@ public class IngestionJobTests
         Assert.Contains("Embedding failed", result.Error);
         Assert.Contains("chunk 1/2", result.Error);
         Assert.NotNull(result.CompletedAt);
+        Assert.Null(result.RunId); // the terminal Failed write rotates the token
 
         Assert.Empty(await db.TextbookChunks.ToListAsync());
         Assert.False(File.Exists(path), "temp file should be deleted even on failure");
@@ -415,6 +419,13 @@ public class IngestionJobTests
                 var stored = newOwner.TextbookJobs.Single(j => j.Id == job.Id);
                 stored.RunId = newOwnerRunId;
                 stored.ClaimedAt = DateTime.UtcNow; // fresh claim by the new owner
+                newOwner.TextbookChunks.Add(new TextbookChunk
+                {
+                    Id = Guid.NewGuid(),
+                    JobId = job.Id,
+                    Content = "winner chunk",
+                    Source = "book.txt"
+                });
                 newOwner.SaveChanges();
             }
             return EmbedResponse();
@@ -427,7 +438,11 @@ public class IngestionJobTests
         Assert.Equal(newOwnerRunId, result.RunId);
         Assert.Null(result.CompletedAt);
         Assert.Equal(2, handler.RequestCount);
-        Assert.Empty(await db.TextbookChunks.ToListAsync());
+        // Only this run's chunks are dropped: the new owner's chunk (written
+        // through a real sibling context) survives the join-race purge
+        // (#104 v3 TC-02).
+        var survivor = Assert.Single(await db.TextbookChunks.AsNoTracking().ToListAsync());
+        Assert.Equal("winner chunk", survivor.Content);
         Assert.True(
             File.Exists(path),
             "a live owner may still be mid-extraction; the staged file is kept");

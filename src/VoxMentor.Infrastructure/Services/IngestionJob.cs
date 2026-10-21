@@ -272,6 +272,11 @@ public class IngestionJob
 
             job.Status = TextbookJobStatus.Completed;
             job.CompletedAt = DateTime.UtcNow;
+            // Rotate the token on the terminal write (#104 v3 CS-5): a
+            // recovery that loaded the row before this save must not reclaim
+            // Completed back to Processing, and a zombie that loaded earlier
+            // must not publish over the winner.
+            job.RunId = null;
             await _db.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
@@ -443,6 +448,10 @@ public class IngestionJob
         // overwrite that metadata, nor its CompletedAt.
         var wasFailed = stored?.Status == TextbookJobStatus.Failed;
         job.Status = TextbookJobStatus.Failed;
+        // Same terminal-token rotation as the Completed publish: once the row
+        // is Failed, an earlier-loaded recovery cannot reclaim it, and a
+        // zombie whose save was already rejected stays rejected (#104 v3).
+        job.RunId = null;
         if (!wasFailed)
         {
             job.Error = error.Message.Length > MaxErrorMessageLength

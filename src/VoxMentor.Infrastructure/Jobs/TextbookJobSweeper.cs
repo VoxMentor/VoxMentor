@@ -64,10 +64,14 @@ public sealed class TextbookJobSweeper
                     // re-enqueue can ever succeed — and dedup hands this dead
                     // row back on every re-upload, wedging the (hash, concept)
                     // key permanently. Fail it so a re-upload creates a fresh
-                    // row. Tracked save (not ExecuteUpdate) so the RunId
-                    // concurrency token fences a run that reclaims mid-save.
+                    // row. The stale snapshot can span a completion, so only
+                    // rows still live at load time are eligible. Tracked save
+                    // (not ExecuteUpdate) so the RunId concurrency token
+                    // fences a run that completes or reclaims mid-save.
                     var job = await _db.TextbookJobs.FirstOrDefaultAsync(
-                        j => j.Id == jobId && j.Status != TextbookJobStatus.Failed,
+                        j => j.Id == jobId
+                            && (j.Status == TextbookJobStatus.Processing
+                                || j.Status == TextbookJobStatus.Pending),
                         cancellationToken);
                     if (job is not null)
                     {
@@ -81,6 +85,11 @@ public sealed class TextbookJobSweeper
                             .ToListAsync(cancellationToken);
                         _db.TextbookChunks.RemoveRange(orphanChunks);
                         job.Status = TextbookJobStatus.Failed;
+                        // Rotate the token on the terminal write: a run still
+                        // holding the old RunId cannot save again, so it can
+                        // neither re-insert chunks after this purge nor
+                        // overwrite the Failed flip (#104 v3 CS-1/SWEEP-01).
+                        job.RunId = null;
                         job.Error = "Staged upload file was lost (host restart or temp cleanup). Re-upload the file to retry.";
                         job.CompletedAt = DateTime.UtcNow;
                         await _db.SaveChangesAsync(cancellationToken);
@@ -97,7 +106,11 @@ public sealed class TextbookJobSweeper
             }
             catch (Exception ex)
             {
-                // One bad row must not stall the sweep for the rest.
+                // One bad row must not stall the sweep for the rest. A failed
+                // save leaves its Modified/Deleted entries tracked (EF does
+                // not reset them), so the next row's SaveChanges would try to
+                // re-flush them; clear before continuing.
+                _db.ChangeTracker.Clear();
                 _logger.LogError(ex, "Recovery sweep failed to re-enqueue textbook job {JobId}.", jobId);
             }
         }

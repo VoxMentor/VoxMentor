@@ -399,4 +399,46 @@ public class UploadTextbookHandlerTests
 
         File.Delete(queue.FilePath!);
     }
+
+    /// <summary>Fails the job insert — the row never commits and no race winner exists.</summary>
+    private sealed class FailingFirstSaveDbContext : Infrastructure.Persistence.ApplicationDbContext
+    {
+        public FailingFirstSaveDbContext(
+            DbContextOptions<Infrastructure.Persistence.ApplicationDbContext> options)
+            : base(options, new TestCurrentUser()) { }
+
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+            => throw new DbUpdateException("job insert failed (simulated)");
+    }
+
+    [Fact]
+    public async Task Upload_InsertFails_NoWinner_Rethrows_AndDeletesStagedFile()
+    {
+        // The other half of the CR-02 branch (#104 v3 TC-06): when the row
+        // never committed (!jobSaved), the staged file has no consumer — no
+        // sweeper can see an untracked row — so it must be deleted, and the
+        // unrelated insert failure must still surface to the caller.
+        var options = new DbContextOptionsBuilder<Infrastructure.Persistence.ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var db = new FailingFirstSaveDbContext(options);
+        var handler = new UploadTextbookHandler(db, new FakeQueue());
+        var staging = Path.Combine(Path.GetTempPath(), ITextbookIngestionQueue.TempDirectoryName);
+
+        await Assert.ThrowsAsync<DbUpdateException>(
+            () => handler.Handle(Command(), CancellationToken.None));
+
+        // The rejected insert leaves the generated job id on the tracked row;
+        // the handler names its staged file {jobId}{extension}.
+        var jobId = db.ChangeTracker.Entries<TextbookJob>().Single().Entity.Id;
+        var leftover = Directory.Exists(staging)
+            ? Directory.EnumerateFiles(staging, $"{jobId}*").ToList()
+            : new List<string>();
+        Assert.Empty(leftover);
+
+        // The failed insert must not leave the row visible either.
+        using var store =
+            new Infrastructure.Persistence.ApplicationDbContext(options, new TestCurrentUser());
+        Assert.Empty(await store.TextbookJobs.ToListAsync());
+    }
 }

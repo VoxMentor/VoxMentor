@@ -52,6 +52,9 @@ public class TextbookJobSweeperTests
         var freshProcessingFile = await StageFileAsync(freshProcessingId);
         var stalePendingFile = await StageFileAsync(stalePendingId);
         var freshPendingFile = await StageFileAsync(freshPendingId);
+        // Legacy/crashed Processing row that never recorded a claim.
+        var staleUnclaimedId = Guid.NewGuid();
+        var staleUnclaimedFile = await StageFileAsync(staleUnclaimedId);
         try
         {
             var twoHoursAgo = DateTime.UtcNow - TimeSpan.FromHours(2);
@@ -87,6 +90,17 @@ public class TextbookJobSweeperTests
                     FileName = "fresh-pending.txt",
                     Status = TextbookJobStatus.Pending,
                     CreatedAt = DateTime.UtcNow
+                },
+                // Pre-RunId rows migrated from Legacy retain Processing with
+                // no claim timestamp; the ClaimedAt == null branch must pick
+                // them up or they stay wedged forever (#104 v3 TC-04).
+                new TextbookJob
+                {
+                    Id = staleUnclaimedId,
+                    FileName = "stale-unclaimed.txt",
+                    Status = TextbookJobStatus.Processing,
+                    ClaimedAt = null,
+                    CreatedAt = twoHoursAgo
                 });
             await db.SaveChangesAsync();
 
@@ -94,11 +108,13 @@ public class TextbookJobSweeperTests
             await new TextbookJobSweeper(db, queue, NullLogger<TextbookJobSweeper>.Instance)
                 .SweepAsync(CancellationToken.None);
 
-            Assert.Equal(2, queue.Enqueued.Count);
+            Assert.Equal(3, queue.Enqueued.Count);
             Assert.Contains(queue.Enqueued,
                 e => e.JobId == staleProcessingId && e.Path == staleProcessingFile);
             Assert.Contains(queue.Enqueued,
                 e => e.JobId == stalePendingId && e.Path == stalePendingFile);
+            Assert.Contains(queue.Enqueued,
+                e => e.JobId == staleUnclaimedId && e.Path == staleUnclaimedFile);
         }
         finally
         {
@@ -106,6 +122,7 @@ public class TextbookJobSweeperTests
             File.Delete(freshProcessingFile);
             File.Delete(stalePendingFile);
             File.Delete(freshPendingFile);
+            File.Delete(staleUnclaimedFile);
         }
     }
 
@@ -134,6 +151,23 @@ public class TextbookJobSweeperTests
             Content = "orphan chunk from a dead run",
             Source = "lost-after-restart.pdf"
         });
+        // A second, live job: the purge must not touch its corpus.
+        var otherJobId = Guid.NewGuid();
+        db.TextbookJobs.Add(new TextbookJob
+        {
+            Id = otherJobId,
+            FileName = "still-live.pdf",
+            Status = TextbookJobStatus.Processing,
+            RunId = Guid.NewGuid(),
+            ClaimedAt = DateTime.UtcNow
+        });
+        db.TextbookChunks.Add(new TextbookChunk
+        {
+            Id = Guid.NewGuid(),
+            JobId = otherJobId,
+            Content = "live chunk",
+            Source = "still-live.pdf"
+        });
         await db.SaveChangesAsync();
 
         var queue = new RecordingQueue();
@@ -150,6 +184,10 @@ public class TextbookJobSweeperTests
         Assert.False(
             await db.TextbookChunks.AnyAsync(c => c.JobId == filelessId),
             "the Failed flip purges the orphaned partial corpus");
+        Assert.Null(row.RunId); // terminal-token rotation fences the dead run's next save
+        Assert.True(
+            await db.TextbookChunks.AnyAsync(c => c.JobId == otherJobId),
+            "the purge is scoped to the fileless job, not the whole table");
         Assert.Empty(queue.Enqueued);
     }
 

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Pgvector.EntityFrameworkCore;
+using VoxMentor.Domain.Entities;
 using VoxMentor.Infrastructure.Persistence;
 
 namespace VoxMentor.Tests.Unit;
@@ -69,6 +70,13 @@ public class MigrationDiscoveryTests
 
         snapshot = initializer.Initialize(snapshot);
         var model = context.GetService<IDesignTimeModel>().Model;
+
+        // Pin the runtime token itself, not just snapshot parity: a token
+        // deleted on both sides would still pass the differ check below
+        // (#104 v3 TC-03).
+        var jobEntity = model.FindEntityType(typeof(TextbookJob));
+        Assert.NotNull(jobEntity);
+        Assert.True(jobEntity!.FindProperty(nameof(TextbookJob.RunId))!.IsConcurrencyToken);
 
         Assert.Empty(differ.GetDifferences(
             snapshot.GetRelationalModel(),
