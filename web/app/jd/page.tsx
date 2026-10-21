@@ -216,6 +216,8 @@ function UploadForm({ onUploaded }: { onUploaded: (jdId: string) => void }) {
 
   // Ignore the upload result if the form unmounted (e.g. user navigated away mid-parse).
   const alive = useRef(true);
+  // Drop a file read that finishes after the user typed or picked another file.
+  const fileReadVersion = useRef(0);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -247,6 +249,7 @@ function UploadForm({ onUploaded }: { onUploaded: (jdId: string) => void }) {
   }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const readVersion = ++fileReadVersion.current;
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
@@ -261,9 +264,12 @@ function UploadForm({ onUploaded }: { onUploaded: (jdId: string) => void }) {
     }
 
     try {
-      setText(await file.text());
+      const contents = await file.text();
+      if (readVersion !== fileReadVersion.current) return;
+      setText(contents);
       setError(null);
     } catch {
+      if (readVersion !== fileReadVersion.current) return;
       setError("Could not read that file — paste the text instead.");
     }
   }
@@ -290,6 +296,7 @@ function UploadForm({ onUploaded }: { onUploaded: (jdId: string) => void }) {
           rows={12}
           value={text}
           onChange={(e) => {
+            fileReadVersion.current += 1;
             setText(e.target.value);
             if (error) setError(null);
           }}
