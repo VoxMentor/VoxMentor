@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type ReadinessProfile } from "@/lib/api";
+import { severityColor } from "@/lib/severity";
 import FetchError from "@/components/FetchError";
 
 function Skeleton() {
@@ -18,12 +19,6 @@ function Skeleton() {
       </div>
     </div>
   );
-}
-
-function severityColor(severity: number): string {
-  if (severity >= 0.5) return "bg-red-500";
-  if (severity >= 0.25) return "bg-yellow-400";
-  return "bg-green-500";
 }
 
 export default function ReadinessOverview() {
