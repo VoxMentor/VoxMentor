@@ -69,7 +69,10 @@ public class AdminController : ControllerBase
         IFormFile? file, [FromForm] Guid? conceptId, CancellationToken cancellationToken)
     {
         var command = new UploadTextbookCommand(
-            file?.FileName ?? string.Empty,
+            // Trim at the boundary (#104 review gate F-1): multipart names may
+            // carry stray spaces; the validator, staging path and stored
+            // FileName must all see the same value the client validated.
+            file?.FileName.Trim() ?? string.Empty,
             file?.OpenReadStream() ?? Stream.Null,
             file?.Length ?? 0,
             conceptId);

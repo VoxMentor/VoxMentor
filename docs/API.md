@@ -591,6 +591,9 @@ Response `202`:
 ```json
 { "jobId": "uuid", "message": "Background job started. Check GET /api/v1/admin/textbook/status/{jobId}." }
 ```
+Idempotent retries: re-uploading the identical file with the same optional `conceptId` reuses the existing job — while that job is `Pending`/`Processing` the response is `202` with **"An ingestion job for this file is already running."**, and `Completed` returns **"This file was already ingested."** (same `jobId`, no new job). A `Failed` job or a different `conceptId` starts a fresh job.
+
+Dedup is DB-enforced: a unique index on `(content hash, concept)` rejects the colliding insert if two identical uploads race inside the lookup window — the losing request responds `202` with the winning job's `jobId` and the "already running" message instead of queueing a duplicate. Jobs created before content-hash tracking (migrated `LegacyTextbookJobTransition`, 2026-10-19) never participate in dedup: still-`Pending` legacy jobs are transitioned to `Failed` ("Job created before content-hash tracking. Re-upload the file to ingest it.", with `completedAt` set), `Processing` legacy jobs are left to their worker, and `Completed` ones stay ingested (their staged files may be gone, so re-uploading that content triggers one extra ingestion — accepted one-time cost). Duplicate reusable rows left by the earlier non-unique index are reconciled before creating the unique one (losers become `Failed` and their chunks are dropped — the kept job still owns the corpus, so nothing is lost), and readers and writers on TextbookJobs are blocked for the duration.
 
 ### GET /api/v1/admin/textbook/status/{jobId}
 Poll ingestion job progress.

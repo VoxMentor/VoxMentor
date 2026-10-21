@@ -743,10 +743,22 @@ namespace VoxMentor.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("ClaimedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("ConceptId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid?>("RunId")
+                        .IsConcurrencyToken()
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
@@ -773,6 +785,12 @@ namespace VoxMentor.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ContentHash", "ConceptId")
+                        .IsUnique()
+                        .HasFilter("\"Status\" IN ('Pending', 'Processing', 'Completed') AND \"ContentHash\" <> ''");
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("ContentHash", "ConceptId"), false);
 
                     b.ToTable("TextbookJobs");
                 });

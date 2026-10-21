@@ -30,17 +30,29 @@ async function request<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_BASE}${path}`;
+  // FormData must keep the browser-generated multipart boundary: no JSON header.
+  const isFormData = options.body instanceof FormData;
   const res = await fetch(url, {
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...options.headers },
     ...options,
+    headers: {
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
+      ...options.headers,
+    },
   });
 
   if (res.status === 401) {
     throw new ApiError("Unauthorized", 401);
   }
 
-  const body: ApiResponse<T> = await res.json();
+  let body: ApiResponse<T>;
+  try {
+    body = await res.json();
+  } catch {
+    // Non-envelope failures (413 from the request-size limit, a proxy error page)
+    // have no JSON to read; the status is all that can be reported.
+    throw new ApiError(`Request failed with status ${res.status}`, res.status);
+  }
 
   if (!body.success) {
     // body.message can be missing on non-envelope errors (e.g. ProblemDetails 400)
@@ -243,6 +255,27 @@ export interface AdminQuestionCreated {
   difficulty: number;
 }
 
+// --- Admin textbook corpus (#104): upload + status polling, ManageContent policy ---
+
+export type TextbookJobStatus = "Pending" | "Processing" | "Completed" | "Failed";
+
+export interface TextbookJobAccepted {
+  jobId: string;
+  message: string;
+}
+
+export interface TextbookJob {
+  jobId: string;
+  fileName: string;
+  status: TextbookJobStatus;
+  totalChunks: number;
+  processedChunks: number;
+  /** Only set once status is Failed. */
+  error: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
 export const api = {
   register: (data: RegisterRequest) =>
     request<RegisterResponse>("/v1/auth/register", {
@@ -321,6 +354,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }),
+
+  // --- admin corpus (#104): ContentAdmin + SuperAdmin via ManageContent policy ---
+  adminUploadTextbook: (file: File, conceptId?: string) => {
+    const body = new FormData();
+    body.append("file", file);
+    // Omit rather than send "": an empty string does not bind to Guid? server-side.
+    if (conceptId) body.append("conceptId", conceptId);
+    return request<TextbookJobAccepted>("/v1/admin/textbook/upload", { method: "POST", body });
+  },
+
+  adminTextbookJob: (jobId: string) =>
+    request<TextbookJob>(`/v1/admin/textbook/status/${encodeURIComponent(jobId)}`),
 };
 
 export { ApiError };

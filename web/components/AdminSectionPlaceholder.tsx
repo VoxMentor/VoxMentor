@@ -1,4 +1,4 @@
-// Shared placeholder for admin sections filled by follow-up issues (#103/#104/#106/#107/#108).
+// Shared placeholder for admin sections filled by follow-up issues (#106/#107/#108).
 export default function AdminSectionPlaceholder({
   title,
   issue,

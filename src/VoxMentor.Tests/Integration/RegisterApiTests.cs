@@ -1,7 +1,9 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using VoxMentor.Application.Common.Interfaces;
@@ -50,7 +52,37 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
             services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
         });
+
+        // Hangfire is disabled above, so Program registers the fail-fast
+        // NullTextbookIngestionQueue. Swap in a recording queue so the upload
+        // success path (#104) is testable; runs after the app's registrations.
+        builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<RecordingTextbookIngestionQueue>();
+            services.AddSingleton<ITextbookIngestionQueue>(
+                provider => provider.GetRequiredService<RecordingTextbookIngestionQueue>());
+        });
     }
+}
+
+/// <summary>
+/// Records enqueues and scheduled recovery runs instead of dialing Hangfire,
+/// so upload success paths are testable with the storage-free factory above.
+/// </summary>
+public sealed class RecordingTextbookIngestionQueue : ITextbookIngestionQueue
+{
+    private readonly ConcurrentQueue<(Guid JobId, string FilePath)> _enqueued = new();
+    private readonly ConcurrentQueue<(Guid JobId, string FilePath, TimeSpan Delay)> _scheduled = new();
+
+    public IReadOnlyCollection<(Guid JobId, string FilePath)> Enqueued => _enqueued.ToArray();
+
+    public IReadOnlyCollection<(Guid JobId, string FilePath, TimeSpan Delay)> Scheduled
+        => _scheduled.ToArray();
+
+    public void Enqueue(Guid jobId, string filePath) => _enqueued.Enqueue((jobId, filePath));
+
+    public void Schedule(Guid jobId, string filePath, TimeSpan delay)
+        => _scheduled.Enqueue((jobId, filePath, delay));
 }
 
 public class RegisterApiTests : IClassFixture<CustomWebApplicationFactory>
