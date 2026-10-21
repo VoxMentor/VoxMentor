@@ -109,14 +109,18 @@ public class TextbookJobSweeperTests
         }
     }
 
+    // A stale row whose staged file is gone cannot ever run again — and dedup
+    // hands the dead row back on every re-upload. The sweep must end it as
+    // Failed so a re-upload starts fresh (#104).
     [Fact]
-    public async Task Sweep_SkipsStaleRowWithoutStagedFile()
+    public async Task Sweep_MarksFilelessStaleRowFailed()
     {
         var db = CreateDb();
+        var filelessId = Guid.NewGuid();
         db.TextbookJobs.Add(new TextbookJob
         {
-            Id = Guid.NewGuid(),
-            FileName = "gone.txt",
+            Id = filelessId,
+            FileName = "lost-after-restart.pdf",
             Status = TextbookJobStatus.Processing,
             RunId = Guid.NewGuid(),
             ClaimedAt = DateTime.UtcNow - TimeSpan.FromHours(2)
@@ -127,6 +131,43 @@ public class TextbookJobSweeperTests
         await new TextbookJobSweeper(db, queue, NullLogger<TextbookJobSweeper>.Instance)
             .SweepAsync(CancellationToken.None);
 
+        // ExecuteUpdate bypasses the change tracker; this context still holds
+        // the seeded row, so re-read without tracking to see the DB state.
+        var row = await db.TextbookJobs.AsNoTracking().SingleAsync(j => j.Id == filelessId);
+        Assert.Equal(TextbookJobStatus.Failed, row.Status);
+        Assert.NotNull(row.Error);
+        Assert.Contains("Re-upload", row.Error!);
+        Assert.NotNull(row.CompletedAt);
+        Assert.Empty(queue.Enqueued);
+    }
+
+    // An already-Failed fileless row must not be re-touched: the sweeper's
+    // update predicate scopes to non-Failed rows, so a second sweep is a no-op
+    // and the re-marker's explanatory Error stays intact.
+    [Fact]
+    public async Task Sweep_AlreadyFailedFilelessRow_LeftUntouched()
+    {
+        var db = CreateDb();
+        var alreadyFailedId = Guid.NewGuid();
+        const string originalError = "Original failure from the re-marker.";
+        db.TextbookJobs.Add(new TextbookJob
+        {
+            Id = alreadyFailedId,
+            FileName = "failed.txt",
+            Status = TextbookJobStatus.Failed,
+            Error = originalError,
+            CreatedAt = DateTime.UtcNow - TimeSpan.FromHours(2)
+        });
+        await db.SaveChangesAsync();
+
+        var queue = new RecordingQueue();
+        await new TextbookJobSweeper(db, queue, NullLogger<TextbookJobSweeper>.Instance)
+            .SweepAsync(CancellationToken.None);
+
+        var row = await db.TextbookJobs.SingleAsync(j => j.Id == alreadyFailedId);
+        Assert.Equal(TextbookJobStatus.Failed, row.Status);
+        Assert.Equal(originalError, row.Error);
+        Assert.Null(row.CompletedAt);
         Assert.Empty(queue.Enqueued);
     }
 }

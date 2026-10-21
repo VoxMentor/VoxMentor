@@ -59,9 +59,27 @@ public sealed class TextbookJobSweeper
                     : null;
                 if (stagedFile is null)
                 {
-                    _logger.LogWarning(
-                        "Stale textbook job {JobId} has no staged file; leaving it for manual triage.",
-                        jobId);
+                    // ponytail: fileless = unrecoverable. The input the worker
+                    // needs is gone (deploy wiped /tmp, OS temp cleanup), so no
+                    // re-enqueue can ever succeed — and dedup hands this dead
+                    // row back on every re-upload, wedging the (hash, concept)
+                    // key permanently. Fail it so a re-upload creates a fresh
+                    // row. Tracked save (not ExecuteUpdate) so the RunId
+                    // concurrency token fences a run that reclaims mid-save.
+                    var job = await _db.TextbookJobs.FirstOrDefaultAsync(
+                        j => j.Id == jobId && j.Status != TextbookJobStatus.Failed,
+                        cancellationToken);
+                    if (job is not null)
+                    {
+                        job.Status = TextbookJobStatus.Failed;
+                        job.Error = "Staged upload file was lost (host restart or temp cleanup). Re-upload the file to retry.";
+                        job.CompletedAt = DateTime.UtcNow;
+                        await _db.SaveChangesAsync(cancellationToken);
+                        _logger.LogWarning(
+                            "Stale textbook job {JobId} has no staged file; marked Failed so a re-upload can start fresh.",
+                            jobId);
+                    }
+
                     continue;
                 }
 
