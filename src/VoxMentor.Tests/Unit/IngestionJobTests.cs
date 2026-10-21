@@ -1,6 +1,8 @@
 using System.Net;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -760,5 +762,20 @@ public class IngestionJobTests
         Assert.Equal(TextbookJobStatus.Completed, result.Status);
         Assert.Equal(2, result.ProcessedChunks);
         Assert.False(File.Exists(path));
+    }
+
+    [Fact]
+    public void IngestionJob_LocksConcurrency_PerJob()
+    {
+        // Scope the Hangfire storage lock to one textbook job (#143
+        // CodeRabbit): the default "{Type}.{Method}" resource serializes
+        // every ingestion behind a single global lock, so a watchdog or
+        // recovery run for job B waits on job A's ingestion. {0} is the
+        // first Execute argument, jobId.
+        var attr = typeof(IngestionJob)
+            .GetCustomAttribute<DisableConcurrentExecutionAttribute>();
+        Assert.NotNull(attr);
+        Assert.Equal("textbook-ingest:{0}", attr!.Resource);
+        Assert.Equal(3600, attr.TimeoutSec);
     }
 }

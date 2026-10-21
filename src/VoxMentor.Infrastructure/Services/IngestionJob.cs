@@ -20,9 +20,13 @@ namespace VoxMentor.Infrastructure.Services;
 [AutomaticRetry(Attempts = 0)]
 // Narrows concurrent execution via the storage lock (seconds); the stale-chunk
 // purge below is the real guarantee (Hangfire: the lock alone is not reliable).
+// Scope the lock to one job (#143 CodeRabbit): the default "{Type}.{Method}"
+// resource would serialize every ingestion behind a single global lock, so a
+// watchdog or recovery run for job B waits on job A's ingestion. {0} is the
+// first Execute argument, jobId.
 // ponytail: 1 h lock timeout — only guards zombie connections; a dead worker's
 // dropped connection releases the lock immediately.
-[DisableConcurrentExecution(3600)]
+[DisableConcurrentExecution("textbook-ingest:{0}", 3600)]
 public class IngestionJob
 {
     private const int MaxErrorMessageLength = 1000;
