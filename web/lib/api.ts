@@ -117,6 +117,41 @@ export interface ReadinessProfile {
   estimatedWeeksToReady: number;
 }
 
+// --- JD intelligence (#121): POST /v1/jd/upload, GET /v1/jd/{jdId} ---
+
+export interface JdUploadResult {
+  jdId: string;
+  companyName: string;
+  role: string;
+  /** topic → weight, sums to 1.0 */
+  technicalSkills: Record<string, number>;
+  /** topic → weight, sums to 1.0 */
+  hrSkills: Record<string, number>;
+  difficulty: string;
+  estimatedWeeks: number;
+  createdAt: string;
+}
+
+export interface JdRoadmapWeek {
+  week: number;
+  focus: string;
+  conceptIds: string[];
+}
+
+export interface JdDetail {
+  jdId: string;
+  companyName: string;
+  role: string;
+  technicalSkills: Record<string, number>;
+  hrSkills: Record<string, number>;
+  difficulty: string;
+  readinessScore: number;
+  gaps: SkillGap[];
+  estimatedWeeks: number;
+  roadmap: JdRoadmapWeek[];
+  createdAt: string;
+}
+
 export interface SubmissionItem {
   submissionId: string;
   questionTitle: string;
@@ -229,6 +264,15 @@ export const api = {
   mastery: () => request<MasteryProfile>("/v1/student/mastery"),
 
   readiness: () => request<ReadinessProfile>("/v1/student/readiness"),
+
+  // --- JD intelligence (#121) ---
+  jdUpload: (rawText: string) =>
+    request<JdUploadResult>("/v1/jd/upload", {
+      method: "POST",
+      body: JSON.stringify({ rawText }),
+    }),
+
+  jd: (id: string) => request<JdDetail>(`/v1/jd/${encodeURIComponent(id)}`),
 
   submissions: (limit = 10) =>
     request<SubmissionItem[]>(`/v1/student/submissions?limit=${limit}`),
