@@ -1,8 +1,9 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError, type JdDetail } from "@/lib/api";
+import { severityColor } from "@/lib/severity";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Navbar from "@/components/Navbar";
 import FetchError from "@/components/FetchError";
@@ -11,11 +12,8 @@ import SkeletonLoader from "@/components/SkeletonLoader";
 const MIN_CHARS = 50;
 const MAX_CHARS = 20000;
 
-function severityColor(severity: number): string {
-  if (severity >= 0.5) return "bg-red-500";
-  if (severity >= 0.25) return "bg-yellow-400";
-  return "bg-green-500";
-}
+const secondaryButtonClass =
+  "px-4 py-2 text-sm font-medium text-primary border border-border rounded-xl hover:bg-accent-light-blue transition-colors cursor-pointer";
 
 function clampPct(value: number): number {
   return Math.max(0, Math.min(100, value * 100));
@@ -108,7 +106,7 @@ function JdDetailView({ jd, onReset }: { jd: JdDetail; onReset: () => void }) {
           </div>
           <button
             onClick={onReset}
-            className="px-4 py-2 text-sm font-medium text-primary border border-border rounded-xl hover:bg-accent-light-blue transition-colors cursor-pointer"
+            className={secondaryButtonClass}
           >
             Upload a different JD
           </button>
@@ -133,7 +131,7 @@ function JdDetailView({ jd, onReset }: { jd: JdDetail; onReset: () => void }) {
               <span>
                 {gaps.length} {gaps.length === 1 ? "skill gap" : "skill gaps"}
               </span>
-              <span>~{jd.estimatedWeeks} weeks to ready</span>
+              <span>~{jd.estimatedWeeks} {jd.estimatedWeeks === 1 ? "week" : "weeks"} to ready</span>
             </div>
           </div>
         </div>
@@ -216,15 +214,30 @@ function UploadForm({ onUploaded }: { onUploaded: (jdId: string) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Ignore the upload result if the form unmounted (e.g. user navigated away mid-parse).
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
   const trimmedLength = text.trim().length;
   const tooShort = trimmedLength < MIN_CHARS;
   const tooLong = text.length > MAX_CHARS;
+  const lengthInvalid = tooLong || (tooShort && text.length > 0);
+
+  let lengthHint = "Looks good";
+  if (tooLong) lengthHint = `Too long — trim to ${MAX_CHARS} characters`;
+  else if (tooShort) lengthHint = `At least ${MIN_CHARS} characters (${trimmedLength} so far)`;
 
   async function handleSubmit() {
     setError(null);
     setSubmitting(true);
     try {
       const result = await api.jdUpload(text);
+      if (!alive.current) return;
       onUploaded(result.jdId);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not analyse that job description. Try again.");
@@ -275,7 +288,6 @@ function UploadForm({ onUploaded }: { onUploaded: (jdId: string) => void }) {
         <textarea
           id="jd-text"
           rows={12}
-          maxLength={MAX_CHARS}
           value={text}
           onChange={(e) => {
             setText(e.target.value);
@@ -286,10 +298,8 @@ function UploadForm({ onUploaded }: { onUploaded: (jdId: string) => void }) {
           className="resize-y min-h-48"
         />
         <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs text-text-muted mt-2">
-          <span className={tooShort && text.length > 0 ? "text-danger" : undefined}>
-            {tooShort
-              ? `At least ${MIN_CHARS} characters (${trimmedLength} so far)`
-              : "Looks good"}
+          <span className={lengthInvalid ? "text-danger" : undefined}>
+            {lengthHint}
           </span>
           <span className={tooLong ? "text-danger" : undefined}>
             {text.length} / {MAX_CHARS}
@@ -365,6 +375,28 @@ function JdRoute() {
     setAttempt((n) => n + 1);
   };
 
+  let body: ReactNode;
+  if (!jdId) {
+    body = (
+      <UploadForm
+        onUploaded={(id) => router.replace(`/jd?jd=${encodeURIComponent(id)}`)}
+      />
+    );
+  } else if (error) {
+    body = (
+      <div className="space-y-3">
+        <FetchError message={error} onRetry={retry} />
+        <button onClick={() => router.replace("/jd")} className={secondaryButtonClass}>
+          Upload a different JD
+        </button>
+      </div>
+    );
+  } else if (loading || !detail) {
+    body = <PageSkeleton />;
+  } else {
+    body = <JdDetailView jd={detail.data} onReset={() => router.replace("/jd")} />;
+  }
+
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-bg-light">
@@ -380,19 +412,7 @@ function JdRoute() {
             </p>
           </div>
 
-          {jdId ? (
-            error ? (
-              <FetchError message={error} onRetry={retry} />
-            ) : loading || !detail ? (
-              <PageSkeleton />
-            ) : (
-              <JdDetailView jd={detail.data} onReset={() => router.replace("/jd")} />
-            )
-          ) : (
-            <UploadForm
-              onUploaded={(id) => router.replace(`/jd?jd=${encodeURIComponent(id)}`)}
-            />
-          )}
+          {body}
         </main>
       </div>
     </ProtectedRoute>
