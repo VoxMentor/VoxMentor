@@ -105,6 +105,7 @@ public class UploadTextbookHandler : IRequestHandler<UploadTextbookCommand, ApiR
             // Deleting it would 404 a concurrent duplicate that the dedup path
             // already answered with this jobId; Failed stays pollable and a
             // re-upload starts fresh.
+            var jobEnded = false;
             if (jobSaved && job is not null)
             {
                 try
@@ -113,6 +114,7 @@ public class UploadTextbookHandler : IRequestHandler<UploadTextbookCommand, ApiR
                     job.Error = "The ingestion queue was unavailable. Re-upload the file to retry.";
                     job.CompletedAt = DateTime.UtcNow;
                     await _db.SaveChangesAsync(CancellationToken.None);
+                    jobEnded = true;
                 }
                 catch
                 {
@@ -120,14 +122,22 @@ public class UploadTextbookHandler : IRequestHandler<UploadTextbookCommand, ApiR
                 }
             }
 
-            // Don't strand the staged file when anything after the write fails.
-            try
+            // #104 review gate CR-02: delete the staged file only in the branch
+            // where it is actually dead. If ending the row itself failed (DB
+            // blip), the row is still Pending and the file is the recovery
+            // input — the sweeper re-enqueues from it and the ingestion can
+            // still complete; deleting here would strand the row in the
+            // sweeper's fileless branch instead.
+            if (jobEnded || !jobSaved)
             {
-                File.Delete(filePath);
-            }
-            catch
-            {
-                // best effort — orphan cleanup beats masking the original error
+                try
+                {
+                    File.Delete(filePath);
+                }
+                catch
+                {
+                    // best effort — orphan cleanup beats masking the original error
+                }
             }
 
             throw;

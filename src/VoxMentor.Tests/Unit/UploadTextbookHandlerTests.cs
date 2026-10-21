@@ -347,4 +347,56 @@ public class UploadTextbookHandlerTests
         Assert.Single(await db.TextbookJobs.ToListAsync()); // only the winner persisted
         // The handler deleted its own staged duplicate in ReuseResponse.
     }
+
+    /// <summary>Fails the second save — the mark-Failed write after Enqueue died.</summary>
+    private sealed class FlakySecondSaveDbContext : Infrastructure.Persistence.ApplicationDbContext
+    {
+        public int SaveAttempts { get; private set; }
+
+        public FlakySecondSaveDbContext(
+            DbContextOptions<Infrastructure.Persistence.ApplicationDbContext> options)
+            : base(options, new TestCurrentUser()) { }
+
+        public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            if (++SaveAttempts == 2)
+            {
+                throw new DbUpdateException("mark-failed save failed (simulated)");
+            }
+
+            return await base.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task Upload_EnqueueFails_AndFailedWriteFails_KeepsStagedFileForSweeper()
+    {
+        // Double failure (#104 review gate CR-02): the queue is down AND the
+        // mark-Failed save fails, so the row is still Pending WITH its file
+        // in the store. The sweep re-enqueues such a row from its staged
+        // file — deleting the file would wedge it into the sweep's fileless
+        // branch (unrecoverable) instead of the recoverable re-enqueue path.
+        var options = new DbContextOptionsBuilder<Infrastructure.Persistence.ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var db = new FlakySecondSaveDbContext(options);
+        var queue = new ThrowingQueue();
+        var handler = new UploadTextbookHandler(db, queue);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => handler.Handle(Command(), CancellationToken.None));
+
+        Assert.NotNull(queue.FilePath);
+        Assert.True(
+            File.Exists(queue.FilePath!),
+            "the staged file is the sweep's recovery input when the row could not be ended");
+        // Fresh context read: the tracked copy still carries the rejected
+        // Failed write, so the store truth needs its own context.
+        using var store =
+            new Infrastructure.Persistence.ApplicationDbContext(options, new TestCurrentUser());
+        var row = await store.TextbookJobs.AsNoTracking().SingleAsync();
+        Assert.Equal(TextbookJobStatus.Pending, row.Status);
+
+        File.Delete(queue.FilePath!);
+    }
 }

@@ -125,19 +125,31 @@ public class TextbookJobSweeperTests
             RunId = Guid.NewGuid(),
             ClaimedAt = DateTime.UtcNow - TimeSpan.FromHours(2)
         });
+        // A partially ingested run can leave chunks behind; TextbookChunks
+        // has no FK back to the job, so the Failed flip must purge them.
+        db.TextbookChunks.Add(new TextbookChunk
+        {
+            Id = Guid.NewGuid(),
+            JobId = filelessId,
+            Content = "orphan chunk from a dead run",
+            Source = "lost-after-restart.pdf"
+        });
         await db.SaveChangesAsync();
 
         var queue = new RecordingQueue();
         await new TextbookJobSweeper(db, queue, NullLogger<TextbookJobSweeper>.Instance)
             .SweepAsync(CancellationToken.None);
 
-        // ExecuteUpdate bypasses the change tracker; this context still holds
-        // the seeded row, so re-read without tracking to see the DB state.
+        // The sweep shares this context's tracked state, so re-read without
+        // tracking from the store side.
         var row = await db.TextbookJobs.AsNoTracking().SingleAsync(j => j.Id == filelessId);
         Assert.Equal(TextbookJobStatus.Failed, row.Status);
         Assert.NotNull(row.Error);
         Assert.Contains("Re-upload", row.Error!);
         Assert.NotNull(row.CompletedAt);
+        Assert.False(
+            await db.TextbookChunks.AnyAsync(c => c.JobId == filelessId),
+            "the Failed flip purges the orphaned partial corpus");
         Assert.Empty(queue.Enqueued);
     }
 

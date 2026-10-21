@@ -66,7 +66,7 @@ public class IngestionJobTests
                 .Build(),
             NullLogger<CodeEmbeddingService>.Instance);
 
-    private static IngestionJob CreateJob(ApplicationDbContext db, StubHandler handler, FakeQueue? queue = null)
+    private static IngestionJob CreateJob(ApplicationDbContext db, StubHandler handler, ITextbookIngestionQueue? queue = null)
         => new(db, CreateEmbedder(handler), queue ?? new FakeQueue(), NullLogger<IngestionJob>.Instance);
 
     /// <summary>Records Schedule calls (stale-claim recovery) instead of dialing Hangfire.</summary>
@@ -78,6 +78,35 @@ public class IngestionJobTests
 
         public void Schedule(Guid jobId, string filePath, TimeSpan delay)
             => Scheduled.Add((jobId, filePath, delay));
+    }
+
+    /// <summary>Schedule always throws — recovery scheduling must be best-effort.</summary>
+    private sealed class ThrowingScheduleQueue : ITextbookIngestionQueue
+    {
+        public void Enqueue(Guid jobId, string filePath) { }
+
+        public void Schedule(Guid jobId, string filePath, TimeSpan delay)
+            => throw new InvalidOperationException("hangfire storage down (simulated)");
+    }
+
+    /// <summary>Throws DbUpdateConcurrencyException on the flagged save — simulates
+    /// losing the RunId claim race on the store (#104).</summary>
+    private sealed class ClaimRaceDbContext : ApplicationDbContext
+    {
+        public bool FailNextSave { get; init; }
+
+        public ClaimRaceDbContext(DbContextOptions<ApplicationDbContext> options)
+            : base(options, new TestCurrentUser()) { }
+
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            if (FailNextSave)
+            {
+                throw new DbUpdateConcurrencyException("claim lost (simulated)");
+            }
+
+            return base.SaveChangesAsync(cancellationToken);
+        }
     }
 
     private static string TempDirFile(string name)
@@ -128,6 +157,10 @@ public class IngestionJobTests
         Assert.Equal(2, result.ProcessedChunks);
         Assert.Null(result.Error);
         Assert.NotNull(result.CompletedAt);
+        // Per-chunk ClaimedAt heartbeat stays set through the run (#104
+        // review gate INGEST-002): recoveries treat the row as abandoned only
+        // after a full threshold without a save.
+        Assert.NotNull(result.ClaimedAt);
 
         var chunks = await db.TextbookChunks.Where(c => c.JobId == job.Id).ToListAsync();
         Assert.Equal(2, chunks.Count);
@@ -654,5 +687,63 @@ public class IngestionJobTests
         Assert.Equal(TextbookJobStatus.Completed, result.Status);
         Assert.Equal(1, result.TotalChunks);
         Assert.Equal(1, result.ProcessedChunks);
+    }
+
+    [Fact]
+    public async Task Execute_ClaimLostConcurrency_SchedulesRecovery_KeepsFile_LeavesRowPending()
+    {
+        // Losing the RunId claim race throws DbUpdateConcurrencyException on
+        // the claim save: the loser must return without failing the row
+        // (failing it would fight the winner), keep the staged file for the
+        // owner and the scheduled recovery, and hand in the watchdog (#104
+        // review gate INGEST-001).
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var (job, path) = await CreateJobRowWithFileAsync(
+            new ApplicationDbContext(options, new TestCurrentUser()), "book.txt", SampleText());
+        var queue = new FakeQueue();
+
+        await CreateJob(
+                new ClaimRaceDbContext(options) { FailNextSave = true },
+                new StubHandler(EmbedResponse), queue)
+            .Execute(job.Id, path, CancellationToken.None);
+
+        Assert.True(
+            File.Exists(path),
+            "a claim loser must not delete the staged file the recovery needs");
+        var recovery = Assert.Single(queue.Scheduled);
+        Assert.Equal(job.Id, recovery.JobId);
+        Assert.Equal(path, recovery.Path);
+        Assert.Equal(TimeSpan.FromHours(1), recovery.Delay);
+
+        // The store row is untouched: the tracked claim changes were rejected
+        // with the simulated conflict.
+        using var store = new ApplicationDbContext(options, new TestCurrentUser());
+        var row = await store.TextbookJobs.AsNoTracking().SingleAsync(j => j.Id == job.Id);
+        Assert.Equal(TextbookJobStatus.Pending, row.Status);
+        Assert.Null(row.RunId);
+
+        File.Delete(path); // the recovery run would reclaim it; the test only cleans up
+    }
+
+    [Fact]
+    public async Task Execute_ScheduleUnavailable_RunStillReachesTerminalState()
+    {
+        // A Hangfire storage hiccup must not fault the run: recovery
+        // scheduling is deliberately best-effort, and the 15-minute sweep is
+        // the backstop for a broken recovery chain (#104 review gate
+        // INGEST-003).
+        var db = CreateDb();
+        var (job, path) = await CreateJobRowWithFileAsync(db, "book.txt", SampleText());
+        var handler = new StubHandler(EmbedResponse);
+
+        await CreateJob(db, handler, new ThrowingScheduleQueue())
+            .Execute(job.Id, path, CancellationToken.None);
+
+        var result = await db.TextbookJobs.SingleAsync(j => j.Id == job.Id);
+        Assert.Equal(TextbookJobStatus.Completed, result.Status);
+        Assert.Equal(2, result.ProcessedChunks);
+        Assert.False(File.Exists(path));
     }
 }

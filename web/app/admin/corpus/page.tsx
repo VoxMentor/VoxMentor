@@ -161,6 +161,10 @@ function CorpusContent() {
         if (split.conceptError) mapped.concept = split.conceptError;
         setFieldErrors(mapped);
         if (split.banner) setBanner(split.banner);
+      } else if (err instanceof ApiError && err.status === 413) {
+        // Kestrel's request-size limit answers without the JSON envelope, so
+        // there is no server message to split into fields.
+        setFieldErrors({ file: "File is too large for the server upload limit." });
       } else {
         setBanner(
           err instanceof ApiError ? err.message : "Something went wrong. Please try again."

@@ -71,6 +71,15 @@ public sealed class TextbookJobSweeper
                         cancellationToken);
                     if (job is not null)
                     {
+                        // TextbookChunks has no FK back to the job, so a
+                        // partially ingested row can still carry chunks; purge
+                        // them with the Failed flip so a Failed row never
+                        // serves retrieval and a re-upload cannot retrieve the
+                        // same content twice (#104 review gate).
+                        var orphanChunks = await _db.TextbookChunks
+                            .Where(c => c.JobId == jobId)
+                            .ToListAsync(cancellationToken);
+                        _db.TextbookChunks.RemoveRange(orphanChunks);
                         job.Status = TextbookJobStatus.Failed;
                         job.Error = "Staged upload file was lost (host restart or temp cleanup). Re-upload the file to retry.";
                         job.CompletedAt = DateTime.UtcNow;
