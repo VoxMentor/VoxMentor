@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using VoxMentor.Api.Hubs;
 using VoxMentor.Application.Common.Interfaces;
@@ -41,6 +42,15 @@ public class TutorHubTests
     private sealed class FakeCurrentUser : ICurrentUserService
     {
         public string? UserId { get; set; } = "user-1";
+    }
+
+    private sealed class FakeLifetime : IHostApplicationLifetime
+    {
+        private readonly CancellationTokenSource _stopping = new();
+        public CancellationToken ApplicationStarted => CancellationToken.None;
+        public CancellationToken ApplicationStopping => _stopping.Token;
+        public CancellationToken ApplicationStopped => CancellationToken.None;
+        public void StopApplication() => _stopping.Cancel();
     }
 
     private sealed class RecordingProxy : IClientProxy
@@ -95,30 +105,32 @@ public class TutorHubTests
         return new Infrastructure.Persistence.ApplicationDbContext(options, new FakeCurrentUser());
     }
 
-    private static (TutorHub Hub, FakeClients Clients, Infrastructure.Persistence.ApplicationDbContext Db) CreateHub(
+    private static (TutorHub Hub, FakeClients Clients, Infrastructure.Persistence.ApplicationDbContext Db, FakeLifetime Lifetime) CreateHub(
         ITutorService? tutor = null,
         IRateLimiter? limiter = null)
     {
         var db = CreateDb();
         var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
         var logger = loggerFactory.CreateLogger<TutorHub>();
+        var lifetime = new FakeLifetime();
         var hub = new TutorHub(
             tutor ?? new FakeTutorService(),
             db,
             limiter ?? new InMemorySlidingWindowRateLimiter(),
             new FakeCurrentUser(),
+            lifetime,
             logger)
         {
             Context = new FakeHubContext(),
             Clients = new FakeClients()
         };
-        return (hub, (FakeClients)hub.Clients, db);
+        return (hub, (FakeClients)hub.Clients, db, lifetime);
     }
 
     [Fact]
     public async Task AskTutor_StreamsTokens_SendsComplete_PersistsCompletedSession()
     {
-        var (hub, clients, db) = CreateHub();
+        var (hub, clients, db, _) = CreateHub();
 
         await hub.AskTutor("", "Why is Kadane O(n)?");
 
@@ -142,7 +154,7 @@ public class TutorHubTests
     [Fact]
     public async Task AskTutor_ServiceThrows_SendsError_MarksSessionFailed()
     {
-        var (hub, clients, db) = CreateHub(
+        var (hub, clients, db, _) = CreateHub(
             new FakeTutorService { Throw = new InvalidOperationException("Ollama down") });
 
         await hub.AskTutor("", "question?");
@@ -161,7 +173,7 @@ public class TutorHubTests
     [Fact]
     public async Task AskTutor_RateLimited_SendsError_NoSessionPersisted()
     {
-        var (hub, clients, db) = CreateHub(
+        var (hub, clients, db, _) = CreateHub(
             limiter: new InMemorySlidingWindowRateLimiter(limit: 1));
 
         await hub.AskTutor("", "first");
@@ -177,7 +189,7 @@ public class TutorHubTests
     [Fact]
     public async Task AskTutor_EmptyQuestion_SendsError()
     {
-        var (hub, clients, db) = CreateHub();
+        var (hub, clients, db, _) = CreateHub();
 
         await hub.AskTutor("", "   ");
 
@@ -188,7 +200,7 @@ public class TutorHubTests
     [Fact]
     public async Task AskTutor_InvalidGuid_SendsError()
     {
-        var (hub, clients, db) = CreateHub();
+        var (hub, clients, db, _) = CreateHub();
 
         await hub.AskTutor("not-a-guid", "question?");
 
@@ -202,7 +214,7 @@ public class TutorHubTests
     [Fact]
     public async Task AskTutor_ConceptNotFound_SendsError()
     {
-        var (hub, clients, db) = CreateHub();
+        var (hub, clients, db, _) = CreateHub();
 
         await hub.AskTutor(Guid.NewGuid().ToString(), "question?");
 
@@ -221,7 +233,7 @@ public class TutorHubTests
         {
             Chunks = new List<TutorChunk> { new("Hello", false), new(" World", false) }
         };
-        var (hub, clients, db) = CreateHub(fakeTutor);
+        var (hub, clients, db, _) = CreateHub(fakeTutor);
 
         await hub.AskTutor("", "question?");
 
@@ -239,7 +251,7 @@ public class TutorHubTests
     [Fact]
     public async Task AskTutor_TutorCompleteSendFails_SessionStaysCompleted()
     {
-        var (hub, clients, db) = CreateHub();
+        var (hub, clients, db, _) = CreateHub();
         clients.CallerProxy.FailOnMethod = "TutorComplete";
 
         await hub.AskTutor("", "question?");
@@ -255,7 +267,7 @@ public class TutorHubTests
     public async Task AskTutor_SecondAskWhileStreaming_Rejected_NoSecondSession()
     {
         var gate = new TaskCompletionSource();
-        var (hub, clients, db) = CreateHub(new BlockingTutorService(gate.Task));
+        var (hub, clients, db, _) = CreateHub(new BlockingTutorService(gate.Task));
 
         var first = hub.AskTutor("", "first question");
         await Task.Delay(50); // let the first ask reach the stream
@@ -277,13 +289,34 @@ public class TutorHubTests
     [Fact]
     public async Task AskTutor_AfterPreviousCompletes_Succeeds()
     {
-        var (hub, clients, db) = CreateHub();
+        var (hub, clients, db, _) = CreateHub();
 
         await hub.AskTutor("", "first");
         await hub.AskTutor("", "second");
 
         Assert.Contains(clients.CallerProxy.Sent, s => s.Method == "TutorComplete");
         Assert.Equal(2, await db.TutorSessions.CountAsync());
+    }
+
+    [Fact]
+    public async Task AskTutor_ApplicationStopping_CancelsStream_MarksSessionFailed()
+    {
+        var (hub, clients, db, lifetime) = CreateHub(new BlockingTutorService(new TaskCompletionSource().Task));
+
+        var ask = hub.AskTutor("", "question?");
+        await Task.Delay(50); // let the ask reach the stream
+        lifetime.StopApplication();
+        await ask;
+
+        var sent = clients.CallerProxy.Sent;
+        Assert.DoesNotContain(sent, s => s.Method == "TutorComplete");
+        var error = sent.Single(s => s.Method == "TutorError").Args[0]!;
+        Assert.Equal("Generation was cancelled.",
+            error.GetType().GetProperty("message")!.GetValue(error)!.ToString());
+
+        var session = await db.TutorSessions.SingleAsync();
+        Assert.Equal(TutorSessionStatus.Failed, session.Status);
+        Assert.NotNull(session.CompletedAt);
     }
 
     private sealed class BlockingTutorService : ITutorService
@@ -296,7 +329,7 @@ public class TutorHubTests
             Guid? conceptId,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
-            await _block;
+            await _block.WaitAsync(cancellationToken);
             yield return new TutorChunk("done", true, 1);
         }
     }
