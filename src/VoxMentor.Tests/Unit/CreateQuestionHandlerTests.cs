@@ -113,6 +113,24 @@ public class CreateQuestionHandlerTests
     }
 
     [Fact]
+    public async Task Handle_VariantSeed_Persists()
+    {
+        using var db = CreateDb();
+        var concept = await SeedConceptAsync(db);
+        var handler = CreateHandler(db);
+
+        var result = await handler.Handle(new CreateQuestionCommand(
+            concept.Id, "Seeded Q", "Desc", 3,
+            new[] { ValidCase },
+            null, null, null,
+            "Code", null, "seed-a"), CancellationToken.None);
+
+        Assert.True(result.Success);
+        var stored = await db.Questions.FirstAsync(q => q.Title == "Seeded Q");
+        Assert.Equal("seed-a", stored.VariantSeed);
+    }
+
+    [Fact]
     public async Task Handle_MissingConcept_ThrowsNotFound()
     {
         using var db = CreateDb();
@@ -322,6 +340,18 @@ public class CreateQuestionHandlerTests
             new[] { ValidCase }, null, null, null, new string('a', 51)));
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.QuestionType));
+    }
+
+    [Fact]
+    public void Validator_VariantSeedTooLong_Fails()
+    {
+        var validator = new CreateQuestionValidator();
+        var result = validator.Validate(new CreateQuestionCommand(
+            Guid.NewGuid(), "Test", "Description", 5,
+            new[] { ValidCase }, null, null, null,
+            "Code", null, new string('a', 101)));
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateQuestionCommand.VariantSeed));
     }
 
     [Fact]

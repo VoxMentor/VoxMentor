@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql;
 using Pgvector;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Domain.Entities;
@@ -120,6 +121,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Title).IsRequired().HasMaxLength(300);
             entity.Property(e => e.QuestionType).IsRequired().HasMaxLength(50).HasDefaultValue("Code");
+            entity.Property(e => e.VariantSeed).HasMaxLength(100);
             entity.ToTable(t =>
             {
                 t.HasCheckConstraint("CK_Questions_HiddenTestCaseCount_NonNegative", "\"HiddenTestCaseCount\" >= 0");
@@ -222,6 +224,22 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.Property(e => e.FileName).IsRequired().HasMaxLength(260);
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
             entity.Property(e => e.Error).HasMaxLength(1000);
+            entity.Property(e => e.ContentHash).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.RunId).IsConcurrencyToken();
+            entity.Property(e => e.ClaimedAt).HasColumnType("timestamp with time zone");
+            // DB-enforced dedup key (#104): exactly ONE reusable job per
+            // (content, concept). Reusable = Pending/Processing/Completed
+            // (Failed rows stay re-runable). Two concurrent identical uploads
+            // inside the handler's lookup window collide here — the handler
+            // catches the unique violation and returns the winning job.
+            // ContentHash <> '' keeps legacy pre-hash rows (see
+            // LegacyTextbookJobTransition migration) out of the rule.
+            // AreNullsDistinct(false) = PG15 NULLS NOT DISTINCT: null
+            // ConceptId uploads dedup against each other too.
+            entity.HasIndex(e => new { e.ContentHash, e.ConceptId })
+                .IsUnique()
+                .AreNullsDistinct(false)
+                .HasFilter("\"Status\" IN ('Pending', 'Processing', 'Completed') AND \"ContentHash\" <> ''");
         });
 
         builder.Entity<TextbookChunk>(entity =>

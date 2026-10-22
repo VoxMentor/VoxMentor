@@ -3,16 +3,22 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { hasAdminRole } from "@/lib/admin-nav";
 
-const links = [
+const navLinks = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/practice", label: "Practice" },
+  { href: "/jd", label: "JD" },
   { href: "/dashboard#tutor", label: "Tutor" },
 ];
 
 export default function Navbar() {
   const { user, logout } = useAuth();
   const pathname = usePathname();
+  // #102: every admin role gets the admin area; the shell lays out its sections.
+  const links = hasAdminRole(user?.roles)
+    ? [...navLinks, { href: "/admin", label: "Admin" }]
+    : navLinks;
 
   return (
     <header className="navbar scrolled">
@@ -30,7 +36,12 @@ export default function Navbar() {
 
         <nav className="hidden sm:flex items-center gap-1">
           {links.map((link) => {
-            const active = pathname === link.href;
+            // #102: "Admin" is a parent route (/admin, /admin/users, ...), so it
+            // must prefix-match; the other links are leaves.
+            const active =
+              link.href === "/admin"
+                ? pathname === "/admin" || pathname.startsWith("/admin/")
+                : pathname === link.href;
             return (
               <Link
                 key={link.href}

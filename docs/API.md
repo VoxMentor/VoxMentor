@@ -133,6 +133,9 @@ Checks PostgreSQL. Anonymous.
 ```
 Extend `checks` with `redis`, `ollama`, `judge0` as those are wired up.
 
+### GET /health/detail (Core API)
+Ops detail: same `status`/`checks` plus `environment`, `machineName`, `utcTime`. Requires `ManagePlatform` (PlatformAdmin/SuperAdmin).
+
 ### GET /health (Tutor Service, Code Exec Service)
 Stubs — `{ "status": "Healthy" }`.
 
@@ -189,7 +192,36 @@ Errors: `404` JD not found / not owned by user (enforced by the `IUserOwned` glo
 
 ---
 
-# 4. Practice & Learning — 🚧 Week 2 in progress (issues #52 questions, #53 mastery, #54 submit-code)
+# 4. Practice & Learning — ✅ Implemented (#52 questions, #53 mastery, #54 submit-code)
+
+### GET /api/v1/questions?conceptId={conceptId}&difficulty={difficulty}&page={page}&pageSize={pageSize}
+Paginated practice questions, ordered by difficulty then title. All query params optional (`difficulty` 1–10, `pageSize` clamped 1–100).
+
+Response `200`:
+```json
+{
+  "questions": [
+    { "id": "uuid", "conceptId": "uuid", "conceptName": "Arrays", "title": "Two Sum", "description": "...", "questionType": "Code", "difficulty": 3, "exampleCount": 1, "totalTestCases": 10, "hiddenTestCaseCount": 8 }
+  ],
+  "totalCount": 100,
+  "page": 1,
+  "pageSize": 20
+}
+```
+
+### GET /api/v1/questions/{id}
+Single question detail. Hidden test cases are excluded — `visibleTestCases` holds examples/visible cases; `hiddenTestCaseCount` reports the rest.
+
+Response `200`:
+```json
+{
+  "id": "uuid", "conceptId": "uuid", "conceptName": "Arrays",
+  "title": "Two Sum", "description": "...", "questionType": "Code", "difficulty": 3,
+  "exampleInputs": ["[2,7,11,15], 9"], "exampleOutputs": ["[0,1]"],
+  "starterCode": ["..."], "visibleTestCases": ["..."], "rubric": ["..."],
+  "totalTestCases": 10, "hiddenTestCaseCount": 8
+}
+```
 
 ### GET /api/v1/student/next-question?conceptId={conceptId}
 Adaptive next question. Selection = BKT mastery gap, or — when the student has a JD (#119) — JD-weighted severity `jdWeight × (1 − mastery)` with a 20% ε-greedy roll that explores among concepts still holding an unanswered question; latest JD wins. Question difficulty targets `1 + mastery×9`. `conceptId` optional — without it the concept is chosen as above; with it, a question from that concept only (never falls back to another concept).
@@ -271,6 +303,17 @@ Response `200`:
 Formula: `score = 100 × Σ mastery(topic) × jdWeight(topic)`; `severity = jdWeight × (1 − mastery)`.
 Errors: `404` no JD found.
 
+### GET /api/v1/student/eligible
+Eligible and almost-eligible concepts for the authenticated student. `eligible` = all prerequisites met; `almostEligible` = exactly one unmet prerequisite.
+
+Response `200`:
+```json
+{
+  "eligible": [ { "conceptId": "uuid", "name": "Arrays", "category": "DSA", "difficultyLevel": 2 } ],
+  "almostEligible": [ { "conceptId": "uuid", "name": "Graphs", "category": "DSA", "difficultyLevel": 4 } ]
+}
+```
+
 ---
 
 ### GET /api/v1/student/submissions?limit={limit}
@@ -291,12 +334,34 @@ Response `200` (`data`):
 ```
 `masteryDelta = masteryAfter − masteryBefore`, `null` when the BKT snapshot is missing.
 
+### POST /api/v1/answer
+Submit a graded answer for a practice question and apply the BKT mastery update to its concept. `isCorrect` is ignored when `codeSubmissionId` is supplied — correctness is derived from that submission, and mastery is applied at most once per submission.
+
+Request:
+```json
+{ "questionId": "uuid", "isCorrect": true, "codeSubmissionId": null }
+```
+
+Response `200`:
+```json
+{
+  "questionId": "uuid",
+  "conceptId": "uuid",
+  "isCorrect": true,
+  "previousMastery": 0.45,
+  "newMastery": 0.52,
+  "masteryDelta": 0.07,
+  "correctAttempts": 10,
+  "incorrectAttempts": 2
+}
+```
+
 ---
 
-# 5. AI Coach (RAG Tutor) — 🚧 To be built
+# 5. AI Coach (RAG Tutor) — ✅ hub; 🚧 REST answer generation (#72)
 
 ### POST /api/v1/tutor/ask
-Ask the AI Coach. Answer is generated asynchronously — stream it on `/hubs/tutor` or poll the session endpoint.
+Ask the AI Coach. The REST call persists a `Pending` session — answer generation is deferred ([#72](https://github.com/VoxMentor/VoxMentor/issues/72)). For streamed answers use `/hubs/tutor`; poll the session endpoint for status.
 **Rate limit:** 10 requests/hour per student (free tier) → `429`.
 
 Request:
@@ -307,7 +372,7 @@ Validation: `question` required, ≤ 2000 chars; `conceptId` optional (must exis
 
 Response `202`:
 ```json
-{ "sessionId": "uuid", "message": "Response is being generated. Stream via /hubs/tutor or poll GET /api/v1/tutor/sessions/{sessionId}." }
+{ "sessionId": "uuid", "message": "Session saved as Pending. Answer generation is not available yet. Poll GET /api/v1/tutor/sessions/{sessionId}." }
 ```
 
 ### GET /api/v1/tutor/sessions/{sessionId}
@@ -445,7 +510,7 @@ Errors: `400` missing/unsupported file, `404` JD not found.
 
 ---
 
-# 8. Admin — implemented (#82: requires `ContentAdmin` or `SuperAdmin` via `ManageContent`); question-bank endpoints are Week 2 in progress (issue #55)
+# 8. Admin — implemented (#82: requires `ContentAdmin` or `SuperAdmin` via `ManageContent`); question bank + textbook ingestion shipped (#55, #103, #104)
 
 ### Role management — SuperAdmin only (`ManageRoles`)
 
@@ -466,8 +531,11 @@ Read-only by design (#93). Errors: `401` invalid/expired session, `403` caller i
 - `GET /api/v1/admin/plagiarism/submissions/{id}` — full submission incl. `code`, `aiEvaluation`, `testCasesPassed/Total`, `questionTitle`. Response `200`; `404` unknown id.
 - `GET /api/v1/admin/tutor/sessions?userId=&status=&page&pageSize` — any user's tutor sessions, newest first; optional `userId` and `status` (`Pending|Streaming|Completed|Failed`). Response `200`: `[ { "id", "userId", "userEmail", "conceptId", "question", "status", "totalTokens", "createdAt", "completedAt" } ]`.
 - `GET /api/v1/admin/tutor/sessions/{id}` — full session incl. `answer`. Response `200`; `404` unknown id.
+- `GET /api/v1/admin/audit-logs?page&pageSize` — paged audit entries, newest first (`pageSize` clamped 1–200). Response `200`: `[ { "id", "userId", "action", "entity", "entityId", "oldValues", "newValues", "createdAt" } ]`.
 
-### POST /api/v1/admin/concepts
+### POST /api/v1/admin/concepts — 🚧 To be built
+
+Concept rows are seeded today; this endpoint is not implemented yet.
 Create a DSA concept.
 
 Request:
@@ -477,7 +545,9 @@ Request:
 Response `201`: `{ "conceptId": "uuid", "name": "Backtracking", "category": "DSA", "difficulty": 7 }`
 Errors: `400` validation (difficulty 1–10), `409` duplicate concept name.
 
-### POST /api/v1/admin/prerequisites
+### POST /api/v1/admin/prerequisites — 🚧 To be built
+
+Prerequisite edges are seeded today; this endpoint is not implemented yet.
 Add a prerequisite edge to the knowledge graph.
 
 Request:
@@ -511,6 +581,9 @@ Request:
 Response `201`: `{ "questionId": "uuid", "conceptId": "uuid-dp", "testCasesCreated": 2 }`
 Errors: `404` concept missing, `400` no test cases / invalid difficulty.
 
+### GET /api/v1/admin/questions?page&pageSize
+Paged question list for admin curation, newest first (`pageSize` clamped 1–100). Response `200`: `{ "questions": [ { "id", "conceptId", "title", "description", "difficulty", "testCaseCount", "createdAt" } ], "totalCount", "page", "pageSize" }`.
+
 ### POST /api/v1/admin/textbook/upload
 Upload prep content (CTCI, GFG notes — `.pdf`/`.txt`) for chunking + concept mapping. `multipart/form-data`: `file` + optional `conceptId`.
 
@@ -518,6 +591,9 @@ Response `202`:
 ```json
 { "jobId": "uuid", "message": "Background job started. Check GET /api/v1/admin/textbook/status/{jobId}." }
 ```
+Idempotent retries: re-uploading the identical file with the same optional `conceptId` reuses the existing job — while that job is `Pending`/`Processing` the response is `202` with **"An ingestion job for this file is already running."**, and `Completed` returns **"This file was already ingested."** (same `jobId`, no new job). A `Failed` job or a different `conceptId` starts a fresh job.
+
+Dedup is DB-enforced: a unique index on `(content hash, concept)` rejects the colliding insert if two identical uploads race inside the lookup window — the losing request responds `202` with the winning job's `jobId` and the "already running" message instead of queueing a duplicate. Jobs created before content-hash tracking (migrated `LegacyTextbookJobTransition`, 2026-10-19) never participate in dedup: still-`Pending` legacy jobs are transitioned to `Failed` ("Job created before content-hash tracking. Re-upload the file to ingest it.", with `completedAt` set), `Processing` legacy jobs are left to their worker, and `Completed` ones stay ingested (their staged files may be gone, so re-uploading that content triggers one extra ingestion — accepted one-time cost). Duplicate reusable rows left by the earlier non-unique index are reconciled before creating the unique one (losers become `Failed` and their chunks are dropped — the kept job still owns the corpus, so nothing is lost), and readers and writers on TextbookJobs are blocked for the duration.
 
 ### GET /api/v1/admin/textbook/status/{jobId}
 Poll ingestion job progress.
@@ -539,7 +615,7 @@ Response `200`:
 
 ---
 
-# 9. Voice Service (Python FastAPI, port 8001) — 🚧 To be built
+# 9. Voice Service (Python FastAPI, port 8001)
 
 | Method + Route | Body | Response |
 |---|---|---|
@@ -548,10 +624,13 @@ Response `200`:
 | `GET /health` | — | `{ "status": "Healthy" }` |
 
 Stack: faster-whisper (STT) + Piper (TTS). Used by the interview flow when `voiceMode=true`.
+Models load lazily on first request and download into `VOICE_MODELS_DIR` (`/models` in compose), so the first call is slower. Both endpoints return `503` when the model backend is unavailable.
 
 ---
 
-# 10. SignalR Hubs — 🚧 To be built
+# 10. SignalR Hubs — ✅ Implemented (tutor + mastery); 🚧 interview
+
+`TutorHub` and `MasteryHub` are live. `InterviewHub` exposes the events below but only streams placeholder messages until Mock Interviews are built.
 
 Auth: JWT via `?access_token=<token>` query string on the hub URL.
 
@@ -568,6 +647,8 @@ Auth: JWT via `?access_token=<token>` query string on the hub URL.
 |---|---|---|
 | `MasteryUpdated` | Server → Client | `{ conceptId, conceptName, newMastery, delta }` |
 | `ReadinessChanged` | Server → Client | `{ newScore, delta }` |
+
+`MasteryUpdated` is published today; `ReadinessChanged` is not yet wired.
 
 ### /hubs/interview — Mock interview real-time (voice + text)
 | Event | Direction | Data |
@@ -634,15 +715,18 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | Area | Endpoints | Status |
 |---|---|---|
 | Auth | 5 (register, login, refresh, logout, me) | ✅ Done |
-| Health | 3 (Core, Tutor, CodeExec) | ✅ Done |
+| Health | 4 (Core, Core detail, Tutor, CodeExec) | ✅ Done |
 | JD Intelligence | 2 (upload, get) | ✅ Done |
-| Practice/Learning | 6 (questions list/get, next-question, submit-code, mastery, readiness) | 🚧 Week 2 (#52–#54) |
-| AI Coach | 2 REST (ask, session) + hub | 🚧 |
-| Mock Interviews | 5 REST (start, answer, complete, review, history) + hub | 🚧 |
+| Practice/Learning | 9 (questions list/get, next-question, eligible, submit-code, answer, mastery, readiness, submissions) | ✅ Done |
+| Knowledge graph | 1 (concept prerequisite chain) | ✅ Done |
+| AI Coach | 2 REST (ask, session) + hub | ✅ hub + session; 🚧 ask generation (#72) |
+| Mock Interviews | 5 REST (start, answer, complete, review, history) + hub | 🚧 REST unbuilt; `InterviewHub` placeholder only |
 | Resume ATS | 1 (analyze) | 🚧 |
-| Admin (content) | 5 (concepts, prerequisites, questions, textbook upload, textbook status) | 🚧 (questions: Week 2 #55) |
+| Admin (content) | 4 (questions create/list, textbook upload/status) | ✅ Done |
+| Admin (content, unbuilt) | 2 (concepts, prerequisites) | 🚧 |
 | Role management (SuperAdmin) | 4 (list roles, list users, assign, remove) | ✅ Done |
-| Voice Service | 3 (stt, tts, health) | 🚧 |
+| Platform ops (PlatformAdmin) | 5 (plagiarism queue list/get, tutor sessions list/get, audit log read) | ✅ Done |
+| Code Exec Service | 1 (execute) | ✅ Done |
+| Voice Service | 3 (stt, tts, health) | ✅ Done |
 | Gateway | YARP routing + rate limiting | 🚧 |
-| Platform ops (PlatformAdmin) | 4 (plagiarism queue list/get, tutor sessions list/get) | ✅ Done |
-| **Total** | **40 REST + 3 hubs** | 16 done / 24 to build |
+| **Total** | **48 REST + 3 hubs** | **40 done / 8 to build REST; 2/3 hubs done; AI Coach REST generation deferred (#72)** |

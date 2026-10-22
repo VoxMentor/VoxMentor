@@ -13,5 +13,6 @@ public record NextQuestionDto(
     string[] ExampleOutputs,
     string[] StarterCode,
     string[] VisibleTestCases,
-    string[] Rubric
+    string[] Rubric,
+    Guid IsomorphicInstanceId
 );

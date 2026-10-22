@@ -37,5 +37,8 @@ public class CreateQuestionValidator : AbstractValidator<CreateQuestionCommand>
             .Must(rubric => RubricPayload.Parse(rubric).IsValid)
             .When(x => x.Rubric is not null)
             .WithMessage(x => string.Join(" ", RubricPayload.Parse(x.Rubric).Errors));
+
+        RuleFor(x => x.VariantSeed)
+            .MaximumLength(100).WithMessage("VariantSeed must not exceed 100 characters.");
     }
 }

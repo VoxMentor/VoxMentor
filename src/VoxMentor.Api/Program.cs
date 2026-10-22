@@ -188,7 +188,8 @@ if (app.Environment.IsDevelopment() && hangfireEnabled)
 }
 
 // Nightly jobs (#57): UTC crons — BKT EM tuning 02:00, spaced-repetition
-// decay 03:00. Tutor reconciliation (#72) runs every minute. AddOrUpdate is
+// decay 03:00. Tutor reconciliation (#72) runs every minute; textbook job
+// recovery sweep (#104 round 6) runs every 15 minutes. AddOrUpdate is
 // idempotent, so re-registration is a no-op.
 if (hangfireEnabled)
 {
@@ -206,9 +207,14 @@ if (hangfireEnabled)
         "tutor-session-reconciliation",
         job => job.ExecuteAsync(CancellationToken.None),
         "* * * * *");
+    manager.AddOrUpdate<TextbookJobSweeper>(
+        "textbook-job-recovery",
+        job => job.SweepAsync(CancellationToken.None),
+        "*/15 * * * *");
     app.Logger.LogInformation(
-        "Hangfire: registered nightly jobs bkt-parameter-tuning (0 2 * * *) and "
-        + "spaced-repetition-decay (0 3 * * *), plus tutor-session-reconciliation every minute, all UTC.");
+        "Hangfire: registered bkt-parameter-tuning (0 2 * * *), "
+        + "spaced-repetition-decay (0 3 * * *), tutor-session-reconciliation (* * * * *), "
+        + "and textbook-job-recovery (*/15 * * * *), all UTC.");
 }
 
 app.MapHub<TutorHub>("/hubs/tutor");

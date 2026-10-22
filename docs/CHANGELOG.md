@@ -10,21 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Seeded RAG corpus ([#75](https://github.com/VoxMentor/VoxMentor/issues/75)): `scripts/seed-corpus.py` fetches 88 curated GeeksforGeeks DSA articles (`scripts/corpus/articles.json`, one list per concept), groups them per concept and uploads one file per concept through `POST /api/v1/admin/textbook/upload` (~680 chunks, >= 5 per concept); `plan`/`seed`/`verify` modes, `--clean` re-seed, keyword + stdlib TF-IDF auto-mapping for local files in `scripts/corpus/source/`, offline tests in `scripts/test_seed_corpus.py` now enforced by a `scripts` CI job
-- Tutor retrieval + prompt evaluation harness ([#77](https://github.com/VoxMentor/VoxMentor/issues/77)): `scripts/eval-tutor.py` seeds a tagged eval corpus and scores 20 golden Q&As (recall@k/MRR sweep at k=3/5/7, citation precision, keyphrase coverage, latency) with pass/fail gates; baseline snapshot in `scripts/eval/baseline.md`
-- Hangfire nightly BKT parameter tuning job (EM algorithm) ([#57](https://github.com/VoxMentor/VoxMentor/issues/57))
-- Hangfire nightly spaced repetition decay job ([#57](https://github.com/VoxMentor/VoxMentor/issues/57))
 - AI Tutor background answer generation ([#72](https://github.com/VoxMentor/VoxMentor/issues/72)): `POST /api/v1/tutor/ask` enqueues a Hangfire job that atomically claims the Pending session (`TutorSessions.Status` concurrency token — no global job lock) and persists answer + token count (Completed only after the final `done=true` chunk) or a stored error message (Failed — new `TutorSessions.Error` column); failure-count circuit breaker on tutor generation (5 failures in 30s → open 30s → ask returns 503) records full-stream outcomes (HTTP, body read, and NDJSON failures); minute-level reconciliation sweep re-queues lost Pending sessions behind a `QueuedAt` enqueue claim and fails Streaming sessions stale past their `StartedAt` (migration `AddTutorSessionClaimTimestamps`)
-
-### Changed
-- Tutor prompt moved to single-source `prompts/tutor-prompt.txt` (embedded by C#, rendered by the eval): numbered `[n]` citations, refuse-to-guess instruction ([#77](https://github.com/VoxMentor/VoxMentor/issues/77))
-- Tutor retrieval: `Rag:TopK` config (default 5, replaces hardcoded `LIMIT 5`); per-query metrics logged (k, concept, chunk cosine distances, elapsed ms) ([#77](https://github.com/VoxMentor/VoxMentor/issues/77))
-
-### Fixed
-- Tutor chunk retrieval returned 0–1 rows: the IVFFlat embedding index on a small `TextbookChunks` table probes one mostly-empty list under `LIMIT` plans — replaced with HNSW (same as `IX_CodeSubmissions_CodeEmbedding`), migration `SwitchTextbookEmbeddingIndexToHnsw` ([#77](https://github.com/VoxMentor/VoxMentor/issues/77))
-
-### Planned
-- Multi-admin RBAC ([#82](https://github.com/VoxMentor/VoxMentor/issues/82)): seed `SuperAdmin`, `ContentAdmin`, `PlatformAdmin`; named policies `ManageContent` / `ManagePlatform` / `ManageRoles`; SuperAdmin-only role management; Hangfire/ops + audit gated to PlatformAdmin
 
 ### Planned for Week 6
 - Docker Compose production configuration
@@ -72,21 +58,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.3.0] — 2026-08-XX (Week 3)
+## [1.3.0] — 2026-10-12 (Week 3)
 
 ### Added
 - AI Tutor Service (microservice, RAG pipeline)
 - RAG AI Coach with streaming responses via SignalR
-- pgvector IVFFlat index for textbook chunk search
+- pgvector HNSW index for textbook chunk search
 - Polly circuit breaker for AI Tutor Service
 - Textbook content embedded (CTCI + GFG articles)
 - Voice Service scaffold (Python FastAPI + Whisper + Piper)
 - Progress tracking UI (mastery bars, completion %) — deferred from Week 2
 - Dashboard mastery heatmap + recent activity — deferred from Week 2
+- Seeded RAG corpus ([#75](https://github.com/VoxMentor/VoxMentor/issues/75)): `scripts/seed-corpus.py` fetches 88 curated GeeksforGeeks DSA articles (`scripts/corpus/articles.json`, one list per concept), groups them per concept and uploads one file per concept through `POST /api/v1/admin/textbook/upload` (~680 chunks, >= 5 per concept); `plan`/`seed`/`verify` modes, `--clean` re-seed, keyword + stdlib TF-IDF auto-mapping for local files in `scripts/corpus/source/`, offline tests in `scripts/test_seed_corpus.py` now enforced by a `scripts` CI job
+- Tutor retrieval + prompt evaluation harness ([#77](https://github.com/VoxMentor/VoxMentor/issues/77)): `scripts/eval-tutor.py` seeds a tagged eval corpus and scores 20 golden Q&As (recall@k/MRR sweep at k=3/5/7, citation precision, keyphrase coverage, latency) with pass/fail gates; baseline snapshot in `scripts/eval/baseline.md`
+- Hangfire nightly BKT parameter tuning job (EM algorithm) ([#57](https://github.com/VoxMentor/VoxMentor/issues/57))
+- Hangfire nightly spaced repetition decay job ([#57](https://github.com/VoxMentor/VoxMentor/issues/57))
 
 ### Changed
 - Vector search now uses pgvector cosine similarity operator (`<=>`)
 - SignalR hub restructured for multi-service callback pattern
+- Tutor prompt moved to single-source `prompts/tutor-prompt.txt` (embedded by C#, rendered by the eval): numbered `[n]` citations, refuse-to-guess instruction ([#77](https://github.com/VoxMentor/VoxMentor/issues/77))
+- Tutor retrieval: `Rag:TopK` config (default 5, replaces hardcoded `LIMIT 5`); per-query metrics logged (k, concept, chunk cosine distances, elapsed ms) ([#77](https://github.com/VoxMentor/VoxMentor/issues/77))
+
+### Fixed
+- Tutor chunk retrieval returned 0–1 rows: the IVFFlat embedding index on a small `TextbookChunks` table probes one mostly-empty list under `LIMIT` plans — replaced with HNSW (same as `IX_CodeSubmissions_CodeEmbedding`), migration `SwitchTextbookEmbeddingIndexToHnsw` ([#77](https://github.com/VoxMentor/VoxMentor/issues/77))
 
 ---
 
@@ -105,6 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AI Code Evaluation (Ollama analyzes correctness, complexity, style, edge cases)
 - Plagiarism Detection (CodeBERT embeddings + AST comparison via tree-sitter)
 - Per-submission idempotency (MasteryApplied claim)
+- Multi-admin RBAC ([#82](https://github.com/VoxMentor/VoxMentor/issues/82)): seed `SuperAdmin`, `ContentAdmin`, `PlatformAdmin`; named policies `ManageContent` / `ManagePlatform` / `ManageRoles`; SuperAdmin-only role management; Hangfire/ops + audit gated to PlatformAdmin
 
 ### Changed
 - StudentMastery table now includes LastPracticedAt for spaced repetition

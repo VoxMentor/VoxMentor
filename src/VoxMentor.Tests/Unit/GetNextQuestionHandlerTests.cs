@@ -360,6 +360,24 @@ public class GetNextQuestionHandlerTests
         Assert.Equal(2, response.Data.VisibleTestCases.Length + 1); // 1 visible + 1 hidden = 2 total
     }
 
+    [Fact]
+    public async Task Handle_ReturnsIsomorphicInstanceId()
+    {
+        using var db = CreateDb();
+        var concept = await SeedConceptAsync(db);
+        var question = await SeedQuestionAsync(db, concept.Id);
+        question.VariantSeed = "seed-a";
+        await db.SaveChangesAsync();
+        var handler = CreateHandler(db);
+
+        var response = await handler.Handle(new GetNextQuestionQuery(), CancellationToken.None);
+
+        Assert.NotEqual(Guid.Empty, response.Data!.IsomorphicInstanceId);
+        // Deterministic: a re-fetch returns the same instance id (#120).
+        var again = await handler.Handle(new GetNextQuestionQuery(), CancellationToken.None);
+        Assert.Equal(response.Data.IsomorphicInstanceId, again.Data!.IsomorphicInstanceId);
+    }
+
     private static async Task<List<string>> RunPicksAsync(
         Infrastructure.Persistence.ApplicationDbContext db, int seed, int runs)
     {
