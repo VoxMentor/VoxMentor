@@ -24,6 +24,7 @@ public class TutorHub : Hub
     private readonly IApplicationDbContext _db;
     private readonly IRateLimiter _rateLimiter;
     private readonly ICurrentUserService _currentUser;
+    private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<TutorHub> _logger;
 
     private const int MaxQuestionLength = 2000;
@@ -32,24 +33,36 @@ public class TutorHub : Hub
     // Static = hub instances are per-invocation; dictionary holds nothing when idle.
     private static readonly ConcurrentDictionary<string, byte> InFlightAsks = new();
 
-    /// <summary>Initializes the hub with the tutor service, data context, rate limiter, current-user context, and logger.</summary>
+    /// <summary>Initializes the hub with the tutor service, data context, rate limiter, current-user context, host lifetime, and logger.</summary>
     public TutorHub(
         ITutorService tutor,
         IApplicationDbContext db,
         IRateLimiter rateLimiter,
         ICurrentUserService currentUser,
+        IHostApplicationLifetime lifetime,
         ILogger<TutorHub> logger)
     {
         _tutor = tutor;
         _db = db;
         _rateLimiter = rateLimiter;
         _currentUser = currentUser;
+        _lifetime = lifetime;
         _logger = logger;
     }
 
     /// <summary>Validates a question, applies rate limits, and streams the RAG answer to the caller while persisting the session.</summary>
     public async Task AskTutor(string conceptId, string question)
     {
+        // Link host shutdown with the client disconnect (#90): ApplicationStopping
+        // fires before Kestrel drains connections, so the OperationCanceledException
+        // path below marks the session Failed while the DbContext is still alive.
+        // Without this, shutdown only cancels after the 30s Kestrel timeout aborts
+        // the connection — and a hard kill leaves the row Streaming until the
+        // reconciliation sweep's 10-minute StuckStreamingAge elapses.
+        using var shutdownCts = CancellationTokenSource.CreateLinkedTokenSource(
+            Context.ConnectionAborted, _lifetime.ApplicationStopping);
+        var cancellationToken = shutdownCts.Token;
+
         Guid? parsedConceptId = null;
         if (!string.IsNullOrWhiteSpace(conceptId))
         {
@@ -83,7 +96,7 @@ public class TutorHub : Hub
         // Same window as POST /api/v1/tutor/ask — the hub must not bypass it.
         try
         {
-            await _rateLimiter.CheckAsync($"tutor:ask:{userId}", Context.ConnectionAborted);
+            await _rateLimiter.CheckAsync($"tutor:ask:{userId}", cancellationToken);
         }
         catch (RateLimitException ex)
         {
@@ -92,7 +105,7 @@ public class TutorHub : Hub
         }
 
         if (parsedConceptId.HasValue &&
-            !await _db.Concepts.AnyAsync(c => c.Id == parsedConceptId, Context.ConnectionAborted))
+            !await _db.Concepts.AnyAsync(c => c.Id == parsedConceptId, cancellationToken))
         {
             await SendError(null, $"Concept {parsedConceptId} was not found.");
             return;
@@ -119,19 +132,19 @@ public class TutorHub : Hub
                 StartedAt = DateTime.UtcNow
             };
             _db.TutorSessions.Add(session);
-            await _db.SaveChangesAsync(Context.ConnectionAborted);
+            await _db.SaveChangesAsync(cancellationToken);
 
             var answer = new StringBuilder();
             var totalTokens = 0;
             var sawFinalChunk = false;
             try
             {
-                await foreach (var chunk in _tutor.StreamAnswerAsync(question, parsedConceptId, Context.ConnectionAborted))
+                await foreach (var chunk in _tutor.StreamAnswerAsync(question, parsedConceptId, cancellationToken))
                 {
                     if (chunk.Text.Length > 0)
                     {
                         answer.Append(chunk.Text);
-                        await Clients.Caller.SendAsync("TutorToken", chunk.Text, Context.ConnectionAborted);
+                        await Clients.Caller.SendAsync("TutorToken", chunk.Text, cancellationToken);
                     }
                     if (chunk.IsFinal)
                     {

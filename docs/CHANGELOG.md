@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - AI Tutor background answer generation ([#72](https://github.com/VoxMentor/VoxMentor/issues/72)): `POST /api/v1/tutor/ask` enqueues a Hangfire job that atomically claims the Pending session (`TutorSessions.Status` concurrency token — no global job lock) and persists answer + token count (Completed only after the final `done=true` chunk) or a stored error message (Failed — new `TutorSessions.Error` column); failure-count circuit breaker on tutor generation (5 failures in 30s → open 30s → ask returns 503) records full-stream outcomes (HTTP, body read, and NDJSON failures); minute-level reconciliation sweep re-queues lost Pending sessions behind a `QueuedAt` enqueue claim and fails Streaming sessions stale past their `StartedAt` (migration `AddTutorSessionClaimTimestamps`)
 
+### Changed
+- TutorHub `AskTutor` links host shutdown into its cancellation token ([#90](https://github.com/VoxMentor/VoxMentor/issues/90)): `IHostApplicationLifetime.ApplicationStopping` is combined with `Context.ConnectionAborted`, so a graceful shutdown cancels in-flight streams immediately and marks their sessions Failed while the DbContext is still alive, instead of waiting out Kestrel's 30s connection-drain timeout
+
 ### Planned for Week 6
 - Docker Compose production configuration
 - GitHub Actions CI/CD pipeline
