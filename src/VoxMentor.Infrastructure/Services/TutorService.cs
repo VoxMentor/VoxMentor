@@ -14,8 +14,9 @@ namespace VoxMentor.Infrastructure.Services;
 /// <summary>
 /// Minimal RAG pipeline for the AI Tutor (#73): embed the question, take the
 /// top-Rag:TopK textbook chunks by pgvector cosine similarity, render the
-/// shared excerpt prompt, and stream Ollama's NDJSON output. Issue #72 layers
-/// the Hangfire worker and circuit breaker on top of this.
+/// shared excerpt prompt, and stream Ollama's NDJSON output. Full-stream
+/// outcomes feed the #72 circuit breaker; callers are TutorHub (live) and
+/// TutorSessionJob (background).
 /// </summary>
 public class TutorService : ITutorService
 {
@@ -23,33 +24,108 @@ public class TutorService : ITutorService
     private readonly CodeEmbeddingService _embeddingService;
     private readonly IApplicationDbContext _db;
     private readonly ILogger<TutorService> _logger;
+    private readonly ITutorCircuit _circuit;
     private readonly string _baseUrl;
     private readonly string _model;
     private readonly int _topK;
 
     private static readonly JsonSerializerOptions RequestJsonOptions = new(JsonSerializerDefaults.Web);
 
+    /// <summary>Initializes the service with its injected dependencies and the Ollama/RAG configuration.</summary>
     public TutorService(
         HttpClient http,
         IConfiguration config,
         CodeEmbeddingService embeddingService,
         IApplicationDbContext db,
-        ILogger<TutorService> logger)
+        ILogger<TutorService> logger,
+        ITutorCircuit circuit)
     {
         _http = http;
         _embeddingService = embeddingService;
         _db = db;
         _logger = logger;
+        _circuit = circuit;
         _baseUrl = config["Ollama:BaseUrl"] ?? "http://localhost:11434";
         _model = config["Ollama:Model"] ?? "llama3.2:3b";
         // #77: Rag:TopK replaces the hardcoded LIMIT 5 so the eval can tune k.
         _topK = int.TryParse(config["Rag:TopK"], out var topK) ? Math.Clamp(topK, 1, 50) : 5;
     }
 
+    /// <summary>Streams the RAG answer for a question and records full-stream success or failure on the circuit breaker.</summary>
     public async IAsyncEnumerable<TutorChunk> StreamAnswerAsync(
         string question,
         Guid? conceptId,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        // Fail fast while the breaker is open (#72): no Ollama call, and no
+        // outcome recorded — short-circuits must not feed the failure count.
+        if (_circuit.IsOpen)
+        {
+            throw new InvalidOperationException("Tutor service temporarily unavailable.");
+        }
+
+        // The circuit records at the full-stream boundary: header failures,
+        // body-read failures, NDJSON errors, and EOF without a final chunk all
+        // count as failures; only a stream that ends with done=true succeeds.
+        var sawFinal = false;
+        var enumerator = GenerateAsync(question, conceptId, cancellationToken)
+            .GetAsyncEnumerator(cancellationToken);
+        try
+        {
+            while (true)
+            {
+                TutorChunk chunk;
+                try
+                {
+                    if (!await enumerator.MoveNextAsync())
+                    {
+                        break;
+                    }
+                    chunk = enumerator.Current;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw; // caller hung up — not an Ollama failure
+                }
+                catch
+                {
+                    _circuit.RecordFailure();
+                    throw;
+                }
+
+                if (chunk.IsFinal)
+                {
+                    sawFinal = true;
+                }
+                yield return chunk;
+            }
+        }
+        finally
+        {
+            await enumerator.DisposeAsync();
+        }
+
+        if (sawFinal)
+        {
+            _circuit.RecordSuccess();
+        }
+        else
+        {
+            // EOF without done=true: a truncated stream is a failure (#72).
+            _circuit.RecordFailure();
+        }
+    }
+
+    /// <summary>
+    /// Runs the RAG pipeline and streams Ollama's NDJSON output. Split from
+    /// <see cref="StreamAnswerAsync"/> so the wrapper can observe every
+    /// MoveNextAsync outcome for the circuit breaker (iterators cannot
+    /// yield-return inside a try block that has a catch clause).
+    /// </summary>
+    private async IAsyncEnumerable<TutorChunk> GenerateAsync(
+        string question,
+        Guid? conceptId,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var chunks = await RetrieveAsync(question, conceptId, cancellationToken);
         if (chunks.Count == 0)
@@ -235,6 +311,7 @@ public class TutorService : ITutorService
 
     private static readonly Lazy<string> PromptTemplate = new(LoadPromptTemplate);
 
+    /// <summary>Loads the embedded tutor prompt template and normalizes its line endings.</summary>
     private static string LoadPromptTemplate()
     {
         const string resourceName = "VoxMentor.Infrastructure.tutor-prompt.txt";
@@ -310,15 +387,19 @@ public class TutorService : ITutorService
     /// <summary>Wire shape of one Ollama /api/chat streaming line.</summary>
     public sealed class OllamaStreamEvent
     {
+        /// <summary>The chat message carried by this stream line.</summary>
         [JsonPropertyName("message")]
         public OllamaChatMessage? Message { get; set; }
 
+        /// <summary>Whether Ollama reports the stream finished on this line.</summary>
         [JsonPropertyName("done")]
         public bool Done { get; set; }
 
+        /// <summary>The generation token count reported for this line.</summary>
         [JsonPropertyName("eval_count")]
         public int? EvalCount { get; set; }
 
+        /// <summary>Error text Ollama reports instead of a message; ParseLine throws when it is present.</summary>
         [JsonPropertyName("error")]
         public string? Error { get; set; }
     }

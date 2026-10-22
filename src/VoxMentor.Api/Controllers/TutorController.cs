@@ -24,6 +24,7 @@ public class TutorController : ControllerBase
 
     /// <summary>
     /// Starts an AI tutor answer session (202). Rate limited to 10/hour/student.
+    /// Returns 503 while the Ollama circuit breaker is open (#72).
     /// </summary>
     [HttpPost("ask")]
     [Authorize(Roles = "Student")]
@@ -33,6 +34,7 @@ public class TutorController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Ask(
         [FromBody] AskTutorCommand command,
         CancellationToken cancellationToken)

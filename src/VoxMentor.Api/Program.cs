@@ -36,12 +36,14 @@ if (hangfireEnabled)
         .UsePostgreSqlStorage(options => options.UseNpgsqlConnection(hangfireCs!)));
     builder.Services.AddHangfireServer();
     builder.Services.AddScoped<ITextbookIngestionQueue, TextbookIngestionQueue>();
+    builder.Services.AddScoped<ITutorSessionQueue, TutorSessionQueue>();
 }
 else
 {
     // Fail-fast queue so design-time DI still resolves it; uploads 500 until
     // a Hangfire connection string is configured.
     builder.Services.AddScoped<ITextbookIngestionQueue, NullTextbookIngestionQueue>();
+    builder.Services.AddScoped<ITutorSessionQueue, NullTutorSessionQueue>();
 }
 
 builder.Services.AddControllers();
@@ -108,7 +110,7 @@ if (!hangfireEnabled)
 {
     app.Logger.LogWarning(
         "Hangfire disabled (neither ConnectionStrings:Hangfire nor DefaultConnection is set): "
-        + "textbook uploads will return 500 and the BKT tuning + spaced-repetition jobs will not run.");
+        + "textbook uploads and tutor asks will return 500 and the BKT tuning + spaced-repetition jobs will not run.");
 }
 
 // Seed Roles and Migrate DB
@@ -186,9 +188,9 @@ if (app.Environment.IsDevelopment() && hangfireEnabled)
 }
 
 // Nightly jobs (#57): UTC crons — BKT EM tuning 02:00, spaced-repetition
-// decay 03:00. Plus the 15-minute recovery sweep for stranded textbook
-// ingestions (#104 round 6). AddOrUpdate is idempotent, so re-registration
-// is a no-op.
+// decay 03:00. Tutor reconciliation (#72) runs every minute; textbook job
+// recovery sweep (#104 round 6) runs every 15 minutes. AddOrUpdate is
+// idempotent, so re-registration is a no-op.
 if (hangfireEnabled)
 {
     using var scope = app.Services.CreateScope();
@@ -201,14 +203,18 @@ if (hangfireEnabled)
         "spaced-repetition-decay",
         job => job.ExecuteAsync(CancellationToken.None),
         "0 3 * * *");
+    manager.AddOrUpdate<TutorSessionReconciliationJob>(
+        "tutor-session-reconciliation",
+        job => job.ExecuteAsync(CancellationToken.None),
+        "* * * * *");
     manager.AddOrUpdate<TextbookJobSweeper>(
         "textbook-job-recovery",
         job => job.SweepAsync(CancellationToken.None),
         "*/15 * * * *");
     app.Logger.LogInformation(
         "Hangfire: registered bkt-parameter-tuning (0 2 * * *), "
-        + "spaced-repetition-decay (0 3 * * *), and textbook-job-recovery "
-        + "(*/15 * * * *), all UTC.");
+        + "spaced-repetition-decay (0 3 * * *), tutor-session-reconciliation (* * * * *), "
+        + "and textbook-job-recovery (*/15 * * * *), all UTC.");
 }
 
 app.MapHub<TutorHub>("/hubs/tutor");

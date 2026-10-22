@@ -72,6 +72,13 @@ public static class DependencyInjection
         // Tutor streaming (#73): HttpClient.Timeout covers only the header wait
         // (ResponseHeadersRead) — the NDJSON body read is capped by a linked CTS
         // inside TutorService.StreamAnswerAsync (300s total per ask).
+        // #72: failure-count circuit on tutor generation only — embed/code-eval
+        // failures degrade gracefully and must not block answers. TutorService
+        // reports full-stream outcomes (HTTP + body + NDJSON) into the shared
+        // singleton; ITutorCircuit lets the ask path 503 while it is open.
+        var tutorCircuit = new TutorCircuitState();
+        services.AddSingleton(tutorCircuit);
+        services.AddSingleton<ITutorCircuit>(tutorCircuit);
         services.AddHttpClient<ITutorService, TutorService>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(300);

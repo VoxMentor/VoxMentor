@@ -32,6 +32,7 @@ public class TutorHub : Hub
     // Static = hub instances are per-invocation; dictionary holds nothing when idle.
     private static readonly ConcurrentDictionary<string, byte> InFlightAsks = new();
 
+    /// <summary>Initializes the hub with the tutor service, data context, rate limiter, current-user context, and logger.</summary>
     public TutorHub(
         ITutorService tutor,
         IApplicationDbContext db,
@@ -46,6 +47,7 @@ public class TutorHub : Hub
         _logger = logger;
     }
 
+    /// <summary>Validates a question, applies rate limits, and streams the RAG answer to the caller while persisting the session.</summary>
     public async Task AskTutor(string conceptId, string question)
     {
         Guid? parsedConceptId = null;
@@ -111,7 +113,10 @@ public class TutorHub : Hub
                 UserId = userId,
                 ConceptId = parsedConceptId,
                 Question = question,
-                Status = TutorSessionStatus.Streaming
+                Status = TutorSessionStatus.Streaming,
+                // Stream starts with the insert — the reconciliation sweep ages
+                // Streaming rows from here, not CreatedAt (#72).
+                StartedAt = DateTime.UtcNow
             };
             _db.TutorSessions.Add(session);
             await _db.SaveChangesAsync(Context.ConnectionAborted);
@@ -188,6 +193,7 @@ public class TutorHub : Hub
         }
     }
 
+    /// <summary>Marks the session failed, persists it best-effort, and sends the error to the caller.</summary>
     private async Task MarkFailed(TutorSession session, string message)
     {
         session.Status = TutorSessionStatus.Failed;
@@ -205,6 +211,7 @@ public class TutorHub : Hub
         await SendError(session.Id, message);
     }
 
+/// <summary>Sends a TutorError event to the caller, ignoring a disconnected client.</summary>
 private async Task SendError(Guid? sessionId, string message)
         {
             try
@@ -217,6 +224,7 @@ private async Task SendError(Guid? sessionId, string message)
             }
         }
 
+        /// <summary>Returns a generic failure message so internal exception details never reach the client.</summary>
         private static string SanitizeError(Exception ex)
         {
             // ponytail: never leak internal details to the client.

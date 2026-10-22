@@ -19,6 +19,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
 {
     private readonly ICurrentUserService _currentUser;
 
+    /// <summary>Initializes the context with its options and the current-user accessor used by the query filters.</summary>
     public ApplicationDbContext(
         DbContextOptions<ApplicationDbContext> options,
         ICurrentUserService currentUser)
@@ -33,19 +34,33 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     /// </summary>
     private string? CurrentUserId => _currentUser.UserId;
 
+    /// <summary>EF Core set for RefreshToken entities.</summary>
     public DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
+    /// <summary>EF Core set for Concept entities.</summary>
     public DbSet<Concept> Concepts { get; set; } = null!;
+    /// <summary>EF Core set for Prerequisite entities.</summary>
     public DbSet<Prerequisite> Prerequisites { get; set; } = null!;
+    /// <summary>EF Core set for Question entities.</summary>
     public DbSet<Question> Questions { get; set; } = null!;
+    /// <summary>EF Core set for StudentMastery entities.</summary>
     public DbSet<StudentMastery> StudentMasteries { get; set; } = null!;
+    /// <summary>EF Core set for CodeSubmission entities.</summary>
     public DbSet<CodeSubmission> CodeSubmissions { get; set; } = null!;
+    /// <summary>EF Core set for MockInterview entities.</summary>
     public DbSet<MockInterview> MockInterviews { get; set; } = null!;
+    /// <summary>EF Core set for AuditLog entities.</summary>
     public DbSet<AuditLog> AuditLogs { get; set; } = null!;
+    /// <summary>EF Core set for BktParameters entities.</summary>
     public DbSet<BktParameters> BktParameters { get; set; } = null!;
+    /// <summary>EF Core set for JobDescription entities.</summary>
     public DbSet<JobDescription> JobDescriptions { get; set; } = null!;
+    /// <summary>EF Core set for JdSkillWeight entities.</summary>
     public DbSet<JdSkillWeight> JdSkillWeights { get; set; } = null!;
+    /// <summary>EF Core set for TutorSession entities.</summary>
     public DbSet<TutorSession> TutorSessions { get; set; } = null!;
+    /// <summary>EF Core set for TextbookJob entities.</summary>
     public DbSet<TextbookJob> TextbookJobs { get; set; } = null!;
+    /// <summary>EF Core set for TextbookChunk entities.</summary>
     public DbSet<TextbookChunk> TextbookChunks { get; set; } = null!;
 
     /// <inheritdoc />
@@ -194,7 +209,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.Property(e => e.UserId).IsRequired();
             entity.HasQueryFilter(e => e.UserId == CurrentUserId);
             entity.Property(e => e.Question).IsRequired().HasMaxLength(2000);
-            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
+            // Concurrency token (#72): claims (Pending → Streaming) and terminal
+            // writes (Completed/Failed) are conditional single-writer updates, so
+            // the session job and the reconciliation sweep can't overwrite each
+            // other. Mirrors the CodeSubmission.MasteryAppliedAt write-once claim.
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20).IsConcurrencyToken();
+            entity.Property(e => e.Error).HasMaxLength(1000);
             entity.HasIndex(e => new { e.UserId, e.CreatedAt });
         });
 
@@ -255,11 +275,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
 /// </summary>
 public class VectorToJsonConverter : ValueConverter<Vector?, string?>
 {
+    /// <summary>Creates the converter that maps Vector values to JSON strings and back.</summary>
     public VectorToJsonConverter()
         : base(v => VectorToJson(v), s => JsonToVector(s))
     {
     }
 
+    /// <summary>Serializes a vector to a JSON float array, or null when the value is null.</summary>
     private static string? VectorToJson(Vector? v)
     {
         if (v is null) return null;
@@ -268,6 +290,7 @@ public class VectorToJsonConverter : ValueConverter<Vector?, string?>
         return JsonSerializer.Serialize(arr);
     }
 
+    /// <summary>Parses a JSON float array back into a vector, or null when the value is null.</summary>
     private static Vector? JsonToVector(string? s)
     {
         if (s is null) return null;
