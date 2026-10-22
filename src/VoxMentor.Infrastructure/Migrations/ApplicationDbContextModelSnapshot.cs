@@ -497,14 +497,30 @@ namespace VoxMentor.Infrastructure.Migrations
                     b.Property<string>("Feedback")
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("JdId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ReviewJson")
+                        .HasColumnType("text");
+
                     b.Property<float>("Score")
                         .HasColumnType("real");
 
                     b.Property<DateTime>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Pending");
+
                     b.Property<int>("TotalQuestions")
                         .HasColumnType("integer");
+
+                    b.Property<string>("TranscriptJson")
+                        .HasColumnType("text");
 
                     b.Property<int>("Type")
                         .HasColumnType("integer");
@@ -514,6 +530,8 @@ namespace VoxMentor.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("JdId");
 
                     b.ToTable("MockInterviews");
                 });
@@ -757,10 +775,6 @@ namespace VoxMentor.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
-                    b.Property<Guid?>("RunId")
-                        .IsConcurrencyToken()
-                        .HasColumnType("uuid");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -775,6 +789,10 @@ namespace VoxMentor.Infrastructure.Migrations
 
                     b.Property<int>("ProcessedChunks")
                         .HasColumnType("integer");
+
+                    b.Property<Guid?>("RunId")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -906,6 +924,14 @@ namespace VoxMentor.Infrastructure.Migrations
                         .HasForeignKey("JobDescriptionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("VoxMentor.Domain.Entities.MockInterview", b =>
+                {
+                    b.HasOne("VoxMentor.Domain.Entities.JobDescription", null)
+                        .WithMany()
+                        .HasForeignKey("JdId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("VoxMentor.Domain.Entities.RefreshToken", b =>

@@ -6,6 +6,7 @@ using Npgsql;
 using Pgvector;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Domain.Entities;
+using VoxMentor.Domain.Enums;
 using VoxMentor.Domain.Interfaces;
 
 namespace VoxMentor.Infrastructure.Persistence;
@@ -157,6 +158,18 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         {
             entity.HasKey(e => e.Id);
             entity.HasQueryFilter(e => e.UserId == CurrentUserId);
+            // Lifecycle status stored as string, mirroring TutorSession.Status (#123);
+            // no concurrency token — no single-writer claim semantics are requested.
+            // Explicit DB default: EF's scaffold otherwise backfills added rows with
+            // "" (string sentinel), which the enum converter rejects on read.
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20)
+                .HasDefaultValue(MockInterviewStatus.Pending);
+            // Nullable, SetNull (not Cascade like JdSkillWeight): interview history
+            // outlives its job description — deleting a JD must not destroy runs (#123).
+            entity.HasOne<JobDescription>()
+                .WithMany()
+                .HasForeignKey(e => e.JdId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         builder.Entity<AuditLog>(entity =>
