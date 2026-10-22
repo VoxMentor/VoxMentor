@@ -7,8 +7,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
-using Polly;
-using Polly.CircuitBreaker;
 using Pgvector.EntityFrameworkCore;
 using StackExchange.Redis;
 using VoxMentor.Application.Common.Interfaces;
@@ -74,18 +72,17 @@ public static class DependencyInjection
         // Tutor streaming (#73): HttpClient.Timeout covers only the header wait
         // (ResponseHeadersRead) — the NDJSON body read is capped by a linked CTS
         // inside TutorService.StreamAnswerAsync (300s total per ask).
-        // #72: circuit breaker on this client only — embed/code-eval failures
-        // degrade gracefully and must not block answers. Shared state provider
-        // feeds ITutorCircuit so the ask path can 503 while the circuit is open.
-        var tutorCircuitState = new CircuitBreakerStateProvider();
-        services.AddSingleton(tutorCircuitState);
-        services.AddSingleton<ITutorCircuit>(new TutorCircuitState(tutorCircuitState));
+        // #72: failure-count circuit on tutor generation only — embed/code-eval
+        // failures degrade gracefully and must not block answers. TutorService
+        // reports full-stream outcomes (HTTP + body + NDJSON) into the shared
+        // singleton; ITutorCircuit lets the ask path 503 while it is open.
+        var tutorCircuit = new TutorCircuitState();
+        services.AddSingleton(tutorCircuit);
+        services.AddSingleton<ITutorCircuit>(tutorCircuit);
         services.AddHttpClient<ITutorService, TutorService>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(300);
-        })
-        .AddResilienceHandler("tutor-circuit-breaker", pipeline =>
-            pipeline.AddCircuitBreaker(TutorCircuit.Create(tutorCircuitState)));
+        });
         services.AddHttpClient<ICodeExecService, CodeExecServiceClient>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(30);

@@ -11,6 +11,7 @@ public class ExceptionHandlingMiddleware
     private readonly ILogger<ExceptionHandlingMiddleware> _logger;
     private readonly IWebHostEnvironment _env;
 
+    /// <summary>Initializes the middleware with the next pipeline delegate, logger, and hosting environment.</summary>
     public ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger, IWebHostEnvironment env)
     {
         _next = next;

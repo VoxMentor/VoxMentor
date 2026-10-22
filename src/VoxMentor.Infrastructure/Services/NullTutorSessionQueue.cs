@@ -10,6 +10,7 @@ namespace VoxMentor.Infrastructure.Services;
 /// </summary>
 public sealed class NullTutorSessionQueue : ITutorSessionQueue
 {
+    /// <summary>Throws because background answer generation is disabled when Hangfire storage is absent.</summary>
     public void Enqueue(Guid sessionId)
         => throw new InvalidOperationException(
             "Background tutor generation is disabled (no Hangfire storage configured).");

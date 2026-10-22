@@ -21,6 +21,7 @@ public class AskTutorHandler : IRequestHandler<AskTutorCommand, ApiResponse<AskT
     private readonly ITutorSessionQueue _queue;
     private readonly ITutorCircuit _circuit;
 
+    /// <summary>Initializes the handler with the data context, current user, rate limiter, session queue, and circuit breaker.</summary>
     public AskTutorHandler(
         IApplicationDbContext db,
         ICurrentUserService currentUser,
@@ -35,6 +36,7 @@ public class AskTutorHandler : IRequestHandler<AskTutorCommand, ApiResponse<AskT
         _circuit = circuit;
     }
 
+    /// <summary>Creates a Pending tutor session, queues background answer generation, and returns the polling reference.</summary>
     public async Task<ApiResponse<AskTutorResultDto>> Handle(AskTutorCommand request, CancellationToken cancellationToken)
     {
         var userId = _currentUser.UserId;
@@ -93,6 +95,20 @@ public class AskTutorHandler : IRequestHandler<AskTutorCommand, ApiResponse<AskT
             }
 
             throw;
+        }
+
+        // Claim the enqueue for the reconciliation sweep (#72): written after
+        // the enqueue, so a crash in between leaves QueuedAt null and the sweep
+        // re-queues it. Best effort — QueuedAt=null only costs one duplicate
+        // enqueue, which the job's claim absorbs.
+        session.QueuedAt = DateTime.UtcNow;
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            // row and job are both live; staleness recovery still applies
         }
 
         var message = $"Answer generation started. Poll GET /api/v1/tutor/sessions/{session.Id}.";

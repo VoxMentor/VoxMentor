@@ -1,54 +1,114 @@
-using Polly;
-using Polly.CircuitBreaker;
 using VoxMentor.Application.Common.Interfaces;
 
 namespace VoxMentor.Infrastructure.Services;
 
 /// <summary>
-/// Circuit breaker for the tutor's Ollama HttpClient (#72): 5 failures among
-/// ≥5 calls within 30s open the circuit for 30s; while open, calls short-
-/// circuit with <see cref="BrokenCircuitException"/>. Shared state provider
-/// lets the ask path fail fast with 503 via <see cref="ITutorCircuit"/>.
+/// Failure-count circuit breaker for the AI tutor's Ollama generation (#72):
+/// opens after 5 failed generations inside a 30s window — successes do not
+/// mask the count — and stays open for 30s, after which probes flow again
+/// until one succeeds (close) or fails (reopen). Outcomes are reported by
+/// <see cref="TutorService"/> at the full-stream boundary, so HTTP, body-read,
+/// and NDJSON failures all count. Shared singleton: ITutorCircuit feeds the
+/// ask path's fast 503 while <see cref="IsOpen"/> is true.
 /// </summary>
-public static class TutorCircuit
-{
-    /// <summary>
-    /// Single source for the breaker configuration — used by DI and exercised
-    /// directly by tests so the "5 failures → open 30s" acceptance criterion
-    /// is verified against the production options.
-    /// </summary>
-    public static CircuitBreakerStrategyOptions<HttpResponseMessage> Create(
-        CircuitBreakerStateProvider stateProvider)
-        => new()
-        {
-            StateProvider = stateProvider,
-            // 5 failures (MinimumThroughput at ratio 0.5 = ≥5 failures among
-            // ≥5 calls) inside the 30s window open the circuit — the issue's
-            // "5 failures" rule expressed in ratio terms so a mixed
-            // success/failure outage still trips it.
-            FailureRatio = 0.5,
-            MinimumThroughput = 5,
-            SamplingDuration = TimeSpan.FromSeconds(30),
-            BreakDuration = TimeSpan.FromSeconds(30),
-            ShouldHandle = new PredicateBuilder<HttpResponseMessage>()
-                .HandleResult(r => !r.IsSuccessStatusCode)
-                .Handle<HttpRequestException>()
-                // HttpClient.Timeout surfaces as TaskCanceledException with a
-                // TimeoutException inner — count it; plain cancellation (client
-                // disconnect) must not trip the breaker.
-                .Handle<TaskCanceledException>(ex => ex.InnerException is TimeoutException)
-        };
-}
-
-/// <summary>Read-only view of <see cref="TutorCircuit"/>'s shared state.</summary>
+/// <remarks>
+/// Replaces the Polly HTTP-level breaker from the first #72 pass: Polly's
+/// FailureRatio/MinimumThroughput counts total calls (3 of 5 failures could
+/// open), and its handler only saw header arrival, not the streamed body.
+/// </remarks>
 public sealed class TutorCircuitState : ITutorCircuit
 {
-    private readonly CircuitBreakerStateProvider _stateProvider;
+    private const int FailureThreshold = 5;
+    private static readonly TimeSpan SamplingWindow = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan BreakDuration = TimeSpan.FromSeconds(30);
 
-    public TutorCircuitState(CircuitBreakerStateProvider stateProvider)
+    private readonly object _gate = new();
+    private readonly TimeProvider _clock;
+    private readonly Queue<DateTime> _failures = new();
+    private DateTime? _openUntil;
+
+    /// <summary>Clock for window/break math; tests inject a fake TimeProvider.</summary>
+    public TutorCircuitState(TimeProvider? clock = null)
+        => _clock = clock ?? TimeProvider.System;
+
+    /// <summary>True while open; false while closed or half-open (probe admitted).</summary>
+    public bool IsOpen
     {
-        _stateProvider = stateProvider;
+        get
+        {
+            lock (_gate)
+            {
+                return IsOpenAt(_clock.GetUtcNow().UtcDateTime);
+            }
+        }
     }
 
-    public bool IsOpen => _stateProvider.CircuitState == CircuitState.Open;
+    /// <summary>
+    /// Records a fully successful generation. A probe success closes the
+    /// breaker; in the closed state successes never clear the failure window
+    /// (the threshold is 5 failures regardless of successes).
+    /// </summary>
+    public void RecordSuccess()
+    {
+        lock (_gate)
+        {
+            var now = _clock.GetUtcNow().UtcDateTime;
+            if (_openUntil is not { } openUntil)
+            {
+                Prune(now);
+                return;
+            }
+
+            if (now < openUntil)
+            {
+                return; // still open — short-circuited calls never reach Ollama
+            }
+
+            _openUntil = null; // half-open probe succeeded → closed
+            _failures.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Records one failed generation. In the closed state the 5th failure
+    /// inside the sampling window opens the breaker; a failed half-open probe
+    /// reopens it immediately.
+    /// </summary>
+    public void RecordFailure()
+    {
+        lock (_gate)
+        {
+            var now = _clock.GetUtcNow().UtcDateTime;
+            if (_openUntil is { } openUntil)
+            {
+                if (now < openUntil)
+                {
+                    return; // already open
+                }
+
+                _openUntil = now + BreakDuration; // half-open probe failed → reopen
+                _failures.Clear();
+                return;
+            }
+
+            Prune(now);
+            _failures.Enqueue(now);
+            if (_failures.Count >= FailureThreshold)
+            {
+                _openUntil = now + BreakDuration;
+            }
+        }
+    }
+
+    /// <summary>True only inside the break duration (closed and half-open read false).</summary>
+    private bool IsOpenAt(DateTime now) => _openUntil is { } until && now < until;
+
+    /// <summary>Drops failure timestamps that fell out of the sampling window.</summary>
+    private void Prune(DateTime now)
+    {
+        while (_failures.Count > 0 && now - _failures.Peek() >= SamplingWindow)
+        {
+            _failures.Dequeue();
+        }
+    }
 }
