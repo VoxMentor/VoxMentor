@@ -12,4 +12,11 @@ public class GetNextQuestionQuery : IRequest<ApiResponse<NextQuestionDto>>
 {
     /// <summary>Optional concept to practice; defaults to the weakest concept.</summary>
     public Guid? ConceptId { get; set; }
+
+    /// <summary>
+    /// Optional JD whose skill weights drive the ε-greedy selector (#124);
+    /// null keeps the pre-existing "latest JD" behaviour. Ownership is the
+    /// IUserOwned global filter — an unknown/foreign id resolves to no JD.
+    /// </summary>
+    public Guid? JdId { get; set; }
 }
