@@ -65,7 +65,7 @@ public class GetNextQuestionHandler : IRequestHandler<GetNextQuestionQuery, ApiR
         var selectedConcept = request.ConceptId is { } requestedId
             ? concepts.FirstOrDefault(c => c.Id == requestedId)
                 ?? throw new NotFoundException("Concept not found.")
-            : await SelectConceptAsync(concepts, masteryByConcept, attemptedIds, cancellationToken);
+            : await SelectConceptAsync(concepts, masteryByConcept, attemptedIds, request.JdId, cancellationToken);
 
         var mastery = masteryByConcept.TryGetValue(selectedConcept.Id, out var m2) ? m2.MasteryProbability : 0.1f;
 
@@ -139,11 +139,13 @@ public class GetNextQuestionHandler : IRequestHandler<GetNextQuestionQuery, ApiR
     /// <param name="concepts">All concepts, in query order.</param>
     /// <param name="masteryByConcept">User's mastery rows keyed by concept id.</param>
     /// <param name="attemptedIds">Questions already submitted; narrows the exploration pool.</param>
+    /// <param name="jdId">Pin the weights to this JD (#124 mock start); null → caller's latest JD.</param>
     /// <param name="ct">Cancellation token.</param>
     private async Task<Concept> SelectConceptAsync(
         IReadOnlyList<Concept> concepts,
         IReadOnlyDictionary<Guid, StudentMastery> masteryByConcept,
         IReadOnlySet<Guid> attemptedIds,
+        Guid? jdId,
         CancellationToken ct)
     {
         float MasteryOf(Guid conceptId)
@@ -151,9 +153,10 @@ public class GetNextQuestionHandler : IRequestHandler<GetNextQuestionQuery, ApiR
 
         // IUserOwned global filter scopes this to the caller's JDs — no UserId
         // predicate. Latest JD wins, matching GetReadinessHandler's fallback.
-        var jd = await _db.JobDescriptions
-            .AsNoTracking()
-            .OrderByDescending(j => j.CreatedAt)
+        var jdQuery = _db.JobDescriptions.AsNoTracking();
+        var jd = await (jdId is { } pinnedId
+                ? jdQuery.Where(j => j.Id == pinnedId)
+                : jdQuery.OrderByDescending(j => j.CreatedAt))
             .FirstOrDefaultAsync(ct);
 
         if (jd is null)
