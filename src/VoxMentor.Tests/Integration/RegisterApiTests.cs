@@ -11,6 +11,7 @@ using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Features.Auth.Register;
 using VoxMentor.Application.Features.MockInterviews;
 using VoxMentor.Domain.Entities;
+using VoxMentor.Domain.Enums;
 using VoxMentor.Infrastructure.Persistence;
 using Xunit;
 
@@ -83,6 +84,12 @@ public sealed class StubMockInterviewGenerator : IMockInterviewGenerator
     /// <summary>Fixed probe returned for every /mock/{id}/answer.</summary>
     public const string FollowUp = "STUB PROBE: what is the time complexity?";
 
+    /// <summary>Fixed overall score returned for every /mock/{id}/complete.</summary>
+    public const float ReviewScore = 77f;
+
+    /// <summary>Fixed next-steps line returned for every /mock/{id}/complete.</summary>
+    public const string ReviewNextSteps = "STUB NEXT STEPS: focus on complexity analysis.";
+
     public Task<string?> OpeningAsync(
         string? company, string? role, string problemTitle, CancellationToken cancellationToken = default)
         => Task.FromResult<string?>(Opening);
@@ -90,6 +97,23 @@ public sealed class StubMockInterviewGenerator : IMockInterviewGenerator
     public Task<string?> FollowUpAsync(
         IReadOnlyList<TranscriptTurn> transcript, CancellationToken cancellationToken = default)
         => Task.FromResult<string?>(FollowUp);
+
+    public Task<MockInterviewReviewDraft?> ReviewAsync(
+        IReadOnlyList<TranscriptTurn> transcript,
+        InterviewType type,
+        string? company,
+        string? role,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<MockInterviewReviewDraft?>(new MockInterviewReviewDraft(
+            ReviewScore,
+            new Dictionary<string, ProblemReview>(StringComparer.Ordinal)
+            {
+                ["problem1"] = new ProblemReview(
+                    Solved: true,
+                    Complexity: "Discussed",
+                    Feedback: "STUB REVIEW: solid approach.")
+            },
+            ReviewNextSteps));
 }
 
 /// <summary>
