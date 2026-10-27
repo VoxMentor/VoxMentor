@@ -32,6 +32,7 @@ public class StartMockInterviewHandler : IRequestHandler<StartMockInterviewComma
     private readonly IMockInterviewGenerator _generator;
     private readonly IConfiguration _configuration;
     private readonly AsyncKeyedLock _lock;
+    private readonly TimeProvider _clock;
 
     /// <summary>Initializes the handler with the data context, user, selector sender, generator, config, and lock.</summary>
     public StartMockInterviewHandler(
@@ -40,7 +41,8 @@ public class StartMockInterviewHandler : IRequestHandler<StartMockInterviewComma
         ISender sender,
         IMockInterviewGenerator generator,
         IConfiguration configuration,
-        AsyncKeyedLock @lock)
+        AsyncKeyedLock @lock,
+        TimeProvider? clock = null)
     {
         _db = db;
         _currentUser = currentUser;
@@ -48,6 +50,7 @@ public class StartMockInterviewHandler : IRequestHandler<StartMockInterviewComma
         _generator = generator;
         _configuration = configuration;
         _lock = @lock;
+        _clock = clock ?? TimeProvider.System;
     }
 
     /// <summary>Validates the JD, applies the daily limit, selects the opening problem, and starts the run.</summary>
@@ -72,62 +75,68 @@ public class StartMockInterviewHandler : IRequestHandler<StartMockInterviewComma
         }
 
         // Advisory fast path: reject over-quota requests before the slow Ollama
-        // call; the authoritative limit check is the locked re-count below
+        // call; the authoritative check runs under the per-student lock below
         // (CodeRabbit #146: count-then-insert alone lets two parallel starts pass).
-        var todayUtc = DateTime.UtcNow.Date;
-        var tomorrowUtc = todayUtc.AddDays(1);
         var dailyLimit = ReadDailyLimit();
-        if (await CountStartedTodayAsync(todayUtc, tomorrowUtc, cancellationToken) >= dailyLimit)
-            throw new RateLimitException(RetryAfterSeconds(todayUtc, tomorrowUtc));
-
-        // Call through the practice selector (#124): same ε-greedy path, pinned
-        // to the interview's JD weights when one was supplied.
-        var next = await _sender.Send(new GetNextQuestionQuery { JdId = request.JdId }, cancellationToken);
-        var problem = next.Data
-            ?? throw new NotFoundException("No questions available for an interview.");
-
-        var fallbackOpening = BuildFallbackOpening(company, role, problem.Title);
-        var openingMessage = await _generator.OpeningAsync(company, role, problem.Title, cancellationToken)
-            ?? fallbackOpening;
-
-        var interview = new MockInterview
-        {
-            Id = Guid.NewGuid(),
-            UserId = userId,
-            Type = ParseType(request.Type),
-            TotalQuestions = TotalQuestions,
-            AnsweredQuestions = 0,
-            StartedAt = DateTime.UtcNow,
-            JdId = request.JdId,
-            Status = MockInterviewStatus.InProgress,
-            TranscriptJson = JsonSerializer.Serialize(
-                new List<TranscriptTurn>
-                {
-                    new(TranscriptTurn.InterviewerRole, openingMessage, problem.QuestionId, DateTime.UtcNow)
-                },
-                TranscriptTurn.JsonOptions)
-        };
+        var advisoryToday = _clock.GetUtcNow().UtcDateTime.Date;
+        var advisoryTomorrow = advisoryToday.AddDays(1);
+        if (await CountStartedTodayAsync(advisoryToday, advisoryTomorrow, cancellationToken) >= dailyLimit)
+            throw new RateLimitException(RetryAfterSeconds(advisoryTomorrow));
 
         // #124 concurrency (CodeRabbit #146): the fast-path count is advisory —
-        // this per-student lock serializes the authoritative re-count and the
-        // insert, so two starts in the same generation window cannot both pass.
+        // this per-student lock serializes the authoritative re-count, problem
+        // selection, opener generation, and the insert, so two starts in the
+        // same window cannot both pass and a losing start fails the re-count
+        // before any generation call.
         using (await _lock.AcquireAsync($"mock:start:{userId}", cancellationToken))
         {
+            // One clock reading under the lock feeds both the quota day and
+            // StartedAt: a generation window crossing UTC midnight counts and
+            // stamps the same day (CodeRabbit #146).
+            var now = _clock.GetUtcNow().UtcDateTime;
+            var todayUtc = now.Date;
+            var tomorrowUtc = todayUtc.AddDays(1);
             if (await CountStartedTodayAsync(todayUtc, tomorrowUtc, cancellationToken) >= dailyLimit)
-                throw new RateLimitException(RetryAfterSeconds(todayUtc, tomorrowUtc));
+                throw new RateLimitException(RetryAfterSeconds(tomorrowUtc));
+
+            var next = await _sender.Send(new GetNextQuestionQuery { JdId = request.JdId }, cancellationToken);
+            var problem = next.Data
+                ?? throw new NotFoundException("No questions available for an interview.");
+
+            var fallbackOpening = BuildFallbackOpening(company, role, problem.Title);
+            var openingMessage = await _generator.OpeningAsync(company, role, problem.Title, cancellationToken)
+                ?? fallbackOpening;
+
+            var interview = new MockInterview
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                Type = ParseType(request.Type),
+                TotalQuestions = TotalQuestions,
+                AnsweredQuestions = 0,
+                StartedAt = now,
+                JdId = request.JdId,
+                Status = MockInterviewStatus.InProgress,
+                TranscriptJson = JsonSerializer.Serialize(
+                    new List<TranscriptTurn>
+                    {
+                        new(TranscriptTurn.InterviewerRole, openingMessage, problem.QuestionId, now)
+                    },
+                    TranscriptTurn.JsonOptions)
+            };
 
             _db.MockInterviews.Add(interview);
             await _db.SaveChangesAsync(cancellationToken);
-        }
 
-        return ApiResponse<StartMockInterviewResultDto>.SuccessResult(new StartMockInterviewResultDto(
-            interview.Id,
-            problem.QuestionId,
-            interview.Type.ToString(),
-            interview.Status.ToString(),
-            DurationMinutes,
-            interview.StartedAt,
-            openingMessage));
+            return ApiResponse<StartMockInterviewResultDto>.SuccessResult(new StartMockInterviewResultDto(
+                interview.Id,
+                problem.QuestionId,
+                interview.Type.ToString(),
+                interview.Status.ToString(),
+                DurationMinutes,
+                interview.StartedAt,
+                openingMessage));
+        }
     }
 
     /// <summary>Interviews started by any student within the given UTC day.</summary>
@@ -136,8 +145,8 @@ public class StartMockInterviewHandler : IRequestHandler<StartMockInterviewComma
             .CountAsync(m => m.StartedAt >= todayUtc && m.StartedAt < tomorrowUtc, cancellationToken);
 
     /// <summary>Seconds until UTC midnight, when the daily quota resets.</summary>
-    private static int RetryAfterSeconds(DateTime todayUtc, DateTime tomorrowUtc)
-        => (int)Math.Ceiling((tomorrowUtc - DateTime.UtcNow).TotalSeconds);
+    private int RetryAfterSeconds(DateTime tomorrowUtc)
+        => (int)Math.Ceiling((tomorrowUtc - _clock.GetUtcNow().UtcDateTime).TotalSeconds);
 
     /// <summary>Configurable daily quota (MockInterview:DailyLimit); defaults to 1, the free-tier value.</summary>
     private int ReadDailyLimit()

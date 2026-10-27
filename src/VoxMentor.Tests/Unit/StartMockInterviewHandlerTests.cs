@@ -25,15 +25,43 @@ public class StartMockInterviewHandlerTests
 
     private sealed class StubGenerator : IMockInterviewGenerator
     {
+        private int _calls;
+
         public string? Opening { get; set; }
 
-        public Task<string?> OpeningAsync(
+        /// <summary>Held by the first caller until the test releases it (holds the start lock).</summary>
+        public TaskCompletionSource? Gate { get; set; }
+
+        /// <summary>Completes when any caller reaches generation.</summary>
+        public TaskCompletionSource FirstCall { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int CallCount => Volatile.Read(ref _calls);
+
+        public async Task<string?> OpeningAsync(
             string? company, string? role, string problemTitle, CancellationToken cancellationToken = default)
-            => Task.FromResult(Opening);
+        {
+            var call = Interlocked.Increment(ref _calls);
+            FirstCall.TrySetResult();
+            if (call == 1 && Gate is not null)
+                await Gate.Task;
+            return Opening;
+        }
 
         public Task<string?> FollowUpAsync(
             IReadOnlyList<TranscriptTurn> transcript, CancellationToken cancellationToken = default)
             => Task.FromResult<string?>(null);
+    }
+
+    private sealed class FakeClock : TimeProvider
+    {
+        private DateTimeOffset _now;
+
+        public FakeClock(DateTimeOffset now) => _now = now;
+
+        public void SetUtcNow(DateTimeOffset now) => _now = now;
+
+        public override DateTimeOffset GetUtcNow() => _now;
     }
 
     private sealed record TestApp(
@@ -45,7 +73,7 @@ public class StartMockInterviewHandlerTests
         public void Dispose() => Provider.Dispose();
     }
 
-    private static TestApp CreateApp(string userId = "user-1", Dictionary<string, string?>? config = null)
+    private static TestApp CreateApp(string userId = "user-1", Dictionary<string, string?>? config = null, TimeProvider? clock = null)
     {
         var generator = new StubGenerator();
         var configuration = new ConfigurationBuilder()
@@ -66,6 +94,8 @@ public class StartMockInterviewHandlerTests
         services.AddSingleton<ICurrentUserService>(new FakeCurrentUserService { UserId = userId });
         services.AddSingleton<IMockInterviewGenerator>(generator);
         services.AddSingleton<IConfiguration>(configuration);
+        if (clock is not null)
+            services.AddSingleton(clock);
         services.AddApplicationServices();
 
         var provider = services.BuildServiceProvider();
@@ -199,13 +229,58 @@ public class StartMockInterviewHandlerTests
             }
         }
 
-        // Two starts in the same window: the locked re-count must let only one
-        // through (CodeRabbit #146 daily-limit race).
-        var outcomes = await Task.WhenAll(TryStartAsync(), TryStartAsync());
+        // Deterministic overlap (CodeRabbit #146): the first start is held
+        // inside the lock at generation while the second attempt runs its
+        // advisory count and blocks on the lock. Releasing then lets the loser
+        // re-count and fail — without ever reaching generation. Asserting a
+        // single generation call makes the test fail if the re-count order or
+        // the per-student lock is ever removed (unlike a bare Task.WhenAll,
+        // which can pass sequentially).
+        app.Generator.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var first = TryStartAsync();
+        await app.Generator.FirstCall.Task;
+        var second = TryStartAsync();
+        await Task.Delay(50); // give the loser time to reach the lock before release
+        app.Generator.Gate.SetResult();
+
+        var outcomes = await Task.WhenAll(first, second);
 
         Assert.Equal(1, outcomes.Count(o => o == 0));
         Assert.Equal(1, outcomes.Count(o => o == 1));
+        Assert.Equal(1, app.Generator.CallCount);
         Assert.Single(app.Db.MockInterviews.IgnoreQueryFilters().ToList());
+    }
+
+    [Fact]
+    public async Task Start_AfterUtcMidnight_NewQuotaDay_AndStampMatchesClock()
+    {
+        var clock = new FakeClock(new DateTimeOffset(2026, 10, 26, 23, 59, 0, TimeSpan.Zero));
+        using var app = CreateApp(clock: clock);
+        var concept = await SeedConceptAsync(app.Db);
+        await SeedQuestionAsync(app.Db, concept.Id);
+        app.Db.MockInterviews.Add(new MockInterview
+        {
+            Id = Guid.NewGuid(),
+            UserId = "user-1",
+            Type = InterviewType.Technical,
+            TotalQuestions = 3,
+            Status = MockInterviewStatus.InProgress,
+            StartedAt = clock.GetUtcNow().UtcDateTime // already used today's quota
+        });
+        await app.Db.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<RateLimitException>(
+            () => app.Sender.Send(new StartMockInterviewCommand()));
+
+        // Crossing UTC midnight resets the quota; count and StartedAt must use
+        // the same clock reading (CodeRabbit #146 midnight boundary).
+        clock.SetUtcNow(new DateTimeOffset(2026, 10, 27, 0, 0, 1, TimeSpan.Zero));
+
+        var result = await app.Sender.Send(new StartMockInterviewCommand());
+
+        Assert.True(result.Success);
+        Assert.Equal(new DateTime(2026, 10, 27), result.Data!.StartedAt.Date);
+        Assert.Equal(2, await app.Db.MockInterviews.IgnoreQueryFilters().CountAsync());
     }
 
     [Fact]
