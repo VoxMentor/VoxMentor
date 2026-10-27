@@ -1,10 +1,10 @@
-﻿using VoxMentor.Application.Features.MockInterviews;
+using VoxMentor.Application.Features.MockInterviews;
 
 namespace VoxMentor.Application.Common.Interfaces;
 
 /// <summary>
 /// Generates mock-interview dialogue lines via Ollama (#124). Every method
-/// returns null on any failure â€” callers degrade to a canned line, never 500.
+/// returns null on any failure — callers degrade to a canned line, never 500.
 /// </summary>
 public interface IMockInterviewGenerator
 {

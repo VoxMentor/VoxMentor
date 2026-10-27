@@ -1,4 +1,4 @@
-﻿using System.Net.Http.Json;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -10,7 +10,7 @@ namespace VoxMentor.Infrastructure.Services;
 /// <summary>
 /// Mock-interview dialogue lines via a local Ollama instance (#124). Plain-text
 /// chat completion (no schema); any failure (unreachable, non-2xx, empty,
-/// timeout) returns null and the caller substitutes a canned line â€” the same
+/// timeout) returns null and the caller substitutes a canned line — the same
 /// degrade-don't-fail contract as <see cref="JdParseService"/>.
 /// </summary>
 public class OllamaMockInterviewGenerator : IMockInterviewGenerator
@@ -71,7 +71,7 @@ public class OllamaMockInterviewGenerator : IMockInterviewGenerator
             cancellationToken);
     }
 
-    /// <summary>Returns null (with a warning logged) on any failure â€” degrade, don't fail.</summary>
+    /// <summary>Returns null (with a warning logged) on any failure — degrade, don't fail.</summary>
     private async Task<string?> GenerateAsync(string systemPrompt, string userPrompt, CancellationToken cancellationToken)
     {
         var request = new
@@ -101,7 +101,7 @@ public class OllamaMockInterviewGenerator : IMockInterviewGenerator
                 return null;
             }
 
-            // Reuses the shared /api/chat wire DTO from OllamaCodeEvaluator â€”
+            // Reuses the shared /api/chat wire DTO from OllamaCodeEvaluator —
             // one contract for the Ollama response shape, not two copies.
             var chat = await response.Content.ReadFromJsonAsync<OllamaChatResponse>(
                 ResponseJsonOptions, timeoutCts.Token);
@@ -117,7 +117,7 @@ public class OllamaMockInterviewGenerator : IMockInterviewGenerator
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            throw; // the CALLER aborted the request â€” not ours to swallow
+            throw; // the CALLER aborted the request — not ours to swallow
         }
         catch (OperationCanceledException)
         {

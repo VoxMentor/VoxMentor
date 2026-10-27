@@ -47,19 +47,22 @@ public class StartMockInterviewHandlerTests
 
     private static TestApp CreateApp(string userId = "user-1", Dictionary<string, string?>? config = null)
     {
-        var db = new ApplicationDbContext(
-            new DbContextOptionsBuilder<ApplicationDbContext>()
-                .UseInMemoryDatabase(Guid.NewGuid().ToString())
-                .Options,
-            new FakeCurrentUserService { UserId = userId });
-
         var generator = new StubGenerator();
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(config ?? new Dictionary<string, string?>())
             .Build();
 
+        // Handler contexts come from the container (one new instance per scope)
+        // so parallel sends in the daily-limit race test never share one EF
+        // context; the outer db is only for seeding and assertions.
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var db = new ApplicationDbContext(options, new FakeCurrentUserService { UserId = userId });
+
         var services = new ServiceCollection();
-        services.AddSingleton<IApplicationDbContext>(db);
+        services.AddScoped<IApplicationDbContext>(_ =>
+            new ApplicationDbContext(options, new FakeCurrentUserService { UserId = userId }));
         services.AddSingleton<ICurrentUserService>(new FakeCurrentUserService { UserId = userId });
         services.AddSingleton<IMockInterviewGenerator>(generator);
         services.AddSingleton<IConfiguration>(configuration);
@@ -162,6 +165,50 @@ public class StartMockInterviewHandlerTests
     }
 
     [Fact]
+    public async Task Start_NumericType_ThrowsValidationException()
+    {
+        using var app = CreateApp();
+
+        // Enum.TryParse accepts "2" for an undefined member — must be rejected
+        // so no bogus type is ever persisted (CodeRabbit #146).
+        var ex = await Assert.ThrowsAsync<ValidationException>(() =>
+            app.Sender.Send(new StartMockInterviewCommand { Type = "2" }));
+
+        Assert.Contains("Type", ex.Errors.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Start_ParallelStarts_ExactlyOneWins_DailyLimit()
+    {
+        using var app = CreateApp();
+        var concept = await SeedConceptAsync(app.Db);
+        await SeedQuestionAsync(app.Db, concept.Id);
+
+        async Task<int> TryStartAsync()
+        {
+            using var scope = app.Provider.CreateAsyncScope();
+            var sender = scope.ServiceProvider.GetRequiredService<ISender>();
+            try
+            {
+                await sender.Send(new StartMockInterviewCommand());
+                return 0;
+            }
+            catch (RateLimitException)
+            {
+                return 1;
+            }
+        }
+
+        // Two starts in the same window: the locked re-count must let only one
+        // through (CodeRabbit #146 daily-limit race).
+        var outcomes = await Task.WhenAll(TryStartAsync(), TryStartAsync());
+
+        Assert.Equal(1, outcomes.Count(o => o == 0));
+        Assert.Equal(1, outcomes.Count(o => o == 1));
+        Assert.Single(app.Db.MockInterviews.IgnoreQueryFilters().ToList());
+    }
+
+    [Fact]
     public async Task Start_WithoutJd_GeneratorUnavailable_FallsBackToCannedOpening()
     {
         using var app = CreateApp();
@@ -189,6 +236,7 @@ public class StartMockInterviewHandlerTests
         Assert.Equal(TranscriptTurn.InterviewerRole, opening.Role);
         Assert.Equal(result.Data.OpeningMessage, opening.Message);
         Assert.Equal(question.Id, opening.QuestionId);
+        Assert.Equal(question.Id, result.Data.QuestionId);
     }
 
     [Fact]

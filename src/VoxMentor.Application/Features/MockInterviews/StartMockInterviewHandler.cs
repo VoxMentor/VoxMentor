@@ -1,10 +1,11 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
+using VoxMentor.Application.Common.Services;
 using VoxMentor.Application.Features.Practice.GetNextQuestion;
 using VoxMentor.Domain.Entities;
 using VoxMentor.Domain.Enums;
@@ -13,13 +14,13 @@ namespace VoxMentor.Application.Features.MockInterviews;
 
 /// <summary>
 /// POST /api/v1/mock/start (#124): picks the opening problem through the
-/// practice selector (JD-weighted Îµ-greedy from #119), asks Ollama for the
+/// practice selector (JD-weighted ε-greedy from #119), asks Ollama for the
 /// opening line, enforces the per-student daily limit (429), and persists an
 /// InProgress interview whose TranscriptJson starts with the interviewer turn.
 /// </summary>
 public class StartMockInterviewHandler : IRequestHandler<StartMockInterviewCommand, ApiResponse<StartMockInterviewResultDto>>
 {
-    /// <summary>Planned problem count per run (API.md Â§6 caps it at 3).</summary>
+    /// <summary>Planned problem count per run (API.md §6 caps it at 3).</summary>
     private const int TotalQuestions = 3;
 
     /// <summary>Response duration in minutes, per the documented 202 body.</summary>
@@ -30,20 +31,23 @@ public class StartMockInterviewHandler : IRequestHandler<StartMockInterviewComma
     private readonly ISender _sender;
     private readonly IMockInterviewGenerator _generator;
     private readonly IConfiguration _configuration;
+    private readonly AsyncKeyedLock _lock;
 
-    /// <summary>Initializes the handler with the data context, user, selector sender, generator, and config.</summary>
+    /// <summary>Initializes the handler with the data context, user, selector sender, generator, config, and lock.</summary>
     public StartMockInterviewHandler(
         IApplicationDbContext db,
         ICurrentUserService currentUser,
         ISender sender,
         IMockInterviewGenerator generator,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        AsyncKeyedLock @lock)
     {
         _db = db;
         _currentUser = currentUser;
         _sender = sender;
         _generator = generator;
         _configuration = configuration;
+        _lock = @lock;
     }
 
     /// <summary>Validates the JD, applies the daily limit, selects the opening problem, and starts the run.</summary>
@@ -58,7 +62,7 @@ public class StartMockInterviewHandler : IRequestHandler<StartMockInterviewComma
         string? role = null;
         if (request.JdId is { } jdId)
         {
-            // IUserOwned global filter â†’ unknown or another student's JD is null â†’ 404.
+            // IUserOwned global filter → unknown or another student's JD is null → 404.
             var jd = await _db.JobDescriptions
                 .AsNoTracking()
                 .FirstOrDefaultAsync(j => j.Id == jdId, cancellationToken)
@@ -67,21 +71,16 @@ public class StartMockInterviewHandler : IRequestHandler<StartMockInterviewComma
             role = jd.Role;
         }
 
-        // ponytail: count-then-insert on MockInterviews â€” two parallel starts can
-        // both pass. Per-user atomic Lua (RedisSlidingWindowRateLimiter keyed
-        // per day) is the upgrade if double-starts ever matter.
+        // Advisory fast path: reject over-quota requests before the slow Ollama
+        // call; the authoritative limit check is the locked re-count below
+        // (CodeRabbit #146: count-then-insert alone lets two parallel starts pass).
         var todayUtc = DateTime.UtcNow.Date;
         var tomorrowUtc = todayUtc.AddDays(1);
-        var startedToday = await _db.MockInterviews
-            .CountAsync(m => m.StartedAt >= todayUtc && m.StartedAt < tomorrowUtc, cancellationToken);
         var dailyLimit = ReadDailyLimit();
-        if (startedToday >= dailyLimit)
-        {
-            var retryAfter = (int)Math.Ceiling((tomorrowUtc - DateTime.UtcNow).TotalSeconds);
-            throw new RateLimitException(retryAfter);
-        }
+        if (await CountStartedTodayAsync(todayUtc, tomorrowUtc, cancellationToken) >= dailyLimit)
+            throw new RateLimitException(RetryAfterSeconds(todayUtc, tomorrowUtc));
 
-        // Call through the practice selector (#124): same Îµ-greedy path, pinned
+        // Call through the practice selector (#124): same ε-greedy path, pinned
         // to the interview's JD weights when one was supplied.
         var next = await _sender.Send(new GetNextQuestionQuery { JdId = request.JdId }, cancellationToken);
         var problem = next.Data
@@ -109,11 +108,21 @@ public class StartMockInterviewHandler : IRequestHandler<StartMockInterviewComma
                 TranscriptTurn.JsonOptions)
         };
 
-        _db.MockInterviews.Add(interview);
-        await _db.SaveChangesAsync(cancellationToken);
+        // #124 concurrency (CodeRabbit #146): the fast-path count is advisory —
+        // this per-student lock serializes the authoritative re-count and the
+        // insert, so two starts in the same generation window cannot both pass.
+        using (await _lock.AcquireAsync($"mock:start:{userId}", cancellationToken))
+        {
+            if (await CountStartedTodayAsync(todayUtc, tomorrowUtc, cancellationToken) >= dailyLimit)
+                throw new RateLimitException(RetryAfterSeconds(todayUtc, tomorrowUtc));
+
+            _db.MockInterviews.Add(interview);
+            await _db.SaveChangesAsync(cancellationToken);
+        }
 
         return ApiResponse<StartMockInterviewResultDto>.SuccessResult(new StartMockInterviewResultDto(
             interview.Id,
+            problem.QuestionId,
             interview.Type.ToString(),
             interview.Status.ToString(),
             DurationMinutes,
@@ -121,13 +130,22 @@ public class StartMockInterviewHandler : IRequestHandler<StartMockInterviewComma
             openingMessage));
     }
 
+    /// <summary>Interviews started by any student within the given UTC day.</summary>
+    private Task<int> CountStartedTodayAsync(DateTime todayUtc, DateTime tomorrowUtc, CancellationToken cancellationToken)
+        => _db.MockInterviews
+            .CountAsync(m => m.StartedAt >= todayUtc && m.StartedAt < tomorrowUtc, cancellationToken);
+
+    /// <summary>Seconds until UTC midnight, when the daily quota resets.</summary>
+    private static int RetryAfterSeconds(DateTime todayUtc, DateTime tomorrowUtc)
+        => (int)Math.Ceiling((tomorrowUtc - DateTime.UtcNow).TotalSeconds);
+
     /// <summary>Configurable daily quota (MockInterview:DailyLimit); defaults to 1, the free-tier value.</summary>
     private int ReadDailyLimit()
         => int.TryParse(_configuration["MockInterview:DailyLimit"], out var limit) && limit > 0
             ? limit
             : 1;
 
-    /// <summary>Canned opener used when Ollama is unreachable â€” degrade, never 500.</summary>
+    /// <summary>Canned opener used when Ollama is unreachable — degrade, never 500.</summary>
     private static string BuildFallbackOpening(string? company, string? role, string problemTitle)
     {
         var greeting = company is not null && role is not null
@@ -136,9 +154,11 @@ public class StartMockInterviewHandler : IRequestHandler<StartMockInterviewComma
         return $"{greeting}Let's start with your first problem: {problemTitle}.";
     }
 
-    /// <summary>Case-insensitive enum parse; blank â†’ Technical (validator rejects the rest).</summary>
+    /// <summary>Case-insensitive enum parse; anything not a named defined value → Technical (the validator rejects the rest).</summary>
     private static InterviewType ParseType(string? type)
-        => !string.IsNullOrWhiteSpace(type) && Enum.TryParse<InterviewType>(type, ignoreCase: true, out var parsed)
+        => !string.IsNullOrWhiteSpace(type) &&
+           Enum.TryParse<InterviewType>(type.Trim(), ignoreCase: true, out var parsed) &&
+           Enum.IsDefined(parsed)
             ? parsed
             : InterviewType.Technical;
 }

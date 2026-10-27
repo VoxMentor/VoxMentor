@@ -1,8 +1,9 @@
-﻿namespace VoxMentor.Application.Features.MockInterviews;
+namespace VoxMentor.Application.Features.MockInterviews;
 
-/// <summary>Accepted response for POST /api/v1/mock/start (202) per docs/API.md Â§6.</summary>
+/// <summary>Accepted response for POST /api/v1/mock/start (202) per docs/API.md §6.</summary>
 public record StartMockInterviewResultDto(
     Guid InterviewId,
+    Guid QuestionId,
     string Type,
     string Status,
     int Duration,

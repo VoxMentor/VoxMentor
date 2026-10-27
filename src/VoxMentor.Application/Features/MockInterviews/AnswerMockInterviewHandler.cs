@@ -1,9 +1,10 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
+using VoxMentor.Application.Common.Services;
 using VoxMentor.Domain.Enums;
 
 namespace VoxMentor.Application.Features.MockInterviews;
@@ -18,44 +19,48 @@ public class AnswerMockInterviewHandler : IRequestHandler<AnswerMockInterviewCom
 {
     private readonly IApplicationDbContext _db;
     private readonly IMockInterviewGenerator _generator;
+    private readonly AsyncKeyedLock _lock;
 
-    /// <summary>Initializes the handler with the data context and the Ollama dialogue generator.</summary>
-    public AnswerMockInterviewHandler(IApplicationDbContext db, IMockInterviewGenerator generator)
+    /// <summary>Initializes the handler with the data context, the Ollama dialogue generator, and the lock.</summary>
+    public AnswerMockInterviewHandler(IApplicationDbContext db, IMockInterviewGenerator generator, AsyncKeyedLock @lock)
     {
         _db = db;
         _generator = generator;
+        _lock = @lock;
     }
 
     /// <summary>Appends both turns, persists the transcript, and returns the interviewer's message.</summary>
     public async Task<ApiResponse<AnswerMockInterviewResultDto>> Handle(
         AnswerMockInterviewCommand request, CancellationToken cancellationToken)
     {
-        var interview = await _db.MockInterviews
-            .FirstOrDefaultAsync(m => m.Id == request.InterviewId, cancellationToken)
-            ?? throw new NotFoundException("Interview not found.");
+        // #124 concurrency (CodeRabbit #146): serialize answers to the SAME
+        // interview so the read-append-write below cannot drop a turn.
+        // In-process ceiling documented on AsyncKeyedLock.
+        using (await _lock.AcquireAsync($"mock:answer:{request.InterviewId}", cancellationToken))
+        {
+            var interview = await _db.MockInterviews
+                .FirstOrDefaultAsync(m => m.Id == request.InterviewId, cancellationToken)
+                ?? throw new NotFoundException("Interview not found.");
 
-        if (interview.Status is MockInterviewStatus.Completed or MockInterviewStatus.Failed)
-            throw new ConflictException("Interview has already ended.");
+            if (interview.Status is MockInterviewStatus.Completed or MockInterviewStatus.Failed)
+                throw new ConflictException("Interview has already ended.");
 
-        var turns = string.IsNullOrEmpty(interview.TranscriptJson)
-            ? new List<TranscriptTurn>()
-            : JsonSerializer.Deserialize<List<TranscriptTurn>>(interview.TranscriptJson, TranscriptTurn.JsonOptions)
-              ?? new List<TranscriptTurn>();
+            var turns = string.IsNullOrEmpty(interview.TranscriptJson)
+                ? new List<TranscriptTurn>()
+                : JsonSerializer.Deserialize<List<TranscriptTurn>>(interview.TranscriptJson, TranscriptTurn.JsonOptions)
+                  ?? new List<TranscriptTurn>();
 
-        turns.Add(new TranscriptTurn(TranscriptTurn.CandidateRole, request.Message, null, DateTime.UtcNow));
+            turns.Add(new TranscriptTurn(TranscriptTurn.CandidateRole, request.Message, null, DateTime.UtcNow));
 
-        var followUp = await _generator.FollowUpAsync(turns, cancellationToken)
-            ?? "Good. What's the time and space complexity of your approach, and which edge cases break it?";
-        turns.Add(new TranscriptTurn(TranscriptTurn.InterviewerRole, followUp, null, DateTime.UtcNow));
+            var followUp = await _generator.FollowUpAsync(turns, cancellationToken)
+                ?? "Good. What's the time and space complexity of your approach, and which edge cases break it?";
+            turns.Add(new TranscriptTurn(TranscriptTurn.InterviewerRole, followUp, null, DateTime.UtcNow));
 
-        interview.TranscriptJson = JsonSerializer.Serialize(turns, TranscriptTurn.JsonOptions);
+            interview.TranscriptJson = JsonSerializer.Serialize(turns, TranscriptTurn.JsonOptions);
+            await _db.SaveChangesAsync(cancellationToken);
 
-        // ponytail: last-writer-wins â€” two concurrent answers to the same
-        // interview can drop a turn; a concurrency token on TranscriptJson is
-        // the upgrade if that ever shows up in practice.
-        await _db.SaveChangesAsync(cancellationToken);
-
-        return ApiResponse<AnswerMockInterviewResultDto>.SuccessResult(
-            new AnswerMockInterviewResultDto(followUp, turns.Count, InterviewOngoing: true));
+            return ApiResponse<AnswerMockInterviewResultDto>.SuccessResult(
+                new AnswerMockInterviewResultDto(followUp, turns.Count, InterviewOngoing: true));
+        }
     }
 }

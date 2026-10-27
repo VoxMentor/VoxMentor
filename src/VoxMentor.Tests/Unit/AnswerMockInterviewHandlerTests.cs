@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
+using VoxMentor.Application.Common.Services;
 using VoxMentor.Application.Features.MockInterviews;
 using VoxMentor.Domain.Entities;
 using VoxMentor.Domain.Enums;
@@ -44,7 +45,7 @@ public class AnswerMockInterviewHandlerTests
             new FakeCurrentUserService { UserId = userId });
 
         var generator = new StubGenerator();
-        return (db, new AnswerMockInterviewHandler(db, generator), generator);
+        return (db, new AnswerMockInterviewHandler(db, generator, new AsyncKeyedLock()), generator);
     }
 
     private static async Task<MockInterview> SeedInterviewAsync(

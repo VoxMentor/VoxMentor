@@ -411,6 +411,7 @@ Response `202`:
 ```json
 {
   "interviewId": "uuid",
+  "questionId": "uuid",
   "type": "Technical",
   "status": "InProgress",
   "duration": 45,

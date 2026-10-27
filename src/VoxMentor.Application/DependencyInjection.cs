@@ -2,6 +2,7 @@ using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using VoxMentor.Application.Common.Behaviors;
+using VoxMentor.Application.Common.Services;
 using VoxMentor.Application.Services;
 
 namespace VoxMentor.Application;
@@ -19,6 +20,10 @@ public static class DependencyInjection
         services.AddValidatorsFromAssembly(assembly);
 
         services.AddScoped<IBktEngine, BktEngine>();
+
+        // #124: serializes the mock-interview daily-quota count+insert and
+        // per-interview transcript appends (in-process; see class doc).
+        services.AddSingleton<AsyncKeyedLock>();
 
         // #119: per-request Random for the JD-weighted ε-greedy selector. Scoped
         // rather than a shared instance — Random isn't thread-safe.
