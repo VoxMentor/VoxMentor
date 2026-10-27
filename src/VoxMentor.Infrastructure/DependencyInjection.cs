@@ -69,6 +69,9 @@ public static class DependencyInjection
         // JD parse (#117): 60s internal cap via linked CTS inside JdParseService;
         // failures degrade to keyword heuristics instead of surfacing 503.
         services.AddHttpClient<IJdParseService, JdParseService>();
+        // Mock interview dialogue (#124): 60s internal cap, failures degrade to
+        // the handler's canned lines — an Ollama outage never 500s /mock/*.
+        services.AddHttpClient<IMockInterviewGenerator, OllamaMockInterviewGenerator>();
         // Tutor streaming (#73): HttpClient.Timeout covers only the header wait
         // (ResponseHeadersRead) — the NDJSON body read is capped by a linked CTS
         // inside TutorService.StreamAnswerAsync (300s total per ask).

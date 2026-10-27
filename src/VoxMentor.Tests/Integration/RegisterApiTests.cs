@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Features.Auth.Register;
+using VoxMentor.Application.Features.MockInterviews;
 using VoxMentor.Domain.Entities;
 using VoxMentor.Infrastructure.Persistence;
 using Xunit;
@@ -61,8 +62,34 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             services.AddSingleton<RecordingTextbookIngestionQueue>();
             services.AddSingleton<ITextbookIngestionQueue>(
                 provider => provider.GetRequiredService<RecordingTextbookIngestionQueue>());
+
+            // #124: deterministic dialogue instead of dialing Ollama from tests.
+            services.AddSingleton<StubMockInterviewGenerator>();
+            services.AddSingleton<IMockInterviewGenerator>(
+                provider => provider.GetRequiredService<StubMockInterviewGenerator>());
         });
     }
+}
+
+/// <summary>
+/// Deterministic mock-interview lines (#124): /mock/* tests assert stable text
+/// instead of whatever a local Ollama instance would generate.
+/// </summary>
+public sealed class StubMockInterviewGenerator : IMockInterviewGenerator
+{
+    /// <summary>Fixed opening line returned for every /mock/start.</summary>
+    public const string Opening = "STUB OPENING: here is your first problem.";
+
+    /// <summary>Fixed probe returned for every /mock/{id}/answer.</summary>
+    public const string FollowUp = "STUB PROBE: what is the time complexity?";
+
+    public Task<string?> OpeningAsync(
+        string? company, string? role, string problemTitle, CancellationToken cancellationToken = default)
+        => Task.FromResult<string?>(Opening);
+
+    public Task<string?> FollowUpAsync(
+        IReadOnlyList<TranscriptTurn> transcript, CancellationToken cancellationToken = default)
+        => Task.FromResult<string?>(FollowUp);
 }
 
 /// <summary>

@@ -395,22 +395,23 @@ Response `200`:
 
 ---
 
-# 6. Mock Interviews — 🚧 To be built
+# 6. Mock Interviews — 🚧 start + answer implemented (#124); complete/review/history to be built
 
 ### POST /api/v1/mock/start
 Start an AI mock interview. Opening message is generated from the JD's company/role and an adaptively chosen problem.
-**Rate limit:** 1/day free tier, 5/day Pro → `429`.
+**Rate limit:** per-day quota (`MockInterview:DailyLimit`, default 1/day) → `429`.
 
 Request:
 ```json
 { "jdId": "uuid", "type": "Technical", "voiceMode": true }
 ```
-`type` ∈ `Technical | Hr | Both`. `jdId` optional.
+`type` ∈ `Technical | Behavioral` (case-insensitive, default `Technical`). `jdId` optional.
 
 Response `202`:
 ```json
 {
   "interviewId": "uuid",
+  "questionId": "uuid",
   "type": "Technical",
   "status": "InProgress",
   "duration": 45,
@@ -720,7 +721,7 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | Practice/Learning | 9 (questions list/get, next-question, eligible, submit-code, answer, mastery, readiness, submissions) | ✅ Done |
 | Knowledge graph | 1 (concept prerequisite chain) | ✅ Done |
 | AI Coach | 2 REST (ask, session) + hub | ✅ hub + session; 🚧 ask generation (#72) |
-| Mock Interviews | 5 REST (start, answer, complete, review, history) + hub | 🚧 REST unbuilt; `InterviewHub` placeholder only |
+| Mock Interviews | 5 REST (start, answer, complete, review, history) + hub | 🚧 start/answer done (#124); 3 REST unbuilt; `InterviewHub` placeholder only |
 | Resume ATS | 1 (analyze) | 🚧 |
 | Admin (content) | 4 (questions create/list, textbook upload/status) | ✅ Done |
 | Admin (content, unbuilt) | 2 (concepts, prerequisites) | 🚧 |
@@ -729,4 +730,4 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | Code Exec Service | 1 (execute) | ✅ Done |
 | Voice Service | 3 (stt, tts, health) | ✅ Done |
 | Gateway | YARP routing + rate limiting | 🚧 |
-| **Total** | **48 REST + 3 hubs** | **40 done / 8 to build REST; 2/3 hubs done; AI Coach REST generation deferred (#72)** |
+| **Total** | **48 REST + 3 hubs** | **42 done / 6 to build REST; 2/3 hubs done; AI Coach REST generation deferred (#72)** |
