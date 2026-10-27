@@ -139,7 +139,7 @@ public class StartMockInterviewHandler : IRequestHandler<StartMockInterviewComma
         }
     }
 
-    /// <summary>Interviews started by any student within the given UTC day.</summary>
+    /// <summary>Interviews started by the current student within the given UTC day (the IUserOwned global filter scopes every MockInterviews query to them).</summary>
     private Task<int> CountStartedTodayAsync(DateTime todayUtc, DateTime tomorrowUtc, CancellationToken cancellationToken)
         => _db.MockInterviews
             .CountAsync(m => m.StartedAt >= todayUtc && m.StartedAt < tomorrowUtc, cancellationToken);

@@ -152,6 +152,22 @@ public class StartMockInterviewHandlerTests
         return jd.Id;
     }
 
+    /// <summary>Starts an interview in its own DI scope: 0 = success, 1 = rate-limited.</summary>
+    private static async Task<int> TryStartAsync(IServiceProvider provider)
+    {
+        using var scope = provider.CreateAsyncScope();
+        var sender = scope.ServiceProvider.GetRequiredService<ISender>();
+        try
+        {
+            await sender.Send(new StartMockInterviewCommand());
+            return 0;
+        }
+        catch (RateLimitException)
+        {
+            return 1;
+        }
+    }
+
     [Fact]
     public async Task Start_DailyLimitReached_ThrowsRateLimitException()
     {
@@ -214,21 +230,6 @@ public class StartMockInterviewHandlerTests
         var concept = await SeedConceptAsync(app.Db);
         await SeedQuestionAsync(app.Db, concept.Id);
 
-        async Task<int> TryStartAsync()
-        {
-            using var scope = app.Provider.CreateAsyncScope();
-            var sender = scope.ServiceProvider.GetRequiredService<ISender>();
-            try
-            {
-                await sender.Send(new StartMockInterviewCommand());
-                return 0;
-            }
-            catch (RateLimitException)
-            {
-                return 1;
-            }
-        }
-
         // Deterministic overlap (CodeRabbit #146): the first start is held
         // inside the lock at generation while the second attempt runs its
         // advisory count and blocks on the lock. Releasing then lets the loser
@@ -237,9 +238,9 @@ public class StartMockInterviewHandlerTests
         // the per-student lock is ever removed (unlike a bare Task.WhenAll,
         // which can pass sequentially).
         app.Generator.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var first = TryStartAsync();
+        var first = TryStartAsync(app.Provider);
         await app.Generator.FirstCall.Task;
-        var second = TryStartAsync();
+        var second = TryStartAsync(app.Provider);
         await Task.Delay(50); // give the loser time to reach the lock before release
         app.Generator.Gate.SetResult();
 
@@ -281,6 +282,42 @@ public class StartMockInterviewHandlerTests
         Assert.True(result.Success);
         Assert.Equal(new DateTime(2026, 10, 27), result.Data!.StartedAt.Date);
         Assert.Equal(2, await app.Db.MockInterviews.IgnoreQueryFilters().CountAsync());
+    }
+
+    [Fact]
+    public async Task Start_MidnightCrossingWhileHeld_LockRecountUsesNewDay()
+    {
+        var clock = new FakeClock(new DateTimeOffset(2026, 10, 26, 23, 59, 30, TimeSpan.Zero));
+        using var app = CreateApp(clock: clock);
+        var concept = await SeedConceptAsync(app.Db);
+        await SeedQuestionAsync(app.Db, concept.Id);
+
+        // Regression for stale day bounds inside the lock (CodeRabbit #146):
+        // hold the first start at generation pre-midnight (it will stamp and
+        // count the old day), let the second pass its advisory count for the
+        // old day and block on the lock, then cross UTC midnight before
+        // release. The in-lock re-count must recompute the day — the second
+        // start succeeds on the new day with two generation calls; stale
+        // bounds would count the first start's pre-midnight row and 429.
+        app.Generator.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var first = TryStartAsync(app.Provider);
+        await app.Generator.FirstCall.Task;
+        var second = TryStartAsync(app.Provider);
+        await Task.Delay(50); // second passes the old-day advisory count and blocks on the lock
+        clock.SetUtcNow(new DateTimeOffset(2026, 10, 27, 0, 0, 1, TimeSpan.Zero));
+        app.Generator.Gate.SetResult();
+
+        Assert.Equal(0, await first);
+        Assert.Equal(0, await second);
+        Assert.Equal(2, app.Generator.CallCount);
+
+        var interviews = await app.Db.MockInterviews.IgnoreQueryFilters()
+            .AsNoTracking()
+            .OrderBy(m => m.StartedAt)
+            .ToListAsync();
+        Assert.Equal(2, interviews.Count);
+        Assert.Equal(new DateTime(2026, 10, 26), interviews[0].StartedAt.Date);
+        Assert.Equal(new DateTime(2026, 10, 27), interviews[1].StartedAt.Date);
     }
 
     [Fact]
