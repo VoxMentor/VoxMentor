@@ -50,3 +50,16 @@ public class ServiceUnavailableException : Exception
     {
     }
 }
+
+public class MockInterviewGenerationException : Exception
+{
+    /// <summary>
+    /// The AI interviewer's dialogue generation failed (Ollama unreachable,
+    /// timeout, mid-stream error, empty output — #126). The hub surfaces this
+    /// as InterviewError; the REST handlers catch it and degrade to a canned line.
+    /// </summary>
+    public MockInterviewGenerationException(string message, Exception? innerException = null)
+        : base(message, innerException)
+    {
+    }
+}

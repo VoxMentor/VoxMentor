@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -90,13 +91,21 @@ public sealed class StubMockInterviewGenerator : IMockInterviewGenerator
     /// <summary>Fixed next-steps line returned for every /mock/{id}/complete.</summary>
     public const string ReviewNextSteps = "STUB NEXT STEPS: focus on complexity analysis.";
 
-    public Task<string?> OpeningAsync(
-        string? company, string? role, string problemTitle, CancellationToken cancellationToken = default)
-        => Task.FromResult<string?>(Opening);
+    public async IAsyncEnumerable<TutorChunk> OpeningStreamAsync(
+        string? company, string? role, string problemTitle,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await Task.CompletedTask;
+        yield return new TutorChunk(Opening);
+    }
 
-    public Task<string?> FollowUpAsync(
-        IReadOnlyList<TranscriptTurn> transcript, CancellationToken cancellationToken = default)
-        => Task.FromResult<string?>(FollowUp);
+    public async IAsyncEnumerable<TutorChunk> FollowUpStreamAsync(
+        IReadOnlyList<TranscriptTurn> transcript,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await Task.CompletedTask;
+        yield return new TutorChunk(FollowUp);
+    }
 
     public Task<MockInterviewReviewDraft?> ReviewAsync(
         IReadOnlyList<TranscriptTurn> transcript,

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -30,13 +31,21 @@ public class CompleteMockInterviewHandlerTests
     {
         public MockInterviewReviewDraft? Review { get; set; }
 
-        public Task<string?> OpeningAsync(
-            string? company, string? role, string problemTitle, CancellationToken cancellationToken = default)
-            => Task.FromResult<string?>(null);
+        public async IAsyncEnumerable<TutorChunk> OpeningStreamAsync(
+            string? company, string? role, string problemTitle,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
 
-        public Task<string?> FollowUpAsync(
-            IReadOnlyList<TranscriptTurn> transcript, CancellationToken cancellationToken = default)
-            => Task.FromResult<string?>(null);
+        public async IAsyncEnumerable<TutorChunk> FollowUpStreamAsync(
+            IReadOnlyList<TranscriptTurn> transcript,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
 
         public Task<MockInterviewReviewDraft?> ReviewAsync(
             IReadOnlyList<TranscriptTurn> transcript,

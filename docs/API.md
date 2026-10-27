@@ -630,9 +630,9 @@ Models load lazily on first request and download into `VOICE_MODELS_DIR` (`/mode
 
 ---
 
-# 10. SignalR Hubs — ✅ Implemented (tutor + mastery); 🚧 interview
+# 10. SignalR Hubs — ✅ Implemented (tutor + mastery + interview)
 
-`TutorHub` and `MasteryHub` are live. `InterviewHub` exposes the events below but only streams placeholder messages until Mock Interviews are built.
+`TutorHub`, `MasteryHub`, and `InterviewHub` are live. The interview hub streams the same dialogue the REST endpoints persist (#126).
 
 Auth: JWT via `?access_token=<token>` query string on the hub URL.
 
@@ -655,13 +655,14 @@ Auth: JWT via `?access_token=<token>` query string on the hub URL.
 ### /hubs/interview — Mock interview real-time (voice + text)
 | Event | Direction | Data |
 |---|---|---|
-| `StartMock` | Client → Server | `{ jdId, type, voiceMode }` |
-| `SendAnswer` | Client → Server | `{ interviewId, message }` |
+| `StartMock` | Client → Server | `{ jdId, type, voiceMode }` → returns the 202 start body (or null on error) |
+| `SendAnswer` | Client → Server | `{ interviewId, message }` → returns the 200 answer body (or null on error) |
 | `CompleteMock` | Client → Server | `{ interviewId }` |
-| `InterviewerMessage` | Server → Client | `"text"` (streamed) |
-| `InterviewerVoice` | Server → Client | audio chunk (via Voice Service) |
-| `InterviewFollowUp` | Server → Client | `"follow-up question"` |
-| `InterviewComplete` | Server → Client | `{ interviewId, score }` |
+| `InterviewerMessage` | Server → Client | `"text"` (streamed tokens for both the opening and each probe) |
+| `InterviewComplete` | Server → Client | `{ interviewId, score, status, startedAt, completedAt, review }` (real score; only when the run actually ends) |
+| `InterviewError` | Server → Client | `{ interviewId, message }` (validation, 404, 409, 429, or the AI interviewer being unavailable — the client is never left hanging) |
+
+The hub routes the same commands and dialogue service as the REST endpoints (#126) — no parallel business logic. `InterviewerVoice` is not wired yet (Voice Service).
 
 ---
 
@@ -722,7 +723,7 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | Practice/Learning | 9 (questions list/get, next-question, eligible, submit-code, answer, mastery, readiness, submissions) | ✅ Done |
 | Knowledge graph | 1 (concept prerequisite chain) | ✅ Done |
 | AI Coach | 2 REST (ask, session) + hub | ✅ hub + session; 🚧 ask generation (#72) |
-| Mock Interviews | 5 REST (start, answer, complete, review, history) + hub | ✅ 5 REST done (#124, #125); `InterviewHub` placeholder only |
+| Mock Interviews | 5 REST (start, answer, complete, review, history) + hub | ✅ REST (#124, #125) + hub (#126) |
 | Resume ATS | 1 (analyze) | 🚧 |
 | Admin (content) | 4 (questions create/list, textbook upload/status) | ✅ Done |
 | Admin (content, unbuilt) | 2 (concepts, prerequisites) | 🚧 |

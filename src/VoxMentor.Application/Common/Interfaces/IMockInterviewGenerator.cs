@@ -5,23 +5,26 @@ namespace VoxMentor.Application.Common.Interfaces;
 
 /// <summary>
 /// Generates mock-interview dialogue lines and rubric reviews via Ollama
-/// (#124/#125). Every method returns null on any failure — callers degrade to
-/// a canned line or canned review, never 500.
+/// (#124/#125/#126). The dialogue methods stream tokens as they are produced;
+/// any failure (unreachable, timeout, mid-stream error, empty output) throws
+/// <see cref="Exceptions.MockInterviewGenerationException"/> — REST callers
+/// catch it and degrade to a canned line, the interview hub surfaces it as
+/// InterviewError. ReviewAsync keeps the buffered null-on-failure contract.
 /// </summary>
 public interface IMockInterviewGenerator
 {
-    /// <summary>Opening greeting + first problem, seeded by the JD's company/role.</summary>
+    /// <summary>Streams the opening greeting + first problem, seeded by the JD's company/role.</summary>
     /// <param name="company">JD company name, or null when the interview has no JD.</param>
     /// <param name="role">JD role title, or null when the interview has no JD.</param>
     /// <param name="problemTitle">Title of the adaptively selected opening problem.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    Task<string?> OpeningAsync(
+    IAsyncEnumerable<TutorChunk> OpeningStreamAsync(
         string? company, string? role, string problemTitle, CancellationToken cancellationToken = default);
 
-    /// <summary>One follow-up question or probe for the candidate's latest turn.</summary>
+    /// <summary>Streams one follow-up question or probe for the candidate's latest turn.</summary>
     /// <param name="transcript">Ordered conversation turns so far.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    Task<string?> FollowUpAsync(
+    IAsyncEnumerable<TutorChunk> FollowUpStreamAsync(
         IReadOnlyList<TranscriptTurn> transcript, CancellationToken cancellationToken = default);
 
     /// <summary>
