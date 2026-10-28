@@ -1,6 +1,7 @@
 using System.Text.Json;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
@@ -92,6 +93,7 @@ public class CompleteMockInterviewHandler : IRequestHandler<CompleteMockIntervie
 
             MockInterviewReviewDraft draft;
             float after;
+            var masteryUpdates = new List<(StudentMastery Mastery, float Previous)>();
             if (generated is null)
             {
                 // Degraded: no solved verdicts → no mastery writes, so the
@@ -102,8 +104,9 @@ public class CompleteMockInterviewHandler : IRequestHandler<CompleteMockIntervie
             else
             {
                 draft = generated;
-                await ApplyMasteryUpdatesAsync(userId, turns, draft, cancellationToken);
-                // AsNoTracking readiness reads the DB, so mastery is saved first.
+                masteryUpdates = await ApplyMasteryUpdatesAsync(userId, turns, draft, cancellationToken);
+                // Same scoped context + transaction as the completion save below,
+                // so the readiness read sees the uncommitted mastery rows.
                 after = await ReadReadinessAsync(interview.JdId, cancellationToken);
             }
 
@@ -120,7 +123,26 @@ public class CompleteMockInterviewHandler : IRequestHandler<CompleteMockIntervie
             interview.Status = MockInterviewStatus.Completed;
             interview.CompletedAt = DateTime.UtcNow;
             interview.Feedback = review.NextSteps;
+
+            // One transaction: mastery writes + interview completion commit
+            // together, so a failure after mastery is applied never leaves an
+            // InProgress interview with applied mastery (retry would re-run BKT).
+            // Publish events only after the commit.
+            await using var transaction = await _db.BeginTransactionAsync(cancellationToken);
             await _db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+
+            foreach (var (mastery, previous) in masteryUpdates)
+            {
+                try
+                {
+                    await _eventPublisher.PublishMasteryUpdatedAsync(mastery, previous, cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Completion is committed; a delivery failure must not fail the request.
+                }
+            }
 
             return ApiResponse<MockInterviewReview>.SuccessResult(review, "Mock interview completed.");
         }
@@ -150,7 +172,7 @@ public class CompleteMockInterviewHandler : IRequestHandler<CompleteMockIntervie
     /// questions by order of first appearance (problem1 → first question);
     /// questions past the last verdict get no update — no signal, no write.
     /// </summary>
-    private async Task ApplyMasteryUpdatesAsync(
+    private async Task<List<(StudentMastery Mastery, float Previous)>> ApplyMasteryUpdatesAsync(
         string userId,
         IReadOnlyList<TranscriptTurn> turns,
         MockInterviewReviewDraft draft,
@@ -162,7 +184,7 @@ public class CompleteMockInterviewHandler : IRequestHandler<CompleteMockIntervie
             .Distinct()
             .ToList();
         if (questionIds.Count == 0)
-            return;
+            return new List<(StudentMastery Mastery, float Previous)>();
 
         var byId = await _db.Questions
             .AsNoTracking()
@@ -220,11 +242,14 @@ public class CompleteMockInterviewHandler : IRequestHandler<CompleteMockIntervie
         }
 
         if (updates.Count == 0)
-            return;
+            return new List<(StudentMastery Mastery, float Previous)>();
 
+        // Saved inside the transaction opened by Handle; committed together with
+        // the interview completion below. No publishing here — delivery happens
+        // after CommitAsync so a failed publish never leaves mastery applied
+        // without a completed interview.
         await _db.SaveChangesAsync(cancellationToken);
-        foreach (var (mastery, previous) in updates)
-            await _eventPublisher.PublishMasteryUpdatedAsync(mastery, previous, cancellationToken);
+        return updates;
     }
 
     /// <summary>Deterministic fallback when the model is down — degrade, never 500.</summary>
