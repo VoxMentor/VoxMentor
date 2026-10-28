@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -38,19 +39,25 @@ public class StartMockInterviewHandlerTests
 
         public int CallCount => Volatile.Read(ref _calls);
 
-        public async Task<string?> OpeningAsync(
-            string? company, string? role, string problemTitle, CancellationToken cancellationToken = default)
+        public async IAsyncEnumerable<TutorChunk> OpeningStreamAsync(
+            string? company, string? role, string problemTitle,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             var call = Interlocked.Increment(ref _calls);
             FirstCall.TrySetResult();
             if (call == 1 && Gate is not null)
                 await Gate.Task;
-            return Opening;
+            if (Opening is not null)
+                yield return new TutorChunk(Opening);
         }
 
-        public Task<string?> FollowUpAsync(
-            IReadOnlyList<TranscriptTurn> transcript, CancellationToken cancellationToken = default)
-            => Task.FromResult<string?>(null);
+        public async IAsyncEnumerable<TutorChunk> FollowUpStreamAsync(
+            IReadOnlyList<TranscriptTurn> transcript,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
 
         public Task<MockInterviewReviewDraft?> ReviewAsync(
             IReadOnlyList<TranscriptTurn> transcript,
@@ -235,6 +242,7 @@ public class StartMockInterviewHandlerTests
     public async Task Start_ParallelStarts_ExactlyOneWins_DailyLimit()
     {
         using var app = CreateApp();
+        app.Generator.Opening = "OPENING"; // non-null so the first pass succeeds without the canned retry
         var concept = await SeedConceptAsync(app.Db);
         await SeedQuestionAsync(app.Db, concept.Id);
 
@@ -265,6 +273,7 @@ public class StartMockInterviewHandlerTests
     {
         var clock = new FakeClock(new DateTimeOffset(2026, 10, 26, 23, 59, 0, TimeSpan.Zero));
         using var app = CreateApp(clock: clock);
+        app.Generator.Opening = "OPENING";
         var concept = await SeedConceptAsync(app.Db);
         await SeedQuestionAsync(app.Db, concept.Id);
         app.Db.MockInterviews.Add(new MockInterview
@@ -297,6 +306,7 @@ public class StartMockInterviewHandlerTests
     {
         var clock = new FakeClock(new DateTimeOffset(2026, 10, 26, 23, 59, 30, TimeSpan.Zero));
         using var app = CreateApp(clock: clock);
+        app.Generator.Opening = "OPENING"; // non-null so both starts succeed on the first pass
         var concept = await SeedConceptAsync(app.Db);
         await SeedQuestionAsync(app.Db, concept.Id);
 

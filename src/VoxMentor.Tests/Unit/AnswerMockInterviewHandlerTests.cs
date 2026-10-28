@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VoxMentor.Application.Common.Exceptions;
@@ -26,13 +27,24 @@ public class AnswerMockInterviewHandlerTests
     {
         public string? FollowUp { get; set; }
 
-        public Task<string?> OpeningAsync(
-            string? company, string? role, string problemTitle, CancellationToken cancellationToken = default)
-            => Task.FromResult<string?>(null);
+        public async IAsyncEnumerable<TutorChunk> OpeningStreamAsync(
+            string? company, string? role, string problemTitle,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
 
-        public Task<string?> FollowUpAsync(
-            IReadOnlyList<TranscriptTurn> transcript, CancellationToken cancellationToken = default)
-            => Task.FromResult(FollowUp);
+        public async IAsyncEnumerable<TutorChunk> FollowUpStreamAsync(
+            IReadOnlyList<TranscriptTurn> transcript,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            if (FollowUp is not null)
+            {
+                yield return new TutorChunk(FollowUp);
+            }
+        }
 
         public Task<MockInterviewReviewDraft?> ReviewAsync(
             IReadOnlyList<TranscriptTurn> transcript,
@@ -53,7 +65,10 @@ public class AnswerMockInterviewHandlerTests
             new FakeCurrentUserService { UserId = userId });
 
         var generator = new StubGenerator();
-        return (db, new AnswerMockInterviewHandler(db, generator, new AsyncKeyedLock()), generator);
+        var session = new MockInterviewSessionService(
+            db, new FakeCurrentUserService { UserId = userId },
+            sender: null!, generator, configuration: null!, new AsyncKeyedLock());
+        return (db, new AnswerMockInterviewHandler(session), generator);
     }
 
     private static async Task<MockInterview> SeedInterviewAsync(
