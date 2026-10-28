@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql;
 using Pgvector;
@@ -70,6 +71,30 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     /// <inheritdoc />
     public IQueryable<T> SqlQueryRaw<T>(string sql, params object[] parameters) where T : class
         => Database.SqlQueryRaw<T>(sql, parameters);
+
+    /// <inheritdoc />
+    public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+    {
+        // The in-memory provider (used by unit/integration tests) does not
+        // support real transactions; BeginTransactionAsync throws a warning-as-
+        // error there. Return a no-op transaction so the handler code path
+        // stays identical across providers — production (PostgreSQL) still gets
+        // a real transaction and rollback on failure.
+        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+            return Task.FromResult<IDbContextTransaction>(new NoOpDbContextTransaction());
+        return Database.BeginTransactionAsync(cancellationToken);
+    }
+
+    private sealed class NoOpDbContextTransaction : IDbContextTransaction
+    {
+        public Guid TransactionId { get; } = Guid.Empty;
+        public void Commit() { }
+        public Task CommitAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void Rollback() { }
+        public Task RollbackAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void Dispose() { }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
 
     /// <summary>
     /// Configures entity keys, constraints, and the StudentMastery xmin

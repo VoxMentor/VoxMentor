@@ -39,7 +39,7 @@ public class GetMockInterviewHistoryHandler : IRequestHandler<GetMockInterviewHi
             .AsNoTracking()
             .OrderByDescending(m => m.StartedAt)
             .ThenByDescending(m => m.Id)
-            .Skip((page - 1) * pageSize)
+            .Skip((int)Math.Min((long)(page - 1) * pageSize, int.MaxValue))
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 

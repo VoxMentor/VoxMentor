@@ -41,6 +41,9 @@ internal sealed class KnowledgeGraphTestDbContext : DbContext, IApplicationDbCon
     public IQueryable<T> SqlQueryRaw<T>(string sql, params object[] parameters) where T : class
         => Database.SqlQueryRaw<T>(sql, parameters);
 
+    public Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+        => Database.BeginTransactionAsync(cancellationToken);
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         // ponytail: null! DbSets still register entity types — ignore everything unused

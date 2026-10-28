@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Storage;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Features.Practice.SubmitAnswer;
 using VoxMentor.Application.Services;
@@ -335,6 +336,9 @@ public class SubmitAnswerHandlerTests
 
         public IQueryable<T> SqlQueryRaw<T>(string sql, params object[] parameters) where T : class
             => _inner.SqlQueryRaw<T>(sql, parameters);
+
+        public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+            => _inner.BeginTransactionAsync(cancellationToken);
     }
 
     [Fact]
@@ -620,5 +624,8 @@ public class SubmitAnswerHandlerTests
 
         public IQueryable<T> SqlQueryRaw<T>(string sql, params object[] parameters) where T : class
             => _inner.SqlQueryRaw<T>(sql, parameters);
+
+        public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+            => _inner.BeginTransactionAsync(cancellationToken);
     }
 }
