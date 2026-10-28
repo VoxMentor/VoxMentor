@@ -395,7 +395,7 @@ Response `200`:
 
 ---
 
-# 6. Mock Interviews — 🚧 start + answer implemented (#124); complete/review/history to be built
+# 6. Mock Interviews — all 5 REST endpoints implemented (#124 start/answer, #125 complete/review/history)
 
 ### POST /api/v1/mock/start
 Start an AI mock interview. Opening message is generated from the JD's company/role and an adaptively chosen problem.
@@ -436,7 +436,7 @@ Response `200`:
 Errors: `404` interview not found, `409` interview already ended, `400` empty message.
 
 ### POST /api/v1/mock/{interviewId}/complete
-End the interview and get the AI review (score, per-problem feedback, next steps).
+End the interview and get the AI review (score, per-problem feedback, next steps). Flips `status` to `Completed`, sets `completedAt`, persists the review, and applies BKT mastery updates from the review's `solved` verdicts. If the review model is unreachable, a canned review is stored (score 50, no mastery writes).
 
 Response `200`:
 ```json
@@ -467,16 +467,17 @@ Response `200`:
   "completedAt": "2026-08-28T14:40:00Z"
 }
 ```
+Errors: `404` unknown/foreign interview, interview not `Completed`, or no stored review.
 
-### GET /api/v1/mock/history
-List the user's interviews, newest first.
+### GET /api/v1/mock/history?page={page}&pageSize={pageSize}
+List the user's interviews, newest first. `page` defaults to 1, `pageSize` to 20 (clamped 1–100). `score` is null until the interview is `Completed`.
 
 Response `200`:
 ```json
 {
   "interviews": [
     { "interviewId": "uuid-1", "type": "Technical", "status": "Completed", "score": 55, "date": "2026-08-21T14:00:00Z" },
-    { "interviewId": "uuid-2", "type": "Hr", "status": "InProgress", "score": null, "date": "2026-08-28T14:00:00Z" }
+    { "interviewId": "uuid-2", "type": "Behavioral", "status": "InProgress", "score": null, "date": "2026-08-28T14:00:00Z" }
   ]
 }
 ```
@@ -721,7 +722,7 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | Practice/Learning | 9 (questions list/get, next-question, eligible, submit-code, answer, mastery, readiness, submissions) | ✅ Done |
 | Knowledge graph | 1 (concept prerequisite chain) | ✅ Done |
 | AI Coach | 2 REST (ask, session) + hub | ✅ hub + session; 🚧 ask generation (#72) |
-| Mock Interviews | 5 REST (start, answer, complete, review, history) + hub | 🚧 start/answer done (#124); 3 REST unbuilt; `InterviewHub` placeholder only |
+| Mock Interviews | 5 REST (start, answer, complete, review, history) + hub | ✅ 5 REST done (#124, #125); `InterviewHub` placeholder only |
 | Resume ATS | 1 (analyze) | 🚧 |
 | Admin (content) | 4 (questions create/list, textbook upload/status) | ✅ Done |
 | Admin (content, unbuilt) | 2 (concepts, prerequisites) | 🚧 |

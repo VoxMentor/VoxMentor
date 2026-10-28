@@ -51,6 +51,14 @@ public class StartMockInterviewHandlerTests
         public Task<string?> FollowUpAsync(
             IReadOnlyList<TranscriptTurn> transcript, CancellationToken cancellationToken = default)
             => Task.FromResult<string?>(null);
+
+        public Task<MockInterviewReviewDraft?> ReviewAsync(
+            IReadOnlyList<TranscriptTurn> transcript,
+            InterviewType type,
+            string? company,
+            string? role,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<MockInterviewReviewDraft?>(null);
     }
 
     private sealed class FakeClock : TimeProvider

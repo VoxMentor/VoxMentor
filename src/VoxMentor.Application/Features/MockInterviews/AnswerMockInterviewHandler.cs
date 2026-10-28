@@ -33,10 +33,12 @@ public class AnswerMockInterviewHandler : IRequestHandler<AnswerMockInterviewCom
     public async Task<ApiResponse<AnswerMockInterviewResultDto>> Handle(
         AnswerMockInterviewCommand request, CancellationToken cancellationToken)
     {
-        // #124 concurrency (CodeRabbit #146): serialize answers to the SAME
-        // interview so the read-append-write below cannot drop a turn.
-        // In-process ceiling documented on AsyncKeyedLock.
-        using (await _lock.AcquireAsync($"mock:answer:{request.InterviewId}", cancellationToken))
+        // #124/#125 concurrency (CodeRabbit #146): serialize ALL writes on one
+        // interview — answers and the complete/review pass — so the
+        // read-append-write below cannot drop a turn and complete cannot
+        // interleave with a late answer. In-process ceiling documented on
+        // AsyncKeyedLock.
+        using (await _lock.AcquireAsync($"mock:interview:{request.InterviewId}", cancellationToken))
         {
             var interview = await _db.MockInterviews
                 .FirstOrDefaultAsync(m => m.Id == request.InterviewId, cancellationToken)

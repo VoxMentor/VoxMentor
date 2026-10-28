@@ -33,6 +33,14 @@ public class AnswerMockInterviewHandlerTests
         public Task<string?> FollowUpAsync(
             IReadOnlyList<TranscriptTurn> transcript, CancellationToken cancellationToken = default)
             => Task.FromResult(FollowUp);
+
+        public Task<MockInterviewReviewDraft?> ReviewAsync(
+            IReadOnlyList<TranscriptTurn> transcript,
+            InterviewType type,
+            string? company,
+            string? role,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<MockInterviewReviewDraft?>(null);
     }
 
     private static (ApplicationDbContext Db, AnswerMockInterviewHandler Handler, StubGenerator Generator) CreateHandler(

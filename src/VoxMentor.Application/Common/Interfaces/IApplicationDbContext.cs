@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Storage;
 using VoxMentor.Domain.Entities;
 
 namespace VoxMentor.Application.Common.Interfaces;
@@ -27,6 +28,9 @@ public interface IApplicationDbContext
     DbSet<TextbookChunk> TextbookChunks { get; }
     /// <summary>Persists tracked changes and returns the number of affected rows.</summary>
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Begins a transaction on the context's connection. Reads on this context see its uncommitted writes.</summary>
+    Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Detaches all tracked entities. Used to reset stale state before retrying
