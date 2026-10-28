@@ -375,6 +375,7 @@ public class InterviewHubTests
         var message = error.Args[0]!.GetType().GetProperty("message")!.GetValue(error.Args[0])!.ToString();
         Assert.Contains("required", message);
 
+        app.Db.ChangeTracker.Clear();
         var stored = await app.Db.MockInterviews.IgnoreQueryFilters().SingleAsync(m => m.Id == interview.Id);
         Assert.Single(System.Text.Json.JsonSerializer.Deserialize<List<TranscriptTurn>>(
             stored.TranscriptJson!, TranscriptTurn.JsonOptions)!);
@@ -423,6 +424,7 @@ public class InterviewHubTests
         var message = error.Args[0]!.GetType().GetProperty("message")!.GetValue(error.Args[0])!.ToString();
         Assert.Contains("temporarily unavailable", message);
 
+        app.Db.ChangeTracker.Clear();
         var stored = await app.Db.MockInterviews.IgnoreQueryFilters().SingleAsync(m => m.Id == interview.Id);
         Assert.Single(System.Text.Json.JsonSerializer.Deserialize<List<TranscriptTurn>>(
             stored.TranscriptJson!, TranscriptTurn.JsonOptions)!);

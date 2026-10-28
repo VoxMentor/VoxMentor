@@ -655,9 +655,9 @@ Auth: JWT via `?access_token=<token>` query string on the hub URL.
 ### /hubs/interview — Mock interview real-time (voice + text)
 | Event | Direction | Data |
 |---|---|---|
-| `StartMock` | Client → Server | `{ jdId, type, voiceMode }` → returns the 202 start body (or null on error) |
-| `SendAnswer` | Client → Server | `{ interviewId, message }` → returns the 200 answer body (or null on error) |
-| `CompleteMock` | Client → Server | `{ interviewId }` |
+| `StartMock` | Client → Server | positional args `(jdId, type, voiceMode)` → returns the 202 start body (or null on error) |
+| `SendAnswer` | Client → Server | positional args `(interviewId, message)` → returns the 200 answer body (or null on error) |
+| `CompleteMock` | Client → Server | positional args `(interviewId)` |
 | `InterviewerMessage` | Server → Client | `"text"` (streamed tokens for both the opening and each probe) |
 | `InterviewComplete` | Server → Client | `{ interviewId, score, status, startedAt, completedAt, review }` (real score; only when the run actually ends) |
 | `InterviewError` | Server → Client | `{ interviewId, message }` (validation, 404, 409, 429, or the AI interviewer being unavailable — the client is never left hanging) |
@@ -732,4 +732,4 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | Code Exec Service | 1 (execute) | ✅ Done |
 | Voice Service | 3 (stt, tts, health) | ✅ Done |
 | Gateway | YARP routing + rate limiting | 🚧 |
-| **Total** | **48 REST + 3 hubs** | **42 done / 6 to build REST; 2/3 hubs done; AI Coach REST generation deferred (#72)** |
+| **Total** | **48 REST + 3 hubs** | **44 done / 4 to build REST; 3/3 hubs done; AI Coach REST generation deferred (#72)** |
