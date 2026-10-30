@@ -37,11 +37,18 @@ public class AnswerMockInterviewHandlerTests
         /// <summary>Verdict for #148; null = model unavailable (must not stall).</summary>
         public bool? Solved { get; set; }
 
+        /// <summary>JD context the intro was generated with (#148 answer-time lookup).</summary>
+        public string? LastCompany { get; private set; }
+
+        public string? LastRole { get; private set; }
+
         public async IAsyncEnumerable<TutorChunk> OpeningStreamAsync(
             string? company, string? role, string problemTitle,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await Task.CompletedTask;
+            LastCompany = company;
+            LastRole = role;
             if (Opening is not null)
             {
                 yield return new TutorChunk(Opening);
@@ -147,7 +154,8 @@ public class AnswerMockInterviewHandlerTests
         string userId = "user-1",
         MockInterviewStatus status = MockInterviewStatus.InProgress,
         int answeredQuestions = 0,
-        Guid? questionId = null)
+        Guid? questionId = null,
+        Guid? jdId = null)
     {
         var interview = new MockInterview
         {
@@ -158,6 +166,7 @@ public class AnswerMockInterviewHandlerTests
             AnsweredQuestions = answeredQuestions,
             Status = status,
             StartedAt = DateTime.UtcNow,
+            JdId = jdId,
             TranscriptJson = JsonSerializer.Serialize(
                 new List<TranscriptTurn>
                 {
@@ -290,6 +299,63 @@ public class AnswerMockInterviewHandlerTests
         var stored = await db.MockInterviews.IgnoreQueryFilters().SingleAsync(m => m.Id == interview.Id);
         Assert.Equal(1, stored.AnsweredQuestions);
         Assert.Equal(sender.Next.QuestionId, ReadTranscript(stored)[^1].QuestionId);
+    }
+
+    [Fact]
+    public async Task Answer_SolvedButIntroFails_CannedRetryStillAdvancesOnce()
+    {
+        var (db, handler, generator, sender) = CreateHandler();
+        generator.Solved = true;
+        generator.Opening = null; // intro generation fails right after the verdict → REST canned retry
+        var interview = await SeedInterviewAsync(db);
+
+        var result = await handler.Handle(new AnswerMockInterviewCommand
+        {
+            InterviewId = interview.Id,
+            Message = "Kadane's algorithm"
+        }, CancellationToken.None);
+
+        // The attempt-1 verdict survives the retry: an advance with the canned
+        // intro, not a probe re-judged by the canned judge's null verdict.
+        Assert.Equal(sender.Next.QuestionId, result.Data!.QuestionId);
+        Assert.True(result.Data.InterviewOngoing);
+        Assert.Contains("Let's take on this problem", result.Data.InterviewerMessage, StringComparison.Ordinal);
+
+        var stored = await db.MockInterviews.IgnoreQueryFilters().SingleAsync(m => m.Id == interview.Id);
+        Assert.Equal(1, stored.AnsweredQuestions);
+        var turns = ReadTranscript(stored);
+        Assert.Equal(3, turns.Count); // opening + candidate + canned intro — attempt 1 left no trace
+        Assert.Equal(1, turns.Count(t => t.Role == TranscriptTurn.CandidateRole));
+    }
+
+    [Fact]
+    public async Task Answer_Advancing_ReadsJdForPersonalisedIntro()
+    {
+        var (db, handler, generator, _) = CreateHandler();
+        generator.Solved = true;
+        var jd = new JobDescription
+        {
+            Id = Guid.NewGuid(),
+            UserId = "user-1",
+            CompanyName = "Acme",
+            Role = "SDE-1",
+            RawText = "Acme is hiring...",
+            Difficulty = "Medium",
+            EstimatedWeeks = 6
+        };
+        db.JobDescriptions.Add(jd);
+        await db.SaveChangesAsync();
+        var interview = await SeedInterviewAsync(db, jdId: jd.Id);
+
+        var result = await handler.Handle(new AnswerMockInterviewCommand
+        {
+            InterviewId = interview.Id,
+            Message = "solved"
+        }, CancellationToken.None);
+
+        Assert.NotNull(result.Data);
+        Assert.Equal("Acme", generator.LastCompany);
+        Assert.Equal("SDE-1", generator.LastRole);
     }
 
     [Fact]

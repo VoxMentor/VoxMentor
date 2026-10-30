@@ -91,18 +91,27 @@ public class MockInterviewSessionService
         }
     }
 
-    /// <summary>Buffered answer for REST: aggregate the stream, degrading to the canned probe when generation fails.</summary>
+    /// <summary>
+    /// Buffered answer for REST: aggregate the stream, degrading to the canned
+    /// line when generation fails. The solved verdict rides along in a box so
+    /// the retry — whose canned judge always answers null — cannot demote a
+    /// satisfying answer to a probe instead of advancing it (#148).
+    /// </summary>
     public async Task<AnswerMockInterviewResultDto> AnswerAsync(
         AnswerMockInterviewCommand request, CancellationToken cancellationToken = default)
     {
+        var solvedAcrossRetry = new StrongBox<bool>();
         try
         {
-            return await FinalizeAnswerAsync(StreamAnswerAsync(request, cancellationToken: cancellationToken), cancellationToken);
+            return await FinalizeAnswerAsync(
+                StreamAnswerAsync(request, solvedAcrossRetry: solvedAcrossRetry, cancellationToken: cancellationToken),
+                cancellationToken);
         }
         catch (MockInterviewGenerationException)
         {
             return await FinalizeAnswerAsync(
-                StreamAnswerAsync(request, CannedDialogueGenerator.Instance, cancellationToken), cancellationToken);
+                StreamAnswerAsync(request, CannedDialogueGenerator.Instance, solvedAcrossRetry, cancellationToken),
+                cancellationToken);
         }
     }
 
@@ -220,11 +229,14 @@ public class MockInterviewSessionService
     /// 404 for unknown/foreign ids (IUserOwned filter), 409 once the run has
     /// ended — including after the last problem was answered. Every generator
     /// call runs BEFORE any entity mutation, so the canned retry of
-    /// AnswerAsync re-runs against a clean unit of work.
+    /// AnswerAsync re-runs against a clean unit of work — carrying the verdict
+    /// already reached in solvedAcrossRetry (null on the hub path, which never
+    /// retries) so a solved answer cannot be re-judged as a probe.
     /// </summary>
     public async IAsyncEnumerable<AnswerMockInterviewChunk> StreamAnswerAsync(
         AnswerMockInterviewCommand request,
         IMockInterviewGenerator? generatorOverride = null,
+        StrongBox<bool>? solvedAcrossRetry = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var generator = generatorOverride ?? _generator;
@@ -266,8 +278,15 @@ public class MockInterviewSessionService
             // #148: advance when the model is satisfied OR the probe budget is
             // spent (short-circuit: one verdict call per problem at most, and a
             // dead or contrary model can never strand the run on one problem).
-            var advance = probesSpent >= ProbesPerProblem
+            // The box carries an already-solved verdict across AnswerAsync's
+            // canned retry, whose judge always answers null.
+            var advance = solvedAcrossRetry is { Value: true }
+                || probesSpent >= ProbesPerProblem
                 || await generator.AssessAnswerSolvedAsync(turns, interview.Type, cancellationToken) == true;
+            if (solvedAcrossRetry is not null)
+            {
+                solvedAcrossRetry.Value = advance;
+            }
             var answeredAfter = advance ? interview.AnsweredQuestions + 1 : interview.AnsweredQuestions;
 
             string reply;

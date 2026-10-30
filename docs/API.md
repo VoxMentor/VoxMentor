@@ -416,7 +416,7 @@ Response `202`:
   "status": "InProgress",
   "duration": 45,
   "startedAt": "2026-08-28T14:00:00Z",
-  "openingMessage": "Hi, I'm your interviewer at Amazon for the SDE-1 position. Let's start with your first problem: ..."
+  "openingMessage": "Hi, I'm your interviewer at Amazon for the SDE-1 position. Let's take on this problem: ..."
 }
 ```
 Errors: `404` JD not found, `429` daily limit.
