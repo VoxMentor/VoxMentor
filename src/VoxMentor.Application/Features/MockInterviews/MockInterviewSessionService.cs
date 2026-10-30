@@ -312,14 +312,16 @@ public class MockInterviewSessionService
             {
                 // Final problem answered: canned closing keeps the degrade
                 // contract — no Ollama call here can fail the request (#148).
+                // Not an introduction, so no QuestionId: CannedReview counts
+                // id-bearing turns and would report a fourth problem.
                 reply = CannedClosing;
                 replyQuestionId = null;
                 yield return new AnswerMockInterviewChunk(reply);
-                turns.Add(new TranscriptTurn(TranscriptTurn.InterviewerRole, reply, currentQuestionId, DateTime.UtcNow));
+                turns.Add(new TranscriptTurn(TranscriptTurn.InterviewerRole, reply, null, DateTime.UtcNow));
             }
             else
             {
-                var problem = await SelectNextProblemAsync(interview, turns, cancellationToken);
+                var problem = await SelectNextProblemAsync(interview, turns, currentQuestionId, cancellationToken);
 
                 string? company = null;
                 string? role = null;
@@ -364,14 +366,16 @@ public class MockInterviewSessionService
 
     /// <summary>
     /// Next problem for a running interview: the adaptive selector minus every
-    /// problem already asked (#148 — no repeats within a run). When the pool
-    /// holds fewer distinct questions than TotalQuestions, the retry without
-    /// exclusions may repeat one rather than failing the run
-    /// (ponytail: a repeat beats a mid-interview 404).
+    /// problem already asked (#148). When the pool runs dry the fallback
+    /// loosens one tier at a time — every asked id, then only the problem just
+    /// answered (an older repeat beats repeating it), then no exclusions at
+    /// all as the single-problem last resort (a repeat beats a mid-interview
+    /// 404).
     /// </summary>
     private async Task<NextQuestionDto> SelectNextProblemAsync(
         MockInterview interview,
         IReadOnlyList<TranscriptTurn> turns,
+        Guid? currentQuestionId,
         CancellationToken cancellationToken)
     {
         var asked = turns
@@ -380,21 +384,35 @@ public class MockInterviewSessionService
             .Distinct()
             .ToList();
 
-        ApiResponse<NextQuestionDto> next;
-        try
+        // Strictest exclusions first; each NotFound loosens by one tier.
+        var tiers = new List<IReadOnlyCollection<Guid>?> { asked };
+        if (currentQuestionId is { } current)
         {
-            next = await _sender.Send(new GetNextQuestionQuery
-            {
-                JdId = interview.JdId,
-                ExcludeQuestionIds = asked
-            }, cancellationToken);
+            tiers.Add(new[] { current });
         }
-        catch (NotFoundException)
+        tiers.Add(null); // last resort: any repeat at all
+
+        foreach (var exclude in tiers)
         {
-            next = await _sender.Send(new GetNextQuestionQuery { JdId = interview.JdId }, cancellationToken);
+            try
+            {
+                var next = await _sender.Send(new GetNextQuestionQuery
+                {
+                    JdId = interview.JdId,
+                    ExcludeQuestionIds = exclude
+                }, cancellationToken);
+                if (next.Data is { } data)
+                {
+                    return data;
+                }
+            }
+            catch (NotFoundException)
+            {
+                // pool exhausted for this tier — loosen and try the next
+            }
         }
 
-        return next.Data ?? throw new NotFoundException("No questions available for an interview.");
+        throw new NotFoundException("No questions available for an interview.");
     }
 
     /// <summary>Drains a start stream and returns the final result chunk.</summary>

@@ -360,6 +360,7 @@ public class GetNextQuestionHandlerTests
         Assert.Equal(2, response.Data.VisibleTestCases.Length + 1); // 1 visible + 1 hidden = 2 total
     }
 
+    /// <summary>Exclusions shrink the pool; when every question is excluded the selector reports nothing so #148 can fall back to a repeat.</summary>
     [Fact]
     public async Task Handle_ExcludeQuestionIds_NeverServesAnAlreadyAskedProblem()
     {

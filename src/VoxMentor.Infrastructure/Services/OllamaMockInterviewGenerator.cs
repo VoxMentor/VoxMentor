@@ -29,6 +29,14 @@ public class OllamaMockInterviewGenerator : IMockInterviewGenerator
     /// <summary>Bounds the call so a hung Ollama cannot stall the interview request.</summary>
     private static readonly TimeSpan GenerateTimeout = TimeSpan.FromSeconds(60);
 
+    /// <summary>
+    /// The verdict is one boolean on a non-streaming call; fail fast so a hung
+    /// Ollama cannot stack a second full generation window onto the answer
+    /// latency (#148). Sized generously because the judge prompt-evals the
+    /// whole transcript — a timeout probes instead of stalling.
+    /// </summary>
+    private static readonly TimeSpan AssessTimeout = TimeSpan.FromSeconds(30);
+
     private static readonly JsonSerializerOptions RequestJsonOptions = new(JsonSerializerDefaults.Web);
 
     private static readonly JsonSerializerOptions ResponseJsonOptions = new()
@@ -125,7 +133,7 @@ public class OllamaMockInterviewGenerator : IMockInterviewGenerator
         try
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(GenerateTimeout);
+            timeoutCts.CancelAfter(AssessTimeout);
 
             using var response = await _http.PostAsJsonAsync(
                 $"{_baseUrl}/api/chat", request, RequestJsonOptions, timeoutCts.Token);

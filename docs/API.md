@@ -422,7 +422,7 @@ Response `202`:
 Errors: `404` JD not found, `429` daily limit.
 
 ### POST /api/v1/mock/{interviewId}/answer
-Submit the candidate's answer; the interviewer replies with a follow-up probe — or, when the answer sufficiently solves the current problem (AI verdict, #148), advances: `AnsweredQuestions` increments, the adaptive selector introduces the next problem (up to 3, never a repeat within the run), and the reply becomes that problem's introduction. Each problem gets at most one probe before the interview advances regardless, so a down model can never stall a run. The final problem's answer returns a wrap-up line with `interviewOngoing: false`; further answers then get `409` and `/complete` closes out with a review over all problems.
+Submit the candidate's answer; the interviewer replies with a follow-up probe — or, when the answer sufficiently solves the current problem (AI verdict, #148), advances: `AnsweredQuestions` increments, the adaptive selector introduces the next problem (up to 3; if the pool runs dry an older problem may repeat — never the one just answered unless it is the pool's only problem), and the reply becomes that problem's introduction. Each problem gets at most one probe before the interview advances regardless, so a down model can never stall a run. The final problem's answer returns a wrap-up line with `interviewOngoing: false`; further answers then get `409` and `/complete` closes out with a review over all problems.
 
 Request:
 ```json

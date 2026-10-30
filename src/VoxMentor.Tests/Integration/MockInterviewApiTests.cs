@@ -315,6 +315,7 @@ public class MockInterviewApiTests : IClassFixture<CustomWebApplicationFactory>
         Assert.Equal(secondResult.Data.QuestionId, turns[4].QuestionId);
     }
 
+    /// <summary>Six answers exhaust the 3-problem run: honest ongoing flag, 409 after the end, and /complete still closes with a review.</summary>
     [Fact]
     public async Task Answer_ExhaustingAllProblems_ReturnsOngoingFalse_Then409_ThenCompleteCloses()
     {

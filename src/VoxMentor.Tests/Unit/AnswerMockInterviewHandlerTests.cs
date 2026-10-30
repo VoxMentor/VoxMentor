@@ -42,6 +42,7 @@ public class AnswerMockInterviewHandlerTests
 
         public string? LastRole { get; private set; }
 
+        /// <summary>One streamed intro line; records the JD context it was generated with.</summary>
         public async IAsyncEnumerable<TutorChunk> OpeningStreamAsync(
             string? company, string? role, string problemTitle,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -88,12 +89,20 @@ public class AnswerMockInterviewHandlerTests
 
         public IReadOnlyCollection<Guid>? LastExcluded { get; private set; }
 
+        /// <summary>Optional pool rule: true refuses the exclusion set like an exhausted selector would.</summary>
+        public Func<IReadOnlyCollection<Guid>?, bool>? Refuse { get; set; }
+
+        /// <summary>Serves the next problem, recording what the selector was asked to exclude (#148).</summary>
         public Task<TResponse> Send<TResponse>(
             IRequest<TResponse> request, CancellationToken cancellationToken = default)
         {
             if (request is GetNextQuestionQuery query)
             {
                 LastExcluded = query.ExcludeQuestionIds;
+                if (Refuse?.Invoke(query.ExcludeQuestionIds) == true)
+                {
+                    throw new NotFoundException("No unanswered questions available.");
+                }
                 return Task.FromResult((TResponse)(object)ApiResponse<NextQuestionDto>.SuccessResult(Next));
             }
 
@@ -149,6 +158,7 @@ public class AnswerMockInterviewHandlerTests
         return (db, new AnswerMockInterviewHandler(session), generator, sender);
     }
 
+    /// <summary>Seeds an in-progress interview with a one-turn transcript (an intro tagged with <paramref name="questionId"/>).</summary>
     private static async Task<MockInterview> SeedInterviewAsync(
         ApplicationDbContext db,
         string userId = "user-1",
@@ -301,6 +311,7 @@ public class AnswerMockInterviewHandlerTests
         Assert.Equal(sender.Next.QuestionId, ReadTranscript(stored)[^1].QuestionId);
     }
 
+    /// <summary>Intro generation fails after a true verdict: the canned retry must still advance once, not re-judge the answer to a probe.</summary>
     [Fact]
     public async Task Answer_SolvedButIntroFails_CannedRetryStillAdvancesOnce()
     {
@@ -328,6 +339,7 @@ public class AnswerMockInterviewHandlerTests
         Assert.Equal(1, turns.Count(t => t.Role == TranscriptTurn.CandidateRole));
     }
 
+    /// <summary>Advancing with a JD attached reads company/role for the personalised mid-run intro (#148 answer-time lookup).</summary>
     [Fact]
     public async Task Answer_Advancing_ReadsJdForPersonalisedIntro()
     {
@@ -356,6 +368,39 @@ public class AnswerMockInterviewHandlerTests
         Assert.NotNull(result.Data);
         Assert.Equal("Acme", generator.LastCompany);
         Assert.Equal("SDE-1", generator.LastRole);
+    }
+
+    /// <summary>Exhausted pool: the fallback may repeat an older problem but never the one just answered, until even that tier finds nothing.</summary>
+    [Fact]
+    public async Task Answer_PoolExhausted_RepeatsOlderButNotTheProblemJustAnswered()
+    {
+        var (db, handler, generator, sender) = CreateHandler();
+        generator.Solved = true;
+        var older = Guid.NewGuid();
+        var current = Guid.NewGuid();
+        var interview = await SeedInterviewAsync(db, questionId: current);
+        interview.TranscriptJson = JsonSerializer.Serialize(new List<TranscriptTurn>
+        {
+            new(TranscriptTurn.InterviewerRole, "Opening problem.", older, DateTime.UtcNow),
+            new(TranscriptTurn.InterviewerRole, "Second problem.", current, DateTime.UtcNow)
+        }, TranscriptTurn.JsonOptions);
+        await db.SaveChangesAsync();
+
+        // Any exclusion set still holding the older problem is refused: tier 1
+        // (all asked) fails, so the selector must fall back to excluding only
+        // the problem just answered.
+        sender.Refuse = excluded => excluded is not null && excluded.Contains(older);
+
+        var result = await handler.Handle(new AnswerMockInterviewCommand
+        {
+            InterviewId = interview.Id,
+            Message = "solved"
+        }, CancellationToken.None);
+
+        Assert.Equal(new[] { current }, sender.LastExcluded!.ToArray());
+        Assert.Equal(sender.Next.QuestionId, result.Data!.QuestionId);
+        var stored = await db.MockInterviews.IgnoreQueryFilters().SingleAsync(m => m.Id == interview.Id);
+        Assert.Equal(1, stored.AnsweredQuestions);
     }
 
     [Fact]
@@ -408,6 +453,7 @@ public class AnswerMockInterviewHandlerTests
         var stored = await db.MockInterviews.IgnoreQueryFilters().SingleAsync(m => m.Id == interview.Id);
         Assert.Equal(3, stored.AnsweredQuestions);
         Assert.Equal(MockInterviewStatus.InProgress, stored.Status); // /complete still owns the terminal flip
+        Assert.Null(ReadTranscript(stored)[^1].QuestionId); // closing is not an introduction — CannedReview counts id-bearing turns
     }
 
     [Fact]
