@@ -28,6 +28,21 @@ public interface IMockInterviewGenerator
         IReadOnlyList<TranscriptTurn> transcript, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Judges whether the candidate's latest answer sufficiently solves the
+    /// current problem (#148): true → advance to the next problem, false →
+    /// keep probing. Buffered, null-on-failure contract like ReviewAsync —
+    /// the caller falls back to its probe budget, so an unavailable model can
+    /// never stall the interview on one problem.
+    /// </summary>
+    /// <param name="transcript">Ordered conversation turns so far.</param>
+    /// <param name="type">Interview format, which shifts the judging standard.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<bool?> AssessAnswerSolvedAsync(
+        IReadOnlyList<TranscriptTurn> transcript,
+        InterviewType type,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Rubric review of a finished transcript: overall score, one
     /// technicalReview entry per problem (keys problem1..problemN), and
     /// next-steps guidance. Null on any failure — the caller substitutes a

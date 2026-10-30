@@ -1,10 +1,13 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using MediatR;
 using Microsoft.EntityFrameworkCore;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
+using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Common.Services;
 using VoxMentor.Application.Features.MockInterviews;
+using VoxMentor.Application.Features.Practice.GetNextQuestion;
 using VoxMentor.Domain.Entities;
 using VoxMentor.Domain.Enums;
 using VoxMentor.Infrastructure.Persistence;
@@ -13,8 +16,10 @@ namespace VoxMentor.Tests.Unit;
 
 /// <summary>
 /// Unit tests for <see cref="AnswerMockInterviewHandler"/>: 404 for unknown and
-/// foreign interviews, 409 once ended, transcript growth with order preserved,
-/// and the canned probe when Ollama is unavailable (#124).
+/// foreign interviews, 409 once ended (or all problems answered), transcript
+/// growth with order preserved, and the canned probe when Ollama is
+/// unavailable (#124); plus #148 advancement — verdict-driven, budget-forced,
+/// and honest interviewOngoing/QuestionId.
 /// </summary>
 public class AnswerMockInterviewHandlerTests
 {
@@ -27,12 +32,28 @@ public class AnswerMockInterviewHandlerTests
     {
         public string? FollowUp { get; set; }
 
+        public string? Opening { get; set; } = "NEXT PROBLEM INTRO";
+
+        /// <summary>Verdict for #148; null = model unavailable (must not stall).</summary>
+        public bool? Solved { get; set; }
+
+        /// <summary>JD context the intro was generated with (#148 answer-time lookup).</summary>
+        public string? LastCompany { get; private set; }
+
+        public string? LastRole { get; private set; }
+
+        /// <summary>One streamed intro line; records the JD context it was generated with.</summary>
         public async IAsyncEnumerable<TutorChunk> OpeningStreamAsync(
             string? company, string? role, string problemTitle,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await Task.CompletedTask;
-            yield break;
+            LastCompany = company;
+            LastRole = role;
+            if (Opening is not null)
+            {
+                yield return new TutorChunk(Opening);
+            }
         }
 
         public async IAsyncEnumerable<TutorChunk> FollowUpStreamAsync(
@@ -46,6 +67,12 @@ public class AnswerMockInterviewHandlerTests
             }
         }
 
+        public Task<bool?> AssessAnswerSolvedAsync(
+            IReadOnlyList<TranscriptTurn> transcript,
+            InterviewType type,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(Solved);
+
         public Task<MockInterviewReviewDraft?> ReviewAsync(
             IReadOnlyList<TranscriptTurn> transcript,
             InterviewType type,
@@ -55,7 +82,66 @@ public class AnswerMockInterviewHandlerTests
             => Task.FromResult<MockInterviewReviewDraft?>(null);
     }
 
-    private static (ApplicationDbContext Db, AnswerMockInterviewHandler Handler, StubGenerator Generator) CreateHandler(
+    /// <summary>Selector stand-in that records what the #148 advance asked for.</summary>
+    private sealed class StubSender : ISender
+    {
+        public NextQuestionDto Next { get; set; } = NextDto();
+
+        public IReadOnlyCollection<Guid>? LastExcluded { get; private set; }
+
+        /// <summary>Optional pool rule: true refuses the exclusion set like an exhausted selector would.</summary>
+        public Func<IReadOnlyCollection<Guid>?, bool>? Refuse { get; set; }
+
+        /// <summary>Serves the next problem, recording what the selector was asked to exclude (#148).</summary>
+        public Task<TResponse> Send<TResponse>(
+            IRequest<TResponse> request, CancellationToken cancellationToken = default)
+        {
+            if (request is GetNextQuestionQuery query)
+            {
+                LastExcluded = query.ExcludeQuestionIds;
+                if (Refuse?.Invoke(query.ExcludeQuestionIds) == true)
+                {
+                    throw new NotFoundException("No unanswered questions available.");
+                }
+                return Task.FromResult((TResponse)(object)ApiResponse<NextQuestionDto>.SuccessResult(Next));
+            }
+
+            throw new NotSupportedException($"Unexpected request {request.GetType().Name}");
+        }
+
+        public Task<object?> Send(object request, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException($"Unexpected request {request.GetType().Name}");
+
+        public Task Send<TRequest>(TRequest request, CancellationToken cancellationToken = default)
+            where TRequest : IRequest
+            => throw new NotSupportedException($"Unexpected request {request.GetType().Name}");
+
+        public IAsyncEnumerable<TResponse> CreateStream<TResponse>(
+            IStreamRequest<TResponse> request, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public IAsyncEnumerable<object?> CreateStream(
+            object request, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+    }
+
+    private static NextQuestionDto NextDto(Guid? questionId = null, string title = "Two Sum")
+        => new(
+            questionId ?? Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Arrays",
+            title,
+            "Desc",
+            "Code",
+            3,
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Guid.NewGuid());
+
+    private static (ApplicationDbContext Db, AnswerMockInterviewHandler Handler, StubGenerator Generator, StubSender Sender) CreateHandler(
         string userId = "user-1")
     {
         var db = new ApplicationDbContext(
@@ -65,16 +151,21 @@ public class AnswerMockInterviewHandlerTests
             new FakeCurrentUserService { UserId = userId });
 
         var generator = new StubGenerator();
+        var sender = new StubSender();
         var session = new MockInterviewSessionService(
             db, new FakeCurrentUserService { UserId = userId },
-            sender: null!, generator, configuration: null!, new AsyncKeyedLock());
-        return (db, new AnswerMockInterviewHandler(session), generator);
+            sender, generator, configuration: null!, new AsyncKeyedLock());
+        return (db, new AnswerMockInterviewHandler(session), generator, sender);
     }
 
+    /// <summary>Seeds an in-progress interview with a one-turn transcript (an intro tagged with <paramref name="questionId"/>).</summary>
     private static async Task<MockInterview> SeedInterviewAsync(
         ApplicationDbContext db,
         string userId = "user-1",
-        MockInterviewStatus status = MockInterviewStatus.InProgress)
+        MockInterviewStatus status = MockInterviewStatus.InProgress,
+        int answeredQuestions = 0,
+        Guid? questionId = null,
+        Guid? jdId = null)
     {
         var interview = new MockInterview
         {
@@ -82,12 +173,14 @@ public class AnswerMockInterviewHandlerTests
             UserId = userId,
             Type = InterviewType.Technical,
             TotalQuestions = 3,
+            AnsweredQuestions = answeredQuestions,
             Status = status,
             StartedAt = DateTime.UtcNow,
+            JdId = jdId,
             TranscriptJson = JsonSerializer.Serialize(
                 new List<TranscriptTurn>
                 {
-                    new(TranscriptTurn.InterviewerRole, "Opening problem.", Guid.NewGuid(), DateTime.UtcNow)
+                    new(TranscriptTurn.InterviewerRole, "Opening problem.", questionId ?? Guid.NewGuid(), DateTime.UtcNow)
                 },
                 TranscriptTurn.JsonOptions)
         };
@@ -102,7 +195,7 @@ public class AnswerMockInterviewHandlerTests
     [Fact]
     public async Task Answer_UnknownInterview_ThrowsNotFound()
     {
-        var (db, handler, _) = CreateHandler();
+        var (db, handler, _, _) = CreateHandler();
 
         await Assert.ThrowsAsync<NotFoundException>(() =>
             handler.Handle(new AnswerMockInterviewCommand
@@ -115,7 +208,7 @@ public class AnswerMockInterviewHandlerTests
     [Fact]
     public async Task Answer_OtherStudentsInterview_ThrowsNotFound()
     {
-        var (db, handler, _) = CreateHandler();
+        var (db, handler, _, _) = CreateHandler();
         var foreign = await SeedInterviewAsync(db, userId: "user-2");
 
         await Assert.ThrowsAsync<NotFoundException>(() =>
@@ -129,7 +222,7 @@ public class AnswerMockInterviewHandlerTests
     [Fact]
     public async Task Answer_EndedInterview_ThrowsConflict()
     {
-        var (db, handler, _) = CreateHandler();
+        var (db, handler, _, _) = CreateHandler();
         var interview = await SeedInterviewAsync(db, status: MockInterviewStatus.Completed);
 
         await Assert.ThrowsAsync<ConflictException>(() =>
@@ -141,9 +234,9 @@ public class AnswerMockInterviewHandlerTests
     }
 
     [Fact]
-    public async Task Answer_AppendsTwoTurnsPerAnswer_PreservesOrder_AndCountsTurns()
+    public async Task Answer_UnsolvedFirstAnswer_Probes_SecondAdvancesOnBudget()
     {
-        var (db, handler, generator) = CreateHandler();
+        var (db, handler, generator, sender) = CreateHandler();
         generator.FollowUp = "PROBE 1";
         var interview = await SeedInterviewAsync(db);
 
@@ -157,17 +250,21 @@ public class AnswerMockInterviewHandlerTests
         Assert.Equal("PROBE 1", first.Data.InterviewerMessage);
         Assert.True(first.Data.InterviewOngoing);
 
-        generator.FollowUp = "PROBE 2";
         var second = await handler.Handle(new AnswerMockInterviewCommand
         {
             InterviewId = interview.Id,
             Message = "answer two"
         }, CancellationToken.None);
 
+        // Budget spent (one probe on problem 1) → advance even though Solved=false.
         Assert.Equal(5, second.Data!.TurnNumber);
-        Assert.Equal("PROBE 2", second.Data.InterviewerMessage);
+        Assert.Equal("NEXT PROBLEM INTRO", second.Data.InterviewerMessage);
+        Assert.True(second.Data.InterviewOngoing);
+        Assert.Equal(sender.Next.QuestionId, second.Data.QuestionId);
 
         var stored = await db.MockInterviews.IgnoreQueryFilters().SingleAsync(m => m.Id == interview.Id);
+        Assert.Equal(1, stored.AnsweredQuestions);
+
         var turns = ReadTranscript(stored);
         Assert.Equal(5, turns.Count);
         Assert.Equal(new[]
@@ -180,15 +277,203 @@ public class AnswerMockInterviewHandlerTests
         }, turns.Select(t => t.Role).ToArray());
         Assert.Equal(new[] { "answer one", "answer two" },
             turns.Where(t => t.Role == TranscriptTurn.CandidateRole).Select(t => t.Message).ToArray());
-        Assert.Equal(new[] { "PROBE 1", "PROBE 2" },
-            turns.Where(t => t.Role == TranscriptTurn.InterviewerRole && t.Message != "Opening problem.")
-                .Select(t => t.Message).ToArray());
+        Assert.Equal(new[] { "Opening problem.", "PROBE 1", "NEXT PROBLEM INTRO" },
+            turns.Where(t => t.Role == TranscriptTurn.InterviewerRole).Select(t => t.Message).ToArray());
+
+        // The intro turn carries the new problem id so /complete can map verdicts (#148).
+        Assert.Equal(sender.Next.QuestionId, turns[^1].QuestionId);
+
+        // Selector was asked for every problem already in the transcript, never a repeat.
+        var openingId = turns[0].QuestionId!.Value;
+        Assert.Equal(new[] { openingId }, sender.LastExcluded!.ToArray());
+    }
+
+    [Fact]
+    public async Task Answer_SolvedVerdict_AdvancesOnFirstAnswer()
+    {
+        var (db, handler, generator, sender) = CreateHandler();
+        generator.Solved = true;
+        var interview = await SeedInterviewAsync(db);
+
+        var result = await handler.Handle(new AnswerMockInterviewCommand
+        {
+            InterviewId = interview.Id,
+            Message = "Kadane's algorithm: track the running max, O(n) time, O(1) space"
+        }, CancellationToken.None);
+
+        Assert.Equal(3, result.Data!.TurnNumber); // opening + candidate + intro — no probe
+        Assert.Equal("NEXT PROBLEM INTRO", result.Data.InterviewerMessage);
+        Assert.True(result.Data.InterviewOngoing);
+        Assert.Equal(sender.Next.QuestionId, result.Data.QuestionId);
+
+        var stored = await db.MockInterviews.IgnoreQueryFilters().SingleAsync(m => m.Id == interview.Id);
+        Assert.Equal(1, stored.AnsweredQuestions);
+        Assert.Equal(sender.Next.QuestionId, ReadTranscript(stored)[^1].QuestionId);
+    }
+
+    /// <summary>Intro generation fails after a true verdict: the canned retry must still advance once, not re-judge the answer to a probe.</summary>
+    [Fact]
+    public async Task Answer_SolvedButIntroFails_CannedRetryStillAdvancesOnce()
+    {
+        var (db, handler, generator, sender) = CreateHandler();
+        generator.Solved = true;
+        generator.Opening = null; // intro generation fails right after the verdict → REST canned retry
+        var interview = await SeedInterviewAsync(db);
+
+        var result = await handler.Handle(new AnswerMockInterviewCommand
+        {
+            InterviewId = interview.Id,
+            Message = "Kadane's algorithm"
+        }, CancellationToken.None);
+
+        // The attempt-1 verdict survives the retry: an advance with the canned
+        // intro, not a probe re-judged by the canned judge's null verdict.
+        Assert.Equal(sender.Next.QuestionId, result.Data!.QuestionId);
+        Assert.True(result.Data.InterviewOngoing);
+        Assert.Contains("Let's take on this problem", result.Data.InterviewerMessage, StringComparison.Ordinal);
+
+        var stored = await db.MockInterviews.IgnoreQueryFilters().SingleAsync(m => m.Id == interview.Id);
+        Assert.Equal(1, stored.AnsweredQuestions);
+        var turns = ReadTranscript(stored);
+        Assert.Equal(3, turns.Count); // opening + candidate + canned intro — attempt 1 left no trace
+        Assert.Equal(1, turns.Count(t => t.Role == TranscriptTurn.CandidateRole));
+    }
+
+    /// <summary>Advancing with a JD attached reads company/role for the personalised mid-run intro (#148 answer-time lookup).</summary>
+    [Fact]
+    public async Task Answer_Advancing_ReadsJdForPersonalisedIntro()
+    {
+        var (db, handler, generator, _) = CreateHandler();
+        generator.Solved = true;
+        var jd = new JobDescription
+        {
+            Id = Guid.NewGuid(),
+            UserId = "user-1",
+            CompanyName = "Acme",
+            Role = "SDE-1",
+            RawText = "Acme is hiring...",
+            Difficulty = "Medium",
+            EstimatedWeeks = 6
+        };
+        db.JobDescriptions.Add(jd);
+        await db.SaveChangesAsync();
+        var interview = await SeedInterviewAsync(db, jdId: jd.Id);
+
+        var result = await handler.Handle(new AnswerMockInterviewCommand
+        {
+            InterviewId = interview.Id,
+            Message = "solved"
+        }, CancellationToken.None);
+
+        Assert.NotNull(result.Data);
+        Assert.Equal("Acme", generator.LastCompany);
+        Assert.Equal("SDE-1", generator.LastRole);
+    }
+
+    /// <summary>Exhausted pool: the fallback may repeat an older problem but never the one just answered, until even that tier finds nothing.</summary>
+    [Fact]
+    public async Task Answer_PoolExhausted_RepeatsOlderButNotTheProblemJustAnswered()
+    {
+        var (db, handler, generator, sender) = CreateHandler();
+        generator.Solved = true;
+        var older = Guid.NewGuid();
+        var current = Guid.NewGuid();
+        var interview = await SeedInterviewAsync(db, questionId: current);
+        interview.TranscriptJson = JsonSerializer.Serialize(new List<TranscriptTurn>
+        {
+            new(TranscriptTurn.InterviewerRole, "Opening problem.", older, DateTime.UtcNow),
+            new(TranscriptTurn.InterviewerRole, "Second problem.", current, DateTime.UtcNow)
+        }, TranscriptTurn.JsonOptions);
+        await db.SaveChangesAsync();
+
+        // Any exclusion set still holding the older problem is refused: tier 1
+        // (all asked) fails, so the selector must fall back to excluding only
+        // the problem just answered.
+        sender.Refuse = excluded => excluded is not null && excluded.Contains(older);
+
+        var result = await handler.Handle(new AnswerMockInterviewCommand
+        {
+            InterviewId = interview.Id,
+            Message = "solved"
+        }, CancellationToken.None);
+
+        Assert.Equal(new[] { current }, sender.LastExcluded!.ToArray());
+        Assert.Equal(sender.Next.QuestionId, result.Data!.QuestionId);
+        var stored = await db.MockInterviews.IgnoreQueryFilters().SingleAsync(m => m.Id == interview.Id);
+        Assert.Equal(1, stored.AnsweredQuestions);
+    }
+
+    [Fact]
+    public async Task Answer_ModelUnavailable_ProbesThenBudgetAdvances_NoStall()
+    {
+        var (db, handler, generator, _) = CreateHandler();
+        generator.Solved = null; // model down: verdict unavailable
+        generator.FollowUp = "PROBE";
+        var interview = await SeedInterviewAsync(db);
+
+        var first = await handler.Handle(new AnswerMockInterviewCommand
+        {
+            InterviewId = interview.Id,
+            Message = "answer one"
+        }, CancellationToken.None);
+
+        Assert.Equal("PROBE", first.Data!.InterviewerMessage);
+        Assert.True(first.Data.InterviewOngoing);
+
+        var second = await handler.Handle(new AnswerMockInterviewCommand
+        {
+            InterviewId = interview.Id,
+            Message = "answer two"
+        }, CancellationToken.None);
+
+        Assert.Equal("NEXT PROBLEM INTRO", second.Data!.InterviewerMessage);
+        Assert.True(second.Data.InterviewOngoing);
+
+        var stored = await db.MockInterviews.IgnoreQueryFilters().SingleAsync(m => m.Id == interview.Id);
+        Assert.Equal(1, stored.AnsweredQuestions);
+    }
+
+    [Fact]
+    public async Task Answer_FinalProblemAnswered_ReturnsOngoingFalseAndClosingLine()
+    {
+        var (db, handler, generator, _) = CreateHandler();
+        generator.Solved = true;
+        var interview = await SeedInterviewAsync(db, answeredQuestions: 2);
+
+        var result = await handler.Handle(new AnswerMockInterviewCommand
+        {
+            InterviewId = interview.Id,
+            Message = "final answer"
+        }, CancellationToken.None);
+
+        Assert.False(result.Data!.InterviewOngoing);
+        Assert.Null(result.Data.QuestionId);
+        Assert.Contains("finish the interview", result.Data.InterviewerMessage, StringComparison.OrdinalIgnoreCase);
+
+        var stored = await db.MockInterviews.IgnoreQueryFilters().SingleAsync(m => m.Id == interview.Id);
+        Assert.Equal(3, stored.AnsweredQuestions);
+        Assert.Equal(MockInterviewStatus.InProgress, stored.Status); // /complete still owns the terminal flip
+        Assert.Null(ReadTranscript(stored)[^1].QuestionId); // closing is not an introduction — CannedReview counts id-bearing turns
+    }
+
+    [Fact]
+    public async Task Answer_AllProblemsAnswered_ThrowsConflict()
+    {
+        var (db, handler, _, _) = CreateHandler();
+        var interview = await SeedInterviewAsync(db, answeredQuestions: 3);
+
+        await Assert.ThrowsAsync<ConflictException>(() =>
+            handler.Handle(new AnswerMockInterviewCommand
+            {
+                InterviewId = interview.Id,
+                Message = "one more"
+            }, CancellationToken.None));
     }
 
     [Fact]
     public async Task Answer_GeneratorUnavailable_UsesCannedProbe()
     {
-        var (db, handler, generator) = CreateHandler();
+        var (db, handler, generator, _) = CreateHandler();
         generator.FollowUp = null;
         var interview = await SeedInterviewAsync(db);
 
@@ -207,5 +492,6 @@ public class AnswerMockInterviewHandlerTests
         Assert.Equal(TranscriptTurn.CandidateRole, turns[1].Role);
         Assert.Equal("Kadane's algorithm", turns[1].Message);
         Assert.Equal(TranscriptTurn.InterviewerRole, turns[2].Role);
+        Assert.Equal(0, stored.AnsweredQuestions); // degraded probe still does not advance
     }
 }

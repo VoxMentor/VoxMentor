@@ -47,6 +47,12 @@ public class CompleteMockInterviewHandlerTests
             yield break;
         }
 
+        public Task<bool?> AssessAnswerSolvedAsync(
+            IReadOnlyList<TranscriptTurn> transcript,
+            InterviewType type,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<bool?>(false);
+
         public Task<MockInterviewReviewDraft?> ReviewAsync(
             IReadOnlyList<TranscriptTurn> transcript,
             InterviewType type,
