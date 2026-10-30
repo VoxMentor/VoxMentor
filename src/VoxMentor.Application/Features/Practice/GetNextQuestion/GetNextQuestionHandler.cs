@@ -60,6 +60,11 @@ public class GetNextQuestionHandler : IRequestHandler<GetNextQuestionQuery, ApiR
             .Select(s => s.QuestionId)
             .ToListAsync(cancellationToken));
 
+        // #148: questions the caller already served inline (mock-interview
+        // advances) count as answered for selection too.
+        if (request.ExcludeQuestionIds is { } excluded)
+            attemptedIds.UnionWith(excluded);
+
         // Find the concept: pin to the requested one, otherwise JD-weighted
         // ε-greedy when the user has a JD, otherwise weakest by raw mastery.
         var selectedConcept = request.ConceptId is { } requestedId

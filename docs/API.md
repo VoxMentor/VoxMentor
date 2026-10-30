@@ -422,7 +422,7 @@ Response `202`:
 Errors: `404` JD not found, `429` daily limit.
 
 ### POST /api/v1/mock/{interviewId}/answer
-Submit the candidate's answer; the interviewer replies with a follow-up or the next problem (up to 3 problems).
+Submit the candidate's answer; the interviewer replies with a follow-up probe — or, when the answer sufficiently solves the current problem (AI verdict, #148), advances: `AnsweredQuestions` increments, the adaptive selector introduces the next problem (up to 3, never a repeat within the run), and the reply becomes that problem's introduction. Each problem gets at most one probe before the interview advances regardless, so a down model can never stall a run. The final problem's answer returns a wrap-up line with `interviewOngoing: false`; further answers then get `409` and `/complete` closes out with a review over all problems.
 
 Request:
 ```json
@@ -431,9 +431,9 @@ Request:
 
 Response `200`:
 ```json
-{ "interviewerMessage": "Good. What's the space complexity? Can you handle all-negative arrays?", "turnNumber": 4, "interviewOngoing": true }
+{ "interviewerMessage": "Good. What's the space complexity? Can you handle all-negative arrays?", "turnNumber": 4, "interviewOngoing": true, "questionId": "uuid" }
 ```
-Errors: `404` interview not found, `409` interview already ended, `400` empty message.
+`questionId` is the problem the interview is now on: the newly introduced problem after an advance, the same problem after a probe, `null` once the final problem has been answered. Errors: `404` interview not found, `409` interview already ended (terminal status **or** all problems answered), `400` empty message.
 
 ### POST /api/v1/mock/{interviewId}/complete
 End the interview and get the AI review (score, per-problem feedback, next steps). Flips `status` to `Completed`, sets `completedAt`, persists the review, and applies BKT mastery updates from the review's `solved` verdicts. If the review model is unreachable, a canned review is stored (score 50, no mastery writes).

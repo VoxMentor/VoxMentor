@@ -19,4 +19,11 @@ public class GetNextQuestionQuery : IRequest<ApiResponse<NextQuestionDto>>
     /// IUserOwned global filter — an unknown/foreign id resolves to no JD.
     /// </summary>
     public Guid? JdId { get; set; }
+
+    /// <summary>
+    /// Question ids the caller already served and never wants back (#148: a
+    /// mock interview must not repeat a problem within one run); unioned with
+    /// the student's attempted submissions before selection.
+    /// </summary>
+    public IReadOnlyCollection<Guid>? ExcludeQuestionIds { get; set; }
 }
