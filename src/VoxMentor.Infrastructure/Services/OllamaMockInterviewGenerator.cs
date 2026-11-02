@@ -26,6 +26,12 @@ public class OllamaMockInterviewGenerator : IMockInterviewGenerator
     private readonly string _baseUrl;
     private readonly string _model;
 
+    /// <summary>Config-driven company → track entry (#150); aliases match the JD company name.</summary>
+    private sealed record InterviewTrack(IReadOnlyList<string> Aliases, string Prompt, string Rubric);
+
+    /// <summary>Tracks parsed from the InterviewTracks config section, in config order.</summary>
+    private readonly IReadOnlyList<InterviewTrack> _tracks;
+
     /// <summary>Bounds the call so a hung Ollama cannot stall the interview request.</summary>
     private static readonly TimeSpan GenerateTimeout = TimeSpan.FromSeconds(60);
 
@@ -51,6 +57,45 @@ public class OllamaMockInterviewGenerator : IMockInterviewGenerator
         _logger = logger;
         _baseUrl = config["Ollama:BaseUrl"] ?? "http://localhost:11434";
         _model = config["Ollama:Model"] ?? "llama3.2:3b";
+        _tracks = ParseTracks(config.GetSection("InterviewTracks"));
+    }
+
+    /// <summary>
+    /// Reads the InterviewTracks section (#150) into a flat table — adding a
+    /// company is one config entry, never a new code branch. Malformed entries
+    /// (no aliases, blank text) are skipped so a typo degrades to the generic
+    /// track instead of failing the interview.
+    /// </summary>
+    private static IReadOnlyList<InterviewTrack> ParseTracks(IConfigurationSection section)
+        => section.GetChildren()
+            .Select(track => new InterviewTrack(
+                track.GetSection("Aliases").GetChildren()
+                    .Select(alias => alias.Value)
+                    .Where(alias => !string.IsNullOrWhiteSpace(alias))
+                    .Select(alias => alias!.Trim())
+                    .ToList(),
+                track["Prompt"]?.Trim() ?? string.Empty,
+                track["Rubric"]?.Trim() ?? string.Empty))
+            .Where(track => track.Aliases.Count > 0
+                && track.Prompt.Length > 0
+                && track.Rubric.Length > 0)
+            .ToList();
+
+    /// <summary>
+    /// Case-insensitive alias match of the JD company name against the config
+    /// table; null (no JD, "Unknown", or an unlisted company) keeps today's
+    /// generic prompts — the fallback is the absence of a match, not a branch.
+    /// </summary>
+    private InterviewTrack? ResolveTrack(string? company)
+    {
+        if (string.IsNullOrWhiteSpace(company))
+        {
+            return null;
+        }
+
+        var name = company.Trim();
+        return _tracks.FirstOrDefault(track =>
+            track.Aliases.Any(alias => string.Equals(alias, name, StringComparison.OrdinalIgnoreCase)));
     }
 
     /// <summary>Streams the greeting and the introduction of a problem (the opening, or the next one mid-run, #148).</summary>
@@ -61,6 +106,10 @@ public class OllamaMockInterviewGenerator : IMockInterviewGenerator
         var context = company is not null && role is not null
             ? $"The interview is for the {role} position at {company}."
             : "The candidate has no job description attached; keep the greeting generic.";
+        if (ResolveTrack(company) is { } openingTrack)
+        {
+            context = $"{context} {openingTrack.Prompt}";
+        }
 
         await foreach (var chunk in StreamGenerateAsync(
             "You are a friendly but professional interviewer running a mock technical interview. " +
@@ -76,16 +125,24 @@ public class OllamaMockInterviewGenerator : IMockInterviewGenerator
     /// <summary>Streams exactly one short follow-up or probe for the latest answer.</summary>
     public async IAsyncEnumerable<TutorChunk> FollowUpStreamAsync(
         IReadOnlyList<TranscriptTurn> transcript,
+        string? company,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var conversation = string.Join(
             "\n",
             transcript.Select(t => $"{t.Role}: {t.Message}"));
 
-        await foreach (var chunk in StreamGenerateAsync(
+        var system =
             "You are a technical interviewer. Read the conversation and ask exactly ONE short follow-up " +
             "question or probe that digs into the candidate's latest answer (complexity, edge cases, " +
-            "trade-offs, or a hint if they are stuck). Plain text only: no markdown, max two sentences.",
+            "trade-offs, or a hint if they are stuck). Plain text only: no markdown, max two sentences.";
+        if (ResolveTrack(company) is { } followUpTrack)
+        {
+            system = $"{system} {followUpTrack.Prompt}";
+        }
+
+        await foreach (var chunk in StreamGenerateAsync(
+            system,
             conversation,
             cancellationToken))
         {
@@ -102,6 +159,7 @@ public class OllamaMockInterviewGenerator : IMockInterviewGenerator
     public async Task<bool?> AssessAnswerSolvedAsync(
         IReadOnlyList<TranscriptTurn> transcript,
         InterviewType type,
+        string? company,
         CancellationToken cancellationToken = default)
     {
         var conversation = string.Join(
@@ -112,6 +170,10 @@ public class OllamaMockInterviewGenerator : IMockInterviewGenerator
             ? "The interview is behavioral: judge structure (STAR), relevance, and specificity of the latest answer."
             : "The interview is technical: judge the latest answer on correctness of the approach, complexity " +
               "analysis, and edge cases — a partial approach with a clearly correct plan counts as solved.";
+        if (ResolveTrack(company) is { } assessTrack)
+        {
+            focus = $"{focus} {assessTrack.Rubric}";
+        }
 
         var request = new
         {
@@ -204,6 +266,10 @@ public class OllamaMockInterviewGenerator : IMockInterviewGenerator
             ? "The interview is behavioral: grade structure (STAR), relevance, specificity, and communication."
             : "The interview is technical: grade correctness of the approach, complexity analysis, " +
               "edge cases, and clarity of explanation.";
+        if (ResolveTrack(company) is { } reviewTrack)
+        {
+            focus = $"{focus} {reviewTrack.Rubric}";
+        }
         var context = company is not null && role is not null
             ? $"The interview targets the {role} position at {company}."
             : "No job description context; grade the performance generically.";

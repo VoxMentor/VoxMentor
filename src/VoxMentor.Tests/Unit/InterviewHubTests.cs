@@ -56,6 +56,7 @@ public class InterviewHubTests
 
         public async IAsyncEnumerable<TutorChunk> FollowUpStreamAsync(
             IReadOnlyList<TranscriptTurn> transcript,
+            string? company,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             if (FollowUpThrow is not null)
@@ -71,6 +72,7 @@ public class InterviewHubTests
         public Task<bool?> AssessAnswerSolvedAsync(
             IReadOnlyList<TranscriptTurn> transcript,
             InterviewType type,
+            string? company,
             CancellationToken cancellationToken = default)
             => Task.FromResult<bool?>(false);
 
