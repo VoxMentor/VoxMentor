@@ -82,9 +82,13 @@ public class OllamaMockInterviewGeneratorTests
     {
         ["InterviewTracks:Amazon:Aliases:0"] = "amazon",
         ["InterviewTracks:Amazon:Aliases:1"] = "aws",
+        ["InterviewTracks:Amazon:Aliases:2"] = "amazon.com",
+        ["InterviewTracks:Amazon:Aliases:3"] = "Amazon.com, Inc.",
         ["InterviewTracks:Amazon:Prompt"] = "PROBE_AMAZON_LPS",
         ["InterviewTracks:Amazon:Rubric"] = "RUBRIC_AMAZON_LPS",
         ["InterviewTracks:Google:Aliases:0"] = "google",
+        ["InterviewTracks:Google:Aliases:1"] = "Google LLC",
+        ["InterviewTracks:Google:Aliases:2"] = "Alphabet Inc.",
         ["InterviewTracks:Google:Prompt"] = "PROBE_GOOGLE_GOOGLINESS",
         ["InterviewTracks:Google:Rubric"] = "RUBRIC_GOOGLE_GOOGLINESS",
         ["InterviewTracks:Contoso:Aliases:0"] = "contoso",
@@ -204,6 +208,29 @@ public class OllamaMockInterviewGeneratorTests
 
         var body = Assert.Single(http.SentBodies);
         Assert.Contains("PROBE_AMAZON_LPS", body);
+    }
+
+    /// <summary>
+    /// Suffixed spellings the JD parsers actually return — the heuristic regex
+    /// keeps dots and continuation words (Amazon.com, Alphabet Inc.) and the
+    /// LLM parser is free-form (Google LLC) — must resolve through explicit
+    /// aliases, since matching is exact case-insensitive equality (#150).
+    /// </summary>
+    [Theory]
+    [InlineData("Amazon.com", "PROBE_AMAZON_LPS")]
+    [InlineData("Amazon.com, Inc.", "PROBE_AMAZON_LPS")]
+    [InlineData("AWS", "PROBE_AMAZON_LPS")]
+    [InlineData("Google LLC", "PROBE_GOOGLE_GOOGLINESS")]
+    [InlineData("Alphabet Inc.", "PROBE_GOOGLE_GOOGLINESS")]
+    [InlineData("google llc", "PROBE_GOOGLE_GOOGLINESS")]
+    public async Task Track_SuffixedCompanySpellings_MatchConfiguredAlias(string company, string expectedMarker)
+    {
+        var (generator, http) = Create(extraConfig: TrackConfig);
+
+        await Collect(generator.FollowUpStreamAsync(Turns, company));
+
+        var body = Assert.Single(http.SentBodies);
+        Assert.Contains(expectedMarker, body);
     }
 
     /// <summary>
