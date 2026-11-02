@@ -107,6 +107,13 @@ public sealed class StubMockInterviewGenerator : IMockInterviewGenerator
         yield return new TutorChunk(FollowUp);
     }
 
+    /// <summary>Verdict for #148: false keeps the probe on the first answer; advancement runs are exercised via the probe budget (shared-fixture stub stays immutable).</summary>
+    public Task<bool?> AssessAnswerSolvedAsync(
+        IReadOnlyList<TranscriptTurn> transcript,
+        InterviewType type,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<bool?>(false);
+
     public Task<MockInterviewReviewDraft?> ReviewAsync(
         IReadOnlyList<TranscriptTurn> transcript,
         InterviewType type,

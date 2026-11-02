@@ -360,6 +360,27 @@ public class GetNextQuestionHandlerTests
         Assert.Equal(2, response.Data.VisibleTestCases.Length + 1); // 1 visible + 1 hidden = 2 total
     }
 
+    /// <summary>Exclusions shrink the pool; when every question is excluded the selector reports nothing so #148 can fall back to a repeat.</summary>
+    [Fact]
+    public async Task Handle_ExcludeQuestionIds_NeverServesAnAlreadyAskedProblem()
+    {
+        using var db = CreateDb();
+        var concept = await SeedConceptAsync(db);
+        var easy = await SeedQuestionAsync(db, concept.Id, title: "Asked already");
+        var other = await SeedQuestionAsync(db, concept.Id, difficulty: 5, title: "Not asked");
+        var handler = CreateHandler(db);
+
+        // Without the exclusion the closer-difficulty "Asked already" would win.
+        var response = await handler.Handle(
+            new GetNextQuestionQuery { ExcludeQuestionIds = new[] { easy.Id } }, CancellationToken.None);
+
+        Assert.Equal(other.Id, response.Data!.QuestionId);
+
+        // Every question excluded → nothing new to serve (#148 advance falls back to a repeat).
+        await Assert.ThrowsAsync<NotFoundException>(() => handler.Handle(
+            new GetNextQuestionQuery { ExcludeQuestionIds = new[] { easy.Id, other.Id } }, CancellationToken.None));
+    }
+
     [Fact]
     public async Task Handle_ReturnsIsomorphicInstanceId()
     {
