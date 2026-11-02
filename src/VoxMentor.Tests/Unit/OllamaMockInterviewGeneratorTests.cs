@@ -96,6 +96,33 @@ public class OllamaMockInterviewGeneratorTests
         ["InterviewTracks:Contoso:Rubric"] = "RUBRIC_CONTOSO_CUSTOM"
     };
 
+    /// <summary>
+    /// Production track config (from the Api's appsettings.json, which is copied
+    /// to the test output) with only Prompt/Rubric overridden by test markers, so
+    /// the suffixed-spellings theory exercises the real aliases rather than a
+    /// hand-maintained mirror (#150, CodeRabbit finding #2).
+    /// </summary>
+    private static Dictionary<string, string?> ProductionTrackConfigWithMarkers()
+    {
+        var prod = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.json"), optional: false)
+            .Build();
+
+        var result = new Dictionary<string, string?>(StringComparer.Ordinal);
+        foreach (var track in prod.GetSection("InterviewTracks").GetChildren())
+        {
+            var i = 0;
+            foreach (var alias in track.GetSection("Aliases").GetChildren())
+            {
+                result[$"InterviewTracks:{track.Key}:Aliases:{i}"] = alias.Value;
+                i++;
+            }
+            result[$"InterviewTracks:{track.Key}:Prompt"] = $"PROBE_{track.Key.ToUpperInvariant()}_MARKER";
+            result[$"InterviewTracks:{track.Key}:Rubric"] = $"RUBRIC_{track.Key.ToUpperInvariant()}_MARKER";
+        }
+        return result;
+    }
+
     private static readonly IReadOnlyList<TranscriptTurn> Turns =
         new[] { new TranscriptTurn(TranscriptTurn.CandidateRole, "my answer", null, DateTime.UtcNow) };
 
@@ -217,15 +244,17 @@ public class OllamaMockInterviewGeneratorTests
     /// aliases, since matching is exact case-insensitive equality (#150).
     /// </summary>
     [Theory]
-    [InlineData("Amazon.com", "PROBE_AMAZON_LPS")]
-    [InlineData("Amazon.com, Inc.", "PROBE_AMAZON_LPS")]
-    [InlineData("AWS", "PROBE_AMAZON_LPS")]
-    [InlineData("Google LLC", "PROBE_GOOGLE_GOOGLINESS")]
-    [InlineData("Alphabet Inc.", "PROBE_GOOGLE_GOOGLINESS")]
-    [InlineData("google llc", "PROBE_GOOGLE_GOOGLINESS")]
+    [InlineData("Amazon.com", "PROBE_AMAZON_MARKER")]
+    [InlineData("Amazon.com, Inc.", "PROBE_AMAZON_MARKER")]
+    [InlineData("Amazon.com Services LLC", "PROBE_AMAZON_MARKER")]
+    [InlineData("Amazon Web Services, Inc.", "PROBE_AMAZON_MARKER")]
+    [InlineData("AWS", "PROBE_AMAZON_MARKER")]
+    [InlineData("Google LLC", "PROBE_GOOGLE_MARKER")]
+    [InlineData("Alphabet Inc.", "PROBE_GOOGLE_MARKER")]
+    [InlineData("google llc", "PROBE_GOOGLE_MARKER")]
     public async Task Track_SuffixedCompanySpellings_MatchConfiguredAlias(string company, string expectedMarker)
     {
-        var (generator, http) = Create(extraConfig: TrackConfig);
+        var (generator, http) = Create(extraConfig: ProductionTrackConfigWithMarkers());
 
         await Collect(generator.FollowUpStreamAsync(Turns, company));
 
