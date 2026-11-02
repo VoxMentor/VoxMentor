@@ -37,9 +37,15 @@ public class OllamaMockInterviewGeneratorTests
         }
     }
 
-    private static OllamaMockInterviewGenerator Create(
-        Func<HttpResponseMessage> respond, Dictionary<string, string?>? extraConfig = null)
+    /// <summary>
+    /// Generator plus its request-capturing stub; <paramref name="extraConfig"/>
+    /// merges over the test defaults (#150 prompt assertions read <see cref="StubHttp.SentBodies"/>).
+    /// </summary>
+    private static (OllamaMockInterviewGenerator Generator, StubHttp Http) Create(
+        Func<HttpResponseMessage>? respond = null,
+        Dictionary<string, string?>? extraConfig = null)
     {
+        var http = new StubHttp(respond ?? (() => ChatReply("""{"solved":true}""")));
         var settings = new Dictionary<string, string?>
         {
             ["Ollama:BaseUrl"] = "http://ollama.test",
@@ -53,10 +59,11 @@ public class OllamaMockInterviewGeneratorTests
             }
         }
 
-        return new(
-            new HttpClient(new StubHttp(respond)),
+        var generator = new OllamaMockInterviewGenerator(
+            new HttpClient(http),
             new ConfigurationBuilder().AddInMemoryCollection(settings).Build(),
             NullLogger<OllamaMockInterviewGenerator>.Instance);
+        return (generator, http);
     }
 
     /// <summary>An /api/chat reply whose assistant content is the given string.</summary>
@@ -69,28 +76,6 @@ public class OllamaMockInterviewGeneratorTests
                 Encoding.UTF8,
                 "application/json")
         };
-
-    /// <summary>Generator plus its request-capturing stub, for prompt assertions (#150).</summary>
-    private static (OllamaMockInterviewGenerator Generator, StubHttp Http) CreateCapturing(
-        Dictionary<string, string?> extraConfig)
-    {
-        var http = new StubHttp(() => ChatReply("""{"solved":true}"""));
-        var settings = new Dictionary<string, string?>
-        {
-            ["Ollama:BaseUrl"] = "http://ollama.test",
-            ["Ollama:Model"] = "test-model"
-        };
-        foreach (var (key, value) in extraConfig)
-        {
-            settings[key] = value;
-        }
-
-        var generator = new OllamaMockInterviewGenerator(
-            new HttpClient(http),
-            new ConfigurationBuilder().AddInMemoryCollection(settings).Build(),
-            NullLogger<OllamaMockInterviewGenerator>.Instance);
-        return (generator, http);
-    }
 
     /// <summary>InterviewTracks section entries for the #150 tests: Amazon + Google + a custom third company (data-driven proof).</summary>
     private static Dictionary<string, string?> TrackConfig => new()
@@ -113,42 +98,42 @@ public class OllamaMockInterviewGeneratorTests
     [Fact]
     public async Task AssessAnswerSolved_SolvedTrue_ReturnsTrue()
     {
-        var generator = Create(() => ChatReply("""{"solved":true}"""));
+        var (generator, _) = Create(() => ChatReply("""{"solved":true}"""));
         Assert.True(await generator.AssessAnswerSolvedAsync(Turns, InterviewType.Technical, null));
     }
 
     [Fact]
     public async Task AssessAnswerSolved_MissingFlag_ReadsFalse_ExtraProbeNotStall()
     {
-        var generator = Create(() => ChatReply("{}"));
+        var (generator, _) = Create(() => ChatReply("{}"));
         Assert.False(await generator.AssessAnswerSolvedAsync(Turns, InterviewType.Technical, null));
     }
 
     [Fact]
     public async Task AssessAnswerSolved_MalformedVerdict_ReturnsNull()
     {
-        var generator = Create(() => ChatReply("this is not json"));
+        var (generator, _) = Create(() => ChatReply("this is not json"));
         Assert.Null(await generator.AssessAnswerSolvedAsync(Turns, InterviewType.Behavioral, null));
     }
 
     [Fact]
     public async Task AssessAnswerSolved_HttpError_ReturnsNull()
     {
-        var generator = Create(() => ChatReply("""{"solved":true}""", HttpStatusCode.InternalServerError));
+        var (generator, _) = Create(() => ChatReply("""{"solved":true}""", HttpStatusCode.InternalServerError));
         Assert.Null(await generator.AssessAnswerSolvedAsync(Turns, InterviewType.Technical, null));
     }
 
     [Fact]
     public async Task AssessAnswerSolved_OllamaTimeout_ReturnsNull()
     {
-        var generator = Create(() => throw new OperationCanceledException());
+        var (generator, _) = Create(() => throw new OperationCanceledException());
         Assert.Null(await generator.AssessAnswerSolvedAsync(Turns, InterviewType.Technical, null));
     }
 
     [Fact]
     public async Task AssessAnswerSolved_CallerCancelled_ThrowsNotNull()
     {
-        var generator = Create(() => ChatReply("""{"solved":true}"""));
+        var (generator, _) = Create(() => ChatReply("""{"solved":true}"""));
         using var cts = new CancellationTokenSource();
         cts.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
@@ -166,11 +151,23 @@ public class OllamaMockInterviewGeneratorTests
         return text.ToString();
     }
 
+    /// <summary>Calls all four prompt surfaces in order and returns the captured request bodies (#150).</summary>
+    private static async Task<List<string>> RunAllFourSurfaces(
+        OllamaMockInterviewGenerator generator, StubHttp http, string? company)
+    {
+        await Collect(generator.OpeningStreamAsync(company, "SDE-1", "Two Sum"));
+        await Collect(generator.FollowUpStreamAsync(Turns, company));
+        await generator.AssessAnswerSolvedAsync(Turns, InterviewType.Technical, company);
+        await generator.ReviewAsync(Turns, InterviewType.Behavioral, company, "SDE-1");
+        Assert.Equal(4, http.SentBodies.Count);
+        return http.SentBodies;
+    }
+
     /// <summary>Amazon JD: Prompt drives both dialogue surfaces, Rubric both judging surfaces (#150).</summary>
     [Fact]
     public async Task Track_Amazon_AllFourSurfacesContainTrackText()
     {
-        var (generator, http) = CreateCapturing(TrackConfig);
+        var (generator, http) = Create(extraConfig: TrackConfig);
 
         await Collect(generator.OpeningStreamAsync("Amazon", "SDE-1", "Two Sum"));
         await Collect(generator.FollowUpStreamAsync(Turns, "Amazon"));
@@ -188,7 +185,7 @@ public class OllamaMockInterviewGeneratorTests
     [Fact]
     public async Task Track_Google_GetsGooglinessText()
     {
-        var (generator, http) = CreateCapturing(TrackConfig);
+        var (generator, http) = Create(extraConfig: TrackConfig);
 
         await Collect(generator.FollowUpStreamAsync(Turns, "Google"));
 
@@ -201,7 +198,7 @@ public class OllamaMockInterviewGeneratorTests
     [Fact]
     public async Task Track_AliasAws_MatchesAmazonTrack()
     {
-        var (generator, http) = CreateCapturing(TrackConfig);
+        var (generator, http) = Create(extraConfig: TrackConfig);
 
         await Collect(generator.FollowUpStreamAsync(Turns, "AWS"));
 
@@ -209,19 +206,67 @@ public class OllamaMockInterviewGeneratorTests
         Assert.Contains("PROBE_AMAZON_LPS", body);
     }
 
-    /// <summary>Unknown company and null JD both fall back to the generic prompts — no track text leaks (#150).</summary>
+    /// <summary>
+    /// Unknown company, null JD, and the JdHeuristics sentinel: all four
+    /// prompt surfaces must be byte-identical to a run with no track config at
+    /// all — pins both halves of the #150 fallback AC (no leak on any surface,
+    /// no rewording of the generic prompts).
+    /// </summary>
     [Theory]
     [InlineData("Acme")]
     [InlineData(null)]
     [InlineData("Unknown")]
     public async Task Track_UnknownOrNullCompany_FallsBackToGenericPrompt(string? company)
     {
-        var (generator, http) = CreateCapturing(TrackConfig);
+        var (tracked, trackedHttp) = Create(extraConfig: TrackConfig);
+        var (generic, genericHttp) = Create(); // no InterviewTracks section
 
-        await Collect(generator.FollowUpStreamAsync(Turns, company));
-        await generator.AssessAnswerSolvedAsync(Turns, InterviewType.Technical, company);
+        var trackedBodies = await RunAllFourSurfaces(tracked, trackedHttp, company);
+        var genericBodies = await RunAllFourSurfaces(generic, genericHttp, company);
 
-        Assert.Equal(2, http.SentBodies.Count);
+        Assert.Equal(genericBodies, trackedBodies);
+    }
+
+    /// <summary>The mapping is a config table: a company that exists only in config (no code branch) resolves its track on every surface (#150).</summary>
+    [Fact]
+    public async Task Track_ConfigOnlyCompany_ResolvesWithoutCodeChange()
+    {
+        var (generator, http) = Create(extraConfig: TrackConfig);
+
+        var bodies = await RunAllFourSurfaces(generator, http, "Contoso");
+
+        Assert.Contains("PROBE_CONTOSO_CUSTOM", bodies[0]); // opening
+        Assert.Contains("PROBE_CONTOSO_CUSTOM", bodies[1]); // follow-up
+        Assert.Contains("RUBRIC_CONTOSO_CUSTOM", bodies[2]); // verdict
+        Assert.Contains("RUBRIC_CONTOSO_CUSTOM", bodies[3]); // review
+    }
+
+    /// <summary>
+    /// ParseTracks' degrade contract: entries with no aliases, a blank alias,
+    /// or no Prompt/Rubric are skipped whole (never thrown), so a typo'd config
+    /// falls back to the generic track instead of failing the interview (#150).
+    /// </summary>
+    [Fact]
+    public async Task Track_MalformedConfigEntries_AreSkippedNotThrown()
+    {
+        var (generator, http) = Create(extraConfig: new Dictionary<string, string?>
+        {
+            ["InterviewTracks:NoAliases:Prompt"] = "PROBE_NO_ALIASES",
+            ["InterviewTracks:NoAliases:Rubric"] = "RUBRIC_NO_ALIASES",
+            ["InterviewTracks:BlankAlias:Aliases:0"] = "   ",
+            ["InterviewTracks:BlankAlias:Prompt"] = "PROBE_BLANK",
+            ["InterviewTracks:BlankAlias:Rubric"] = "RUBRIC_BLANK",
+            ["InterviewTracks:HalfRubric:Aliases:0"] = "halfrubric",
+            ["InterviewTracks:HalfRubric:Prompt"] = "PROBE_HALF_RUBRIC"
+        });
+
+        // Each malformed company still gets the generic prompt — the whole
+        // entry (including its valid Prompt) is dropped, nothing throws.
+        await Collect(generator.FollowUpStreamAsync(Turns, "NoAliases"));
+        await Collect(generator.FollowUpStreamAsync(Turns, "   "));
+        await Collect(generator.FollowUpStreamAsync(Turns, "halfrubric"));
+
+        Assert.Equal(3, http.SentBodies.Count);
         Assert.All(http.SentBodies, body =>
         {
             Assert.DoesNotContain("PROBE_", body);
@@ -229,23 +274,11 @@ public class OllamaMockInterviewGeneratorTests
         });
     }
 
-    /// <summary>The mapping is a config table: a company that exists only in config (no code branch) resolves its track (#150).</summary>
-    [Fact]
-    public async Task Track_ConfigOnlyCompany_ResolvesWithoutCodeChange()
-    {
-        var (generator, http) = CreateCapturing(TrackConfig);
-
-        await Collect(generator.FollowUpStreamAsync(Turns, "Contoso"));
-
-        var body = Assert.Single(http.SentBodies);
-        Assert.Contains("PROBE_CONTOSO_CUSTOM", body);
-    }
-
     /// <summary>No InterviewTracks section at all: every surface behaves exactly like the pre-#150 generator (#150).</summary>
     [Fact]
     public async Task Track_NoConfigSection_FullyGeneric()
     {
-        var (generator, http) = CreateCapturing(new Dictionary<string, string?>());
+        var (generator, http) = Create(extraConfig: new Dictionary<string, string?>());
 
         await Collect(generator.OpeningStreamAsync("Amazon", "SDE-1", "Two Sum"));
         await Collect(generator.FollowUpStreamAsync(Turns, "Amazon"));

@@ -63,27 +63,42 @@ public class OllamaMockInterviewGenerator : IMockInterviewGenerator
     /// <summary>
     /// Reads the InterviewTracks section (#150) into a flat table — adding a
     /// company is one config entry, never a new code branch. Malformed entries
-    /// (no aliases, blank text) are skipped so a typo degrades to the generic
-    /// track instead of failing the interview.
+    /// (no aliases, blank text) are skipped whole — including their valid
+    /// fields — and logged, so a typo degrades to the generic track instead of
+    /// failing the interview.
     /// </summary>
-    private static IReadOnlyList<InterviewTrack> ParseTracks(IConfigurationSection section)
-        => section.GetChildren()
-            .Select(track => new InterviewTrack(
+    private IReadOnlyList<InterviewTrack> ParseTracks(IConfigurationSection section)
+    {
+        var tracks = new List<InterviewTrack>();
+        foreach (var track in section.GetChildren())
+        {
+            var parsed = new InterviewTrack(
                 track.GetSection("Aliases").GetChildren()
                     .Select(alias => alias.Value)
                     .Where(alias => !string.IsNullOrWhiteSpace(alias))
                     .Select(alias => alias!.Trim())
                     .ToList(),
                 track["Prompt"]?.Trim() ?? string.Empty,
-                track["Rubric"]?.Trim() ?? string.Empty))
-            .Where(track => track.Aliases.Count > 0
-                && track.Prompt.Length > 0
-                && track.Rubric.Length > 0)
-            .ToList();
+                track["Rubric"]?.Trim() ?? string.Empty);
+
+            if (parsed.Aliases.Count == 0 || parsed.Prompt.Length == 0 || parsed.Rubric.Length == 0)
+            {
+                _logger.LogWarning(
+                    "InterviewTracks entry '{Track}' skipped: needs non-empty Aliases, Prompt, and Rubric",
+                    track.Key);
+                continue;
+            }
+
+            tracks.Add(parsed);
+        }
+
+        return tracks;
+    }
 
     /// <summary>
     /// Case-insensitive alias match of the JD company name against the config
-    /// table; null (no JD, "Unknown", or an unlisted company) keeps today's
+    /// table; no match (no JD, an unlisted company, or the "Unknown" sentinel
+    /// while no alias claims it) returns null and the caller keeps today's
     /// generic prompts — the fallback is the absence of a match, not a branch.
     /// </summary>
     private InterviewTrack? ResolveTrack(string? company)
