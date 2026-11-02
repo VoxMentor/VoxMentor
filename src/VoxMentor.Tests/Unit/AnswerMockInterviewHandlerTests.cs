@@ -42,6 +42,11 @@ public class AnswerMockInterviewHandlerTests
 
         public string? LastRole { get; private set; }
 
+        /// <summary>Company the verdict and follow-up saw (#150 call-site plumbing).</summary>
+        public string? LastAssessCompany { get; private set; }
+
+        public string? LastFollowUpCompany { get; private set; }
+
         /// <summary>One streamed intro line; records the JD context it was generated with.</summary>
         public async IAsyncEnumerable<TutorChunk> OpeningStreamAsync(
             string? company, string? role, string problemTitle,
@@ -58,9 +63,11 @@ public class AnswerMockInterviewHandlerTests
 
         public async IAsyncEnumerable<TutorChunk> FollowUpStreamAsync(
             IReadOnlyList<TranscriptTurn> transcript,
+            string? company,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await Task.CompletedTask;
+            LastFollowUpCompany = company;
             if (FollowUp is not null)
             {
                 yield return new TutorChunk(FollowUp);
@@ -70,8 +77,12 @@ public class AnswerMockInterviewHandlerTests
         public Task<bool?> AssessAnswerSolvedAsync(
             IReadOnlyList<TranscriptTurn> transcript,
             InterviewType type,
+            string? company,
             CancellationToken cancellationToken = default)
-            => Task.FromResult(Solved);
+        {
+            LastAssessCompany = company;
+            return Task.FromResult(Solved);
+        }
 
         public Task<MockInterviewReviewDraft?> ReviewAsync(
             IReadOnlyList<TranscriptTurn> transcript,
@@ -368,6 +379,39 @@ public class AnswerMockInterviewHandlerTests
         Assert.NotNull(result.Data);
         Assert.Equal("Acme", generator.LastCompany);
         Assert.Equal("SDE-1", generator.LastRole);
+        Assert.Equal("Acme", generator.LastAssessCompany); // #150: verdict sees the JD company
+    }
+
+    /// <summary>Probing path: the JD company reaches both the verdict call and the follow-up stream (#150 call-site plumbing).</summary>
+    [Fact]
+    public async Task Answer_Probing_PassesJdCompanyToVerdictAndFollowUp()
+    {
+        var (db, handler, generator, _) = CreateHandler();
+        generator.Solved = false; // verdict says unsolved → probe follows
+        generator.FollowUp = "PROBE";
+        var jd = new JobDescription
+        {
+            Id = Guid.NewGuid(),
+            UserId = "user-1",
+            CompanyName = "Amazon",
+            Role = "SDE-1",
+            RawText = "Amazon is hiring...",
+            Difficulty = "Medium",
+            EstimatedWeeks = 6
+        };
+        db.JobDescriptions.Add(jd);
+        await db.SaveChangesAsync();
+        var interview = await SeedInterviewAsync(db, jdId: jd.Id);
+
+        var result = await handler.Handle(new AnswerMockInterviewCommand
+        {
+            InterviewId = interview.Id,
+            Message = "my answer"
+        }, CancellationToken.None);
+
+        Assert.NotNull(result.Data);
+        Assert.Equal("Amazon", generator.LastAssessCompany);
+        Assert.Equal("Amazon", generator.LastFollowUpCompany);
     }
 
     /// <summary>Exhausted pool: the fallback may repeat an older problem but never the one just answered, until even that tier finds nothing.</summary>

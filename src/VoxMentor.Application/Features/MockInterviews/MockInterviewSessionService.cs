@@ -275,6 +275,21 @@ public class MockInterviewSessionService
 
             turns.Add(new TranscriptTurn(TranscriptTurn.CandidateRole, request.Message, null, DateTime.UtcNow));
 
+            // #150: JD context once per answer — feeds the verdict rubric, the
+            // follow-up style, and the mid-run opening below (the advance
+            // branch previously did its own copy of this lookup).
+            string? company = null;
+            string? role = null;
+            if (interview.JdId is { } jdId)
+            {
+                // IUserOwned global filter scopes this like complete does.
+                var jd = await _db.JobDescriptions
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(j => j.Id == jdId, cancellationToken);
+                company = jd?.CompanyName;
+                role = jd?.Role;
+            }
+
             // #148: advance when the model is satisfied OR the probe budget is
             // spent (short-circuit: one verdict call per problem at most, and a
             // dead or contrary model can never strand the run on one problem).
@@ -282,7 +297,7 @@ public class MockInterviewSessionService
             // canned retry, whose judge always answers null.
             var advance = solvedAcrossRetry is { Value: true }
                 || probesSpent >= ProbesPerProblem
-                || await generator.AssessAnswerSolvedAsync(turns, interview.Type, cancellationToken) == true;
+                || await generator.AssessAnswerSolvedAsync(turns, interview.Type, company, cancellationToken) == true;
             if (solvedAcrossRetry is not null)
             {
                 solvedAcrossRetry.Value = advance;
@@ -294,7 +309,7 @@ public class MockInterviewSessionService
             if (!advance)
             {
                 var probe = new StringBuilder();
-                await foreach (var chunk in generator.FollowUpStreamAsync(turns, cancellationToken))
+                await foreach (var chunk in generator.FollowUpStreamAsync(turns, company, cancellationToken))
                 {
                     if (chunk.Text.Length == 0)
                         continue;
@@ -322,18 +337,6 @@ public class MockInterviewSessionService
             else
             {
                 var problem = await SelectNextProblemAsync(interview, turns, currentQuestionId, cancellationToken);
-
-                string? company = null;
-                string? role = null;
-                if (interview.JdId is { } jdId)
-                {
-                    // IUserOwned global filter scopes this like complete does.
-                    var jd = await _db.JobDescriptions
-                        .AsNoTracking()
-                        .FirstOrDefaultAsync(j => j.Id == jdId, cancellationToken);
-                    company = jd?.CompanyName;
-                    role = jd?.Role;
-                }
 
                 var intro = new StringBuilder();
                 await foreach (var chunk in generator.OpeningStreamAsync(company, role, problem.Title, cancellationToken))
@@ -489,18 +492,22 @@ public class MockInterviewSessionService
             yield return new TutorChunk(BuildFallbackOpening(company, role, problemTitle));
         }
 
+        /// <summary>Canned probe — the company parameter is accepted for contract parity and intentionally ignored (generic degrade path, #150).</summary>
         public async IAsyncEnumerable<TutorChunk> FollowUpStreamAsync(
             IReadOnlyList<TranscriptTurn> transcript,
+            string? company,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await Task.CompletedTask;
             yield return new TutorChunk(CannedFollowUp);
         }
 
-        // Canned dialogue never judges → null → the probe budget governs (#148).
+        // Canned dialogue never judges → null → the probe budget governs (#148);
+        // company ignored like above — the model-down path stays generic (#150).
         public Task<bool?> AssessAnswerSolvedAsync(
             IReadOnlyList<TranscriptTurn> transcript,
             InterviewType type,
+            string? company,
             CancellationToken cancellationToken = default)
             => Task.FromResult<bool?>(null);
 
