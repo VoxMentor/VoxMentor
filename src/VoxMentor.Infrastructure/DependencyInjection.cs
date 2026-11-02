@@ -99,6 +99,7 @@ public static class DependencyInjection
         // Plagiarism detection
         services.AddHttpClient<CodeEmbeddingService>();
         services.AddScoped<IPlagiarismDetector, PlagiarismDetector>();
+        services.AddScoped<ITextExtractor, PdfPigTextExtractor>();
 
         // ponytail: Redis sliding window — shared across API instances, keys expire via PEXPIRE.
         // Fail-closed: Redis down → error, not silent bypass. InMemory impl stays for unit tests only.

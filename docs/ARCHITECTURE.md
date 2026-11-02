@@ -148,7 +148,7 @@ VoxMentor uses a **modular monolith + 3 microservices + YARP API Gateway** archi
 | Adaptive Selector | NO | Pure SQL + C#, <50ms |
 | Knowledge Graph | NO | Recursive CTE queries, <10ms |
 | Mock Interview Engine | NO | State machine is pure C#. CALLS the services (Tutor, Voice, CodeExec) for slow operations. |
-| Resume ATS | NO | Lightweight pdfplumber call. Not worth a separate service. |
+| Resume ATS | NO (in-process PdfPig, #151) | Lightweight in-process PDF text extraction + keyword matching against JD skills. |
 
 ## Key Architecture Decisions (ADRs)
 

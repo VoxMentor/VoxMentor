@@ -484,31 +484,30 @@ Response `200`:
 
 ---
 
-# 7. Resume ATS — 🚧 To be built
+# 7. Resume ATS — implemented (#151: in-process PdfPig + keyword matching against JD skills)
 
 ### POST /api/v1/resume/analyze
-Upload resume + optional JD for ATS analysis. `multipart/form-data`: `file` (`.pdf` or `.txt`) + optional `jdId`. Without `jdId`, keywords are extracted from the raw JD text heuristically.
+Upload a resume for ATS analysis against a parsed JD. `multipart/form-data`: `file` (`.pdf` or `.txt`) + `jdId` (required, UUID of a parsed JD owned by the caller). Matches the resume text against the JD's weighted skills, returns matched/missing skills + a weighted fit score, an ATS parseability score (labeled sections), and suggestions.
 
 Response `200`:
 ```json
 {
-  "analysisId": "uuid",
-  "matchScore": 72,
+  "matchScore": 80,
   "keywordMatch": {
-    "matched": ["Python", "Databases", "Teamwork"],
-    "missing": ["System Design", "DP", "Leadership"]
+    "matched": ["Python", "SQL"],
+    "missing": ["Docker"]
   },
   "atsParseability": {
     "score": 85,
     "issues": ["No 'projects' section detected — ATS parsers expect clearly labeled sections."]
   },
   "suggestions": [
-    "Add 'System Design' to your resume — it appears in the JD but is missing from your resume.",
+    "Add 'Docker' to your resume — it appears in the JD but is missing from your resume.",
     "Use plain, clearly-labeled section headings (Education, Experience, Skills, Projects) instead of tables or columns."
   ]
 }
 ```
-Errors: `400` missing/unsupported file, `404` JD not found.
+Errors: `400` missing/unsupported/empty/unreadable file, `401` unauthenticated, `403` not a Student, `404` JD not found. File cap 5 MB (request cap 6 MB); PDF extraction is bounded to 50 pages / 1 MB of text.
 
 ---
 
@@ -724,7 +723,7 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | Knowledge graph | 1 (concept prerequisite chain) | ✅ Done |
 | AI Coach | 2 REST (ask, session) + hub | ✅ hub + session; 🚧 ask generation (#72) |
 | Mock Interviews | 5 REST (start, answer, complete, review, history) + hub | ✅ REST (#124, #125) + hub (#126) |
-| Resume ATS | 1 (analyze) | 🚧 |
+| Resume ATS | 1 (analyze) | ✅ (#151) |
 | Admin (content) | 4 (questions create/list, textbook upload/status) | ✅ Done |
 | Admin (content, unbuilt) | 2 (concepts, prerequisites) | 🚧 |
 | Role management (SuperAdmin) | 4 (list roles, list users, assign, remove) | ✅ Done |
