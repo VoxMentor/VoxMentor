@@ -67,10 +67,11 @@ public class AnalyzeResumeHandler : IRequestHandler<AnalyzeResumeCommand, ApiRes
         catch (Exception ex)
         {
             // Corrupt / scanned / otherwise unreadable PDF → 400, never 500.
+            // Preserve the original exception so production logs retain the root cause.
             throw new ValidationException(new Dictionary<string, string[]>
             {
                 ["file"] = ["Unable to read the PDF file — it may be corrupt or image-only."]
-            });
+            }, ex);
         }
 
         var skillWeights = await _db.JdSkillWeights

@@ -11,6 +11,13 @@ public class ValidationException : Exception
     {
         Errors = errors;
     }
+
+    /// <summary>Creates a validation failure carrying the given field errors and inner exception.</summary>
+    public ValidationException(IDictionary<string, string[]> errors, Exception? innerException)
+        : base("One or more validation failures have occurred.", innerException)
+    {
+        Errors = errors;
+    }
 }
 
 public class ConflictException : Exception
