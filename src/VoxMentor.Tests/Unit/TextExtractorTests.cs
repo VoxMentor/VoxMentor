@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Infrastructure.Services;
@@ -128,5 +129,69 @@ public class TextExtractorTests
         using var stream = new MemoryStream(bytes);
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             TextExtractor.ExtractAsync(stream, ".pdf", cts.Token));
+    }
+
+    [Fact]
+    public async Task ExtractAsync_PdfOverPageLimit_ThrowsValidation()
+    {
+        var bytes = MinimalPdfWithPages("Python developer", TextExtractor.MaxPages + 1);
+        using var stream = new MemoryStream(bytes);
+        await Assert.ThrowsAsync<ValidationException>(() =>
+            TextExtractor.ExtractAsync(stream, ".pdf"));
+    }
+
+    private static byte[] MinimalPdfWithPages(string text, int pageCount)
+    {
+        var escaped = text.Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
+        var content = $"BT /F1 12 Tf 72 720 Td ({escaped}) Tj ET";
+        var sb = new StringBuilder();
+        sb.Append("%PDF-1.4\n");
+        var offsets = new List<int>();
+
+        // Catalog
+        offsets.Add(sb.Length);
+        sb.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+
+        // Pages node
+        offsets.Add(sb.Length);
+        var kids = string.Join(" ", Enumerable.Range(3, pageCount).Select(i => $"{i} 0 R"));
+        sb.Append($"2 0 obj\n<< /Type /Pages /Kids [{kids}] /Count {pageCount} >>\nendobj\n");
+
+        // Page objects
+        var contentObjStart = 3 + pageCount;
+        var fontObjNum = contentObjStart + pageCount + 1;
+        for (int i = 0; i < pageCount; i++)
+        {
+            var pageNum = 3 + i;
+            var contentNum = contentObjStart + i;
+            offsets.Add(sb.Length);
+            sb.Append($"{pageNum} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {contentNum} 0 R /Resources << /Font << /F1 {fontObjNum} 0 R >> >> >>\nendobj\n");
+        }
+
+        // Content streams
+        for (int i = 0; i < pageCount; i++)
+        {
+            var contentNum = contentObjStart + i;
+            offsets.Add(sb.Length);
+            sb.Append($"{contentNum} 0 obj\n<< /Length {content.Length} >>\nstream\n{content}\nendstream\nendobj\n");
+        }
+
+        // Font
+        offsets.Add(sb.Length);
+        sb.Append($"{fontObjNum} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
+
+        // xref
+        var xrefPos = sb.Length;
+        sb.Append("xref\n");
+        sb.Append($"0 {offsets.Count + 1}\n");
+        sb.Append("0000000000 65535 f \n");
+        foreach (var off in offsets)
+            sb.Append($"{off:D10} 00000 n \n");
+        sb.Append("trailer\n");
+        sb.Append($"<< /Size {offsets.Count + 1} /Root 1 0 R >>\n");
+        sb.Append("startxref\n");
+        sb.Append($"{xrefPos}\n");
+        sb.Append("%%EOF\n");
+        return Encoding.ASCII.GetBytes(sb.ToString());
     }
 }

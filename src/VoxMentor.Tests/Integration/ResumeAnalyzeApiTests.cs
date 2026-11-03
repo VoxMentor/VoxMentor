@@ -256,6 +256,53 @@ public class ResumeAnalyzeApiTests : IClassFixture<CustomWebApplicationFactory>
         Assert.Single(result.Data.KeywordMatch.Missing);
     }
 
+    [Fact]
+    public async Task Analyze_NonStudent_Returns403()
+    {
+        var email = $"nonstudent-{Guid.NewGuid():N}@example.com";
+        var password = "Password@123";
+
+        // Create a user directly without the Student role (registration always
+        // assigns Student, so we bypass it to get an authenticated non-student).
+        using var scope = _factory.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var user = new ApplicationUser { UserName = email, Email = email, FullName = "Non Student" };
+        var createResult = await userManager.CreateAsync(user, password);
+        Assert.True(createResult.Succeeded);
+
+        var loginResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", new { email, password });
+        Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
+
+        var accessTokenCookie = loginResponse.Headers.GetValues("Set-Cookie")
+            .FirstOrDefault(c => c.StartsWith("access_token="));
+        Assert.NotNull(accessTokenCookie);
+        var cookie = accessTokenCookie.Split(';')[0];
+
+        var jdId = await SeedJdWithSkillsAsync(email, ("Python", 1.0f, true));
+        var response = await AnalyzeAsync(cookie, MinimalPdf("Python developer"), "resume.pdf", jdId);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Analyze_RateLimitExceeded_Returns429()
+    {
+        var email = $"student-ratelimit-{Guid.NewGuid():N}@example.com";
+        var cookie = await LoginAsStudentAsync(email);
+        var jdId = await SeedJdWithSkillsAsync(email, ("Python", 1.0f, true));
+
+        // First 5 requests within the per-minute limit.
+        for (int i = 0; i < 5; i++)
+        {
+            var response = await AnalyzeAsync(cookie, MinimalPdf("Python developer"), "resume.pdf", jdId);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        // 6th request should be rate limited.
+        var response6 = await AnalyzeAsync(cookie, MinimalPdf("Python developer"), "resume.pdf", jdId);
+        Assert.Equal(HttpStatusCode.TooManyRequests, response6.StatusCode);
+    }
+
     private sealed class AnalyzeResultDto
     {
         public int MatchScore { get; set; }

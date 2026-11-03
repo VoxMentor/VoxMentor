@@ -492,20 +492,24 @@ Upload a PDF resume and match it against a JD's weighted skills. `multipart/form
 Response `200`:
 ```json
 {
-  "analysisId": "uuid",
-  "matchScore": 72,
-  "keywordMatch": {
-    "matched": ["Python", "Databases", "Teamwork"],
-    "missing": ["System Design", "DP", "Leadership"]
-  },
-  "atsParseability": {
-    "score": 85,
-    "issues": ["No 'projects' section detected — ATS parsers expect clearly labeled sections."]
-  },
-  "suggestions": [
-    "Add 'System Design' to your resume — it appears in the JD but is missing from your resume.",
-    "Use plain, clearly-labeled section headings (Education, Experience, Skills, Projects) instead of tables or columns."
-  ]
+  "success": true,
+  "message": "Resume analyzed successfully.",
+  "data": {
+    "analysisId": "uuid",
+    "matchScore": 72,
+    "keywordMatch": {
+      "matched": ["Python", "Databases", "Teamwork"],
+      "missing": ["System Design", "DP", "Leadership"]
+    },
+    "atsParseability": {
+      "score": 85,
+      "issues": ["No 'projects' section detected — ATS parsers expect clearly labeled sections."]
+    },
+    "suggestions": [
+      "Add 'System Design' to your resume — it appears in the JD but is missing from your resume.",
+      "Use plain, clearly-labeled section headings (Education, Experience, Skills, Projects) instead of tables or columns."
+    ]
+  }
 }
 ```
 Errors: `401` unauthenticated, `400` missing/unsupported/empty/unreadable PDF, `404` unknown or foreign `jdId`, `429` rate limit exceeded (5/min per user).
@@ -709,7 +713,7 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | `JdSkillWeights` | Id, JobDescriptionId, SkillName, Weight (0–1), IsTechnical — unique (JobDescriptionId, SkillName) |
 | `CodeSubmissions` | Id, UserId, QuestionId, Code, Language, TestCasesPassed/Total, ExecutionTimeMs, MemoryUsageKb, AiEvaluationJson, PlagiarismScore, MasteryBefore/After |
 | `MockInterviews` | Id, UserId, JdId?, Type, Status, Score?, TranscriptJson, ReviewJson, StartedAt, CompletedAt? |
-| `ResumeAnalyses` | Id, UserId, JdId?, FileName, MatchScore, KeywordMatchJson, AtsParseabilityJson, SuggestionsJson |
+| `ResumeAnalyses` | Id, UserId, JdId, FileName, MatchScore, KeywordMatchJson, AtsParseabilityJson, SuggestionsJson |
 | `TutorSessions` | Id, UserId, ConceptId?, Question, Answer, Status, TotalTokens |
 | `TextbookJobs` | Id, FileName, Status, TotalChunks, ProcessedChunks, Error? |
 | `TextbookChunks` | Id, JobId, ConceptId?, Content, Source (+ pgvector embedding column) |

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
@@ -18,6 +19,8 @@ public class AnalyzeResumeHandler : IRequestHandler<AnalyzeResumeCommand, ApiRes
     private readonly IApplicationDbContext _db;
     private readonly ITextExtractor _extractor;
     private readonly ICurrentUserService _currentUser;
+    private readonly IRateLimiter _rateLimiter;
+    private readonly ILogger<AnalyzeResumeHandler> _logger;
 
     /// <summary>ponytail: 4 missing labeled sections → score floor of 40.</summary>
     private const int AtsSectionPenalty = 15;
@@ -30,11 +33,15 @@ public class AnalyzeResumeHandler : IRequestHandler<AnalyzeResumeCommand, ApiRes
     public AnalyzeResumeHandler(
         IApplicationDbContext db,
         ITextExtractor extractor,
-        ICurrentUserService currentUser)
+        ICurrentUserService currentUser,
+        IRateLimiter rateLimiter,
+        ILogger<AnalyzeResumeHandler> logger)
     {
         _db = db;
         _extractor = extractor;
         _currentUser = currentUser;
+        _rateLimiter = rateLimiter;
+        _logger = logger;
     }
 
     /// <exception cref="UnauthorizedAccessException">No authenticated user.</exception>
@@ -46,6 +53,21 @@ public class AnalyzeResumeHandler : IRequestHandler<AnalyzeResumeCommand, ApiRes
         var userId = _currentUser.UserId;
         if (string.IsNullOrEmpty(userId))
             throw new UnauthorizedAccessException("User must be authenticated to analyze a resume.");
+
+        // Cross-instance rate limit via Redis (shared across API instances).
+        // Falls back to the ASP.NET Core per-instance limiter if Redis is down.
+        try
+        {
+            await _rateLimiter.CheckAsync($"resume-analyze:{userId}", cancellationToken);
+        }
+        catch (RateLimitException)
+        {
+            throw; // → 429 via ExceptionHandlingMiddleware
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Redis rate limiter unavailable for user {UserId}; falling back to per-instance limit.", userId);
+        }
 
         // Unknown and foreign JDs both surface as null → 404 (no existence oracle).
         var jd = await _db.JobDescriptions
@@ -60,6 +82,12 @@ public class AnalyzeResumeHandler : IRequestHandler<AnalyzeResumeCommand, ApiRes
         {
             resumeText = await _extractor.ExtractAsync(request.Content, ".pdf", cancellationToken);
         }
+        catch (OperationCanceledException)
+        {
+            // Client disconnect or timeout — propagate as cancellation, not a
+            // corrupt-file validation error.
+            throw;
+        }
         catch (ValidationException)
         {
             throw;
@@ -72,6 +100,15 @@ public class AnalyzeResumeHandler : IRequestHandler<AnalyzeResumeCommand, ApiRes
             {
                 ["file"] = ["Unable to read the PDF file — it may be corrupt or image-only."]
             }, ex);
+        }
+
+        if (string.IsNullOrWhiteSpace(resumeText))
+        {
+            // Image-only or otherwise textless PDF — nothing to match against.
+            throw new ValidationException(new Dictionary<string, string[]>
+            {
+                ["file"] = ["Unable to read the PDF file — it may be corrupt or image-only."]
+            });
         }
 
         var skillWeights = await _db.JdSkillWeights
@@ -139,9 +176,11 @@ public class AnalyzeResumeHandler : IRequestHandler<AnalyzeResumeCommand, ApiRes
     private static bool SkillAppearsInText(string skill, string normalizedText)
     {
         // Whitespace-normalize the stored skill name so "System  Design" in a
-        // JD still matches "System Design" in the resume.
-        var skillName = string.Join(' ', skill.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries));
-        if (skillName.Length == 0)
+        // JD still matches "System Design" in the resume. Normalize on all
+        // whitespace (tabs, newlines, multiple spaces), not just literal spaces,
+        // so a key like "Machine\tLearning" still matches "Machine Learning".
+        var skillName = NormalizeWhitespace(skill);
+        if (string.IsNullOrEmpty(skillName))
             return false;
 
         // Word-boundary match: "C" must not match "C++"/"C#", "Java" must not

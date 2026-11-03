@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Features.Resume.AnalyzeResume;
@@ -22,6 +23,13 @@ public class AnalyzeResumeHandlerTests
         public string? TextToReturn { get; set; }
         public Task<string> ExtractAsync(Stream stream, string extension, CancellationToken cancellationToken = default)
             => Task.FromResult(TextToReturn ?? string.Empty);
+    }
+
+    /// <summary>Allows every request — rate limiting is covered by the API integration tests.</summary>
+    private sealed class FakeRateLimiter : IRateLimiter
+    {
+        public Task CheckAsync(string key, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
     }
 
     private static Infrastructure.Persistence.ApplicationDbContext CreateDb()
@@ -76,7 +84,12 @@ public class AnalyzeResumeHandlerTests
         FakeTextExtractor extractor,
         FakeCurrentUserService? user = null)
     {
-        return new AnalyzeResumeHandler(db, extractor, user ?? new FakeCurrentUserService());
+        return new AnalyzeResumeHandler(
+            db,
+            extractor,
+            user ?? new FakeCurrentUserService(),
+            new FakeRateLimiter(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<AnalyzeResumeHandler>.Instance);
     }
 
     private static AnalyzeResumeCommand Command(Guid jdId, string fileName = "resume.pdf") =>

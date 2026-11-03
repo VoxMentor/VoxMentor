@@ -49,12 +49,7 @@ public static class TextExtractor
 
     private static async Task<string> ExtractTxt(Stream stream, CancellationToken cancellationToken)
     {
-        using var reader = new StreamReader(stream, leaveOpen: true);
-        var text = await reader.ReadToEndAsync(cancellationToken);
-
-        // Strict UTF-8 validation: StreamReader defaults to lenient replacement,
-        // so re-decode from a buffered copy and reject invalid bytes.
-        stream.Position = 0;
+        // Buffer once; reuse for strict UTF-8 decode and char-limit check.
         using var ms = new MemoryStream();
         await stream.CopyToAsync(ms, cancellationToken);
         var bytes = ms.ToArray();
@@ -82,6 +77,14 @@ public static class TextExtractor
             });
         }
 
+        if (decoded.Length > MaxChars)
+        {
+            throw new ValidationException(new Dictionary<string, string[]>
+            {
+                ["file"] = [$"Resume exceeds {MaxChars:N0} characters."]
+            });
+        }
+
         return decoded;
     }
 
@@ -90,6 +93,16 @@ public static class TextExtractor
         var pages = new List<string>();
         var totalChars = 0;
         using var document = PdfDocument.Open(stream);
+
+        // Fail fast on page count before parsing any page content.
+        var totalPages = document.GetPages().Count();
+        if (totalPages > MaxPages)
+        {
+            throw new ValidationException(new Dictionary<string, string[]>
+            {
+                ["file"] = [$"Resume exceeds {MaxPages} pages."]
+            });
+        }
 
         var pageCount = 0;
         foreach (var page in document.GetPages())
