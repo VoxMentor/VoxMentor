@@ -484,10 +484,10 @@ Response `200`:
 
 ---
 
-# 7. Resume ATS — 🚧 To be built
+# 7. Resume ATS — ✅ Implemented (#151)
 
 ### POST /api/v1/resume/analyze
-Upload resume + optional JD for ATS analysis. `multipart/form-data`: `file` (`.pdf` or `.txt`) + optional `jdId`. Without `jdId`, keywords are extracted from the raw JD text heuristically.
+Upload a PDF resume and match it against a JD's weighted skills. `multipart/form-data`: `file` (`.pdf`, ≤5 MB) + required `jdId`. Returns a fit report with a weighted match score, matched/missing skills, an ATS parseability score, and suggestions. Every analysis is persisted (`ResumeAnalyses` table, `analysisId` in the response).
 
 Response `200`:
 ```json
@@ -508,7 +508,9 @@ Response `200`:
   ]
 }
 ```
-Errors: `400` missing/unsupported file, `404` JD not found.
+Errors: `401` unauthenticated, `400` missing/unsupported/empty/unreadable PDF, `404` unknown or foreign `jdId`, `429` rate limit exceeded (5/min per user).
+
+Matching reads `JdSkillWeights` (`JobDescriptions` itself has no skill columns — technical/HR skill weights live in that table; `TechnicalSkillsJson`/`HrSkillsJson` were dropped in favor of the weight table at #117).
 
 ---
 
@@ -703,7 +705,8 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | `Questions` | Id, ConceptId, Text, QuestionType, Difficulty, TemplateVariablesJson, RubricJson |
 | `QuestionTestCases` | Id, QuestionId, Input, Expected, Hidden, IsExample |
 | `StudentMasteries` | Id, UserId, ConceptId, Mastery (0–1), CorrectAttempts, IncorrectAttempts — unique (UserId, ConceptId) |
-| `JobDescriptions` | Id, UserId, RawText, CompanyName, Role, TechnicalSkillsJson, HrSkillsJson, Difficulty, EstimatedWeeks |
+| `JobDescriptions` | Id, UserId, RawText, CompanyName, Role, Difficulty, EstimatedWeeks |
+| `JdSkillWeights` | Id, JobDescriptionId, SkillName, Weight (0–1), IsTechnical — unique (JobDescriptionId, SkillName) |
 | `CodeSubmissions` | Id, UserId, QuestionId, Code, Language, TestCasesPassed/Total, ExecutionTimeMs, MemoryUsageKb, AiEvaluationJson, PlagiarismScore, MasteryBefore/After |
 | `MockInterviews` | Id, UserId, JdId?, Type, Status, Score?, TranscriptJson, ReviewJson, StartedAt, CompletedAt? |
 | `ResumeAnalyses` | Id, UserId, JdId?, FileName, MatchScore, KeywordMatchJson, AtsParseabilityJson, SuggestionsJson |
@@ -724,7 +727,7 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | Knowledge graph | 1 (concept prerequisite chain) | ✅ Done |
 | AI Coach | 2 REST (ask, session) + hub | ✅ hub + session; 🚧 ask generation (#72) |
 | Mock Interviews | 5 REST (start, answer, complete, review, history) + hub | ✅ REST (#124, #125) + hub (#126) |
-| Resume ATS | 1 (analyze) | 🚧 |
+| Resume ATS | 1 (analyze) | ✅ (#151) |
 | Admin (content) | 4 (questions create/list, textbook upload/status) | ✅ Done |
 | Admin (content, unbuilt) | 2 (concepts, prerequisites) | 🚧 |
 | Role management (SuperAdmin) | 4 (list roles, list users, assign, remove) | ✅ Done |
@@ -732,4 +735,4 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | Code Exec Service | 1 (execute) | ✅ Done |
 | Voice Service | 3 (stt, tts, health) | ✅ Done |
 | Gateway | YARP routing + rate limiting | 🚧 |
-| **Total** | **48 REST + 3 hubs** | **44 done / 4 to build REST; 3/3 hubs done; AI Coach REST generation deferred (#72)** |
+| **Total** | **48 REST + 3 hubs** | **45 done / 3 to build REST; 3/3 hubs done; AI Coach REST generation deferred (#72)** |

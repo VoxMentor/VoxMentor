@@ -92,6 +92,9 @@ public static class DependencyInjection
         });
         services.AddScoped<ICurrentTokenService, CurrentTokenService>();
 
+        // #151: PDF text extraction for resume analysis.
+        services.AddScoped<ITextExtractor>(sp => new Services.TextExtractor.TextExtractorAdapter());
+
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IMasteryEventPublisher, NullMasteryEventPublisher>();

@@ -671,6 +671,51 @@ namespace VoxMentor.Infrastructure.Migrations
                     b.ToTable("RefreshTokens");
                 });
 
+            modelBuilder.Entity("VoxMentor.Domain.Entities.ResumeAnalysis", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AtsParseabilityJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)");
+
+                    b.Property<Guid>("JdId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("KeywordMatchJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("MatchScore")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SuggestionsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JdId");
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.ToTable("ResumeAnalyses");
+                });
+
             modelBuilder.Entity("VoxMentor.Domain.Entities.StudentMastery", b =>
                 {
                     b.Property<Guid>("Id")
@@ -943,6 +988,15 @@ namespace VoxMentor.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("VoxMentor.Domain.Entities.ResumeAnalysis", b =>
+                {
+                    b.HasOne("VoxMentor.Domain.Entities.JobDescription", null)
+                        .WithMany()
+                        .HasForeignKey("JdId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }
