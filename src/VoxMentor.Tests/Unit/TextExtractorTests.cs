@@ -102,4 +102,68 @@ public class TextExtractorTests
         using var stream = new MemoryStream(bytes);
         await Assert.ThrowsAsync<OperationCanceledException>(() => TextExtractor.ExtractAsync(stream, ".pdf", cts.Token));
     }
+
+    private static string WorkerExePath()
+    {
+        var exe = Path.Combine(AppContext.BaseDirectory, "VoxMentor.Workers.PdfExtractor.exe");
+        Assert.True(File.Exists(exe), $"Worker exe not found at {exe}");
+        return exe;
+    }
+
+    private static string WriteTempPdf(string text)
+    {
+        var path = Path.GetTempFileName();
+        File.WriteAllBytes(path, MinimalPdf(text));
+        return path;
+    }
+
+    [Fact]
+    public async Task PdfExtractionWorker_ValidPdf_ReturnsText()
+    {
+        var exe = WorkerExePath();
+        var path = WriteTempPdf("Python developer");
+        try
+        {
+            using var worker = new PdfExtractionWorker(exe, maxPages: 50, maxChars: 1_000_000);
+            var result = await worker.ExtractAsync(path);
+            Assert.Contains("Python", result);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task PdfExtractionWorker_TooManyChars_ThrowsValidation()
+    {
+        var exe = WorkerExePath();
+        var path = WriteTempPdf(new string('a', 100));
+        try
+        {
+            using var worker = new PdfExtractionWorker(exe, maxPages: 50, maxChars: 50);
+            await Assert.ThrowsAsync<ValidationException>(() => worker.ExtractAsync(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task PdfExtractionWorker_CorruptPdf_ThrowsValidation()
+    {
+        var exe = WorkerExePath();
+        var path = Path.GetTempFileName();
+        File.WriteAllBytes(path, new byte[] { 1, 2, 3, 4, 5 });
+        try
+        {
+            using var worker = new PdfExtractionWorker(exe, maxPages: 50, maxChars: 1_000_000);
+            await Assert.ThrowsAsync<ValidationException>(() => worker.ExtractAsync(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

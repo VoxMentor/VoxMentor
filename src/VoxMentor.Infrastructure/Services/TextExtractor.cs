@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
@@ -10,6 +11,10 @@ public static class TextExtractor
 {
     private static readonly TimeSpan ExtractionTimeout = TimeSpan.FromSeconds(30);
 
+    // 6 MB: matches the controller's [RequestSizeLimit]. Fail-fast before PdfPig
+    // opens the stream so an oversized upload is rejected without decompressing.
+    private static readonly long MaxInputStreamBytes = 6L * 1024 * 1024;
+
     public static async Task<string> ExtractAsync(string filePath, CancellationToken cancellationToken = default)
     {
         if (filePath.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
@@ -19,8 +24,7 @@ public static class TextExtractor
 
         if (filePath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
         {
-            await using var stream = File.OpenRead(filePath);
-            return ExtractPdf(stream, cancellationToken: cancellationToken);
+            return ExtractPdf(filePath, cancellationToken: cancellationToken);
         }
 
         throw new NotSupportedException($"Unsupported file type '{Path.GetExtension(filePath)}'.");
@@ -68,10 +72,21 @@ public static class TextExtractor
 
             if (extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase))
             {
-                var text = ExtractPdf(content, maxPages: 50, maxChars: 1_000_000, cancellationToken: token);
-                // A final page that runs past the timeout must not return success.
-                token.ThrowIfCancellationRequested();
-                return text;
+                // Copy to a temp file so the worker process can open it by path.
+                // The 6 MB cap below bounds compressed input before PdfPig decompresses.
+                var tempPath = Path.GetTempFileName();
+                try
+                {
+                    await using (var fs = File.Create(tempPath))
+                    {
+                        await content.CopyToAsync(fs, token);
+                    }
+                    return ExtractPdf(tempPath, cancellationToken: token);
+                }
+                finally
+                {
+                    try { File.Delete(tempPath); } catch { }
+                }
             }
 
             throw new NotSupportedException($"Unsupported file type '{extension}'.");
@@ -85,18 +100,41 @@ public static class TextExtractor
         }
     }
 
-    private static string ExtractPdf(Stream stream, int maxPages = int.MaxValue, int maxChars = int.MaxValue, CancellationToken cancellationToken = default)
+    private static string ExtractPdf(string filePath, CancellationToken cancellationToken = default)
+    {
+        using var stream = File.OpenRead(filePath);
+
+        // Fail fast on oversized input — bounds compressed bytes before PdfPig
+        // decompresses. Mirrors the controller's [RequestSizeLimit(6 MB)].
+        if (stream.Length > MaxInputStreamBytes)
+            throw new ValidationException(new Dictionary<string, string[]>
+            {
+                ["file"] = new[] { $"Resume file exceeds {MaxInputStreamBytes / (1024 * 1024)} MB." }
+            });
+
+        // Try the isolated worker first (memory-bounded). Fall back to in-process
+        // if the worker binary is unavailable (e.g. not published in dev).
+        var workerExe = Path.Combine(
+            AppContext.BaseDirectory,
+            "VoxMentor.Workers.PdfExtractor.exe");
+
+        if (File.Exists(workerExe))
+        {
+            using var worker = new PdfExtractionWorker(workerExe, maxPages: 50, maxChars: 1_000_000);
+            return worker.ExtractAsync(filePath, cancellationToken).GetAwaiter().GetResult();
+        }
+
+        // ponytail: in-process fallback — no OS memory limit on decompressed text.
+        // PdfPig v0.1.16 has no decoded-size cap; a deflate bomb can allocate ~2 GB.
+        return ExtractPdfInProcess(stream, maxPages: 50, maxChars: 1_000_000,
+            cancellationToken: cancellationToken);
+    }
+
+    private static string ExtractPdfInProcess(Stream stream, int maxPages = int.MaxValue,
+        int maxChars = int.MaxValue, CancellationToken cancellationToken = default)
     {
         using var document = PdfDocument.Open(stream);
-        // ponytail: PdfPig v0.1.16 has no decoded-size or memory limit.
-        // ParsingOptions (UseLenientParsing, SkipMissingFonts, FilterProvider,
-        // Password) exposes nothing to cap Flate decoder output. ContentOrderTextExtractor
-        // GetText(page) is atomic — a 6 KB deflate bomb can allocate ~2 GB before
-        // our maxChars check runs. The controller's 6 MB request cap bounds the
-        // compressed input, not decompressed memory. Full fix requires an isolated
-        // worker process with a memory limit (JobObject on Windows, cgroup/rlimit
-        // on Linux); see follow-up issue. The 1,000,000-char output clamp is the
-        // in-process ceiling — it bounds returned text, not peak decoding memory.
+
         if (document.NumberOfPages > maxPages)
             throw new ValidationException(new Dictionary<string, string[]>
             {
