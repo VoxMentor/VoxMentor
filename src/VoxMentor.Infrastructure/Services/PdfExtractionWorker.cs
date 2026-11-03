@@ -117,7 +117,14 @@ public sealed class PdfExtractionWorker : IDisposable
                         ["file"] = ["Worker produced no output."]
                     });
                 }
-                return File.ReadAllText(_tempOutputPath);
+                try
+                {
+                    return File.ReadAllText(_tempOutputPath);
+                }
+                finally
+                {
+                    try { File.Delete(_tempOutputPath); } catch { }
+                }
 
             case 2: // too many pages
             case 3: // too many chars
