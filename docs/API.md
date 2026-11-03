@@ -507,7 +507,7 @@ Response `200`:
   ]
 }
 ```
-Errors: `400` missing/unsupported/empty/unreadable file, `401` unauthenticated, `403` not a Student, `404` JD not found. File cap 5 MB (request cap 6 MB); PDF extraction is bounded to 50 pages / 1 MB of text.
+Errors: `400` missing/unsupported/empty/unreadable file, over-limit PDF (>50 pages or >1 MB of text — rejected, not truncated), or extraction timeout (>30 s); `401` unauthenticated, `403` not a Student, `404` JD not found, `429` rate limited (5 requests/minute per user/IP). File cap 5 MB (request cap 6 MB).
 
 ---
 
