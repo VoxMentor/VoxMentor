@@ -40,7 +40,7 @@ public static class Program
             using var document = PdfDocument.Open(inputPath);
 
             // Fail fast on page count before parsing any page content.
-            var totalPages = document.GetPages().Count();
+            var totalPages = document.NumberOfPages;
             if (totalPages > MaxPages)
             {
                 Console.Error.WriteLine($"Resume exceeds {MaxPages} pages.");
@@ -69,7 +69,14 @@ public static class Program
                 pages.Add(pageText);
             }
 
-            File.WriteAllText(outputPath, string.Join("\n\n", pages));
+            var extractedText = string.Join("\n\n", pages);
+            if (extractedText.Length > MaxChars)
+            {
+                Console.Error.WriteLine($"Resume exceeds {MaxChars:N0} characters.");
+                return 3;
+            }
+
+            File.WriteAllText(outputPath, extractedText);
             return 0;
         }
         catch (Exception ex)

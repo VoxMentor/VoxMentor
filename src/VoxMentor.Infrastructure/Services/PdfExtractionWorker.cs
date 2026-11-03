@@ -13,6 +13,7 @@ namespace VoxMentor.Infrastructure.Services;
 /// PDF and writes extracted text to a temp output file. This class:
 ///   - caps the worker's private memory (<see cref="MaxPrivateMemoryBytes"/>),
 ///   - caps wall-clock time (<see cref="ExtractionTimeout"/>),
+///   - honors request cancellation by killing the worker process,
 ///   - reads the output file on success,
 ///   - maps worker exit codes to <see cref="ValidationException"/> (400).
 /// </summary>
@@ -34,9 +35,13 @@ public sealed class PdfExtractionWorker : IDisposable
     }
 
     /// <summary>Extracts text from a PDF file via the isolated worker process.</summary>
+    /// <param name="cancellationToken">Request cancellation token; cancelling
+    /// kills the worker process.</param>
     /// <exception cref="ValidationException">Over page/char limit, corrupt PDF, or worker failure.</exception>
-    /// <exception cref="OperationCanceledException">Worker timed out.</exception>
-    public string Extract(string inputPdfPath)
+    /// <exception cref="OperationCanceledException">Request was cancelled or worker timed out.</exception>
+    public async Task<string> ExtractAsync(
+        string inputPdfPath,
+        CancellationToken cancellationToken = default)
     {
         if (!File.Exists(_workerExePath))
         {
@@ -82,12 +87,21 @@ public sealed class PdfExtractionWorker : IDisposable
             // Not all runtimes honor working-set limits; timeout is the backstop.
         }
 
+        // Register cancellation so a client disconnect kills the worker
+        // instead of leaving it running until its own timeout fires.
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.Token.Register(() =>
+        {
+            try { process.Kill(); } catch { }
+        });
+
         var exited = process.WaitForExit((int)ExtractionTimeout.TotalMilliseconds);
         if (!exited)
         {
             try { process.Kill(); } catch { }
             throw new OperationCanceledException(
-                $"PDF extraction timed out after {ExtractionTimeout.TotalSeconds}s.");
+                $"PDF extraction timed out after {ExtractionTimeout.TotalSeconds}s.",
+                cts.Token);
         }
 
         var exitCode = process.ExitCode;

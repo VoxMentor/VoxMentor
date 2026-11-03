@@ -75,7 +75,7 @@ public class PdfPigTextExtractor : ITextExtractor
         });
     }
 
-    private static async Task<string> ExtractTxt(Stream stream, CancellationToken cancellationToken)
+    internal static async Task<string> ExtractTxt(Stream stream, CancellationToken cancellationToken)
     {
         // Buffer once; reuse for strict UTF-8 decode and char-limit check.
         using var ms = new MemoryStream();
@@ -132,7 +132,7 @@ public class PdfPigTextExtractor : ITextExtractor
                 await stream.CopyToAsync(fileStream, cancellationToken);
             }
 
-            return _worker.Extract(tempInput);
+            return await _worker.ExtractAsync(tempInput, cancellationToken);
         }
         finally
         {

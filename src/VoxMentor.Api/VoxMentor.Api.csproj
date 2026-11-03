@@ -15,6 +15,17 @@
   <ItemGroup>
     <ProjectReference Include="..\VoxMentor.Application\VoxMentor.Application.csproj" />
     <ProjectReference Include="..\VoxMentor.Infrastructure\VoxMentor.Infrastructure.csproj" />
+    <!-- Standalone PDF extraction worker: built and copied to output dir below. -->
+    <ProjectReference Include="..\VoxMentor.Workers.PdfExtractor\VoxMentor.Workers.PdfExtractor.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
+
+  <!-- Copy the PDF extraction worker exe next to the API dll so
+       PdfPigTextExtractor can launch it at runtime with an OS memory limit. -->
+  <Target Name="CopyPdfExtractorWorker" AfterTargets="Build">
+    <ItemGroup>
+      <_WorkerFiles Include="$(MSBuildProjectDirectory)\..\VoxMentor.Workers.PdfExtractor\bin\$(Configuration)\net8.0\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_WorkerFiles)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

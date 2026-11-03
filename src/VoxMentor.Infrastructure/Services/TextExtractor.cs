@@ -8,7 +8,8 @@ namespace VoxMentor.Infrastructure.Services;
 /// <remarks>
 /// PDFs are parsed in an isolated worker process (<see cref="PdfPigTextExtractor"/>,
 /// backed by <see cref="PdfExtractionWorker"/>) with OS-enforced memory and
-/// time limits (#151, CodeRabbit finding). TXT files are extracted in-process.
+/// time limits (#151, CodeRabbit finding). TXT files are extracted in-process
+/// without constructing the PDF extractor.
 /// </remarks>
 public static class TextExtractor
 {
@@ -18,7 +19,9 @@ public static class TextExtractor
     /// <summary>Hard cap on pages read before extraction aborts.</summary>
     public const int MaxPages = 50;
 
-    private static readonly PdfPigTextExtractor _extractor = new();
+    /// <summary>Lazily creates the PDF extractor so TXT-only paths never touch it.</summary>
+    private static readonly Lazy<PdfPigTextExtractor> _pdfExtractor =
+        new(() => new PdfPigTextExtractor());
 
     public static async Task<string> ExtractAsync(string filePath, CancellationToken cancellationToken = default)
     {
@@ -30,6 +33,11 @@ public static class TextExtractor
     /// <summary>Extracts text from an in-memory stream given its extension.</summary>
     public static async Task<string> ExtractAsync(Stream stream, string extension, CancellationToken cancellationToken = default)
     {
-        return await _extractor.ExtractAsync(stream, extension, cancellationToken);
+        if (extension.Equals(".txt", StringComparison.OrdinalIgnoreCase))
+        {
+            return await PdfPigTextExtractor.ExtractTxt(stream, cancellationToken);
+        }
+
+        return await _pdfExtractor.Value.ExtractAsync(stream, extension, cancellationToken);
     }
 }
