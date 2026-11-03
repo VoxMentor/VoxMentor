@@ -1,3 +1,4 @@
+using System.Threading;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Infrastructure.Services;
 using Xunit;
@@ -90,5 +91,15 @@ public class TextExtractorTests
         var bytes = new byte[] { 1, 2, 3, 4, 5 };
         using var stream = new MemoryStream(bytes);
         await Assert.ThrowsAnyAsync<Exception>(() => TextExtractor.ExtractAsync(stream, ".pdf"));
+    }
+
+    [Fact]
+    public async Task ExtractAsync_CancelledToken_ThrowsOperationCanceled()
+    {
+        var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var bytes = MinimalPdf("Python developer");
+        using var stream = new MemoryStream(bytes);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => TextExtractor.ExtractAsync(stream, ".pdf", cts.Token));
     }
 }

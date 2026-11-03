@@ -68,7 +68,10 @@ public static class TextExtractor
 
             if (extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase))
             {
-                return ExtractPdf(content, maxPages: 50, maxChars: 1_000_000, cancellationToken: token);
+                var text = ExtractPdf(content, maxPages: 50, maxChars: 1_000_000, cancellationToken: token);
+                // A final page that runs past the timeout must not return success.
+                token.ThrowIfCancellationRequested();
+                return text;
             }
 
             throw new NotSupportedException($"Unsupported file type '{extension}'.");
@@ -85,8 +88,11 @@ public static class TextExtractor
     private static string ExtractPdf(Stream stream, int maxPages = int.MaxValue, int maxChars = int.MaxValue, CancellationToken cancellationToken = default)
     {
         using var document = PdfDocument.Open(stream);
-        // Page objects are lightweight; text extraction (the memory-heavy step)
-        // is lazy, so materializing the page list is cheap.
+        // ponytail: PdfPig decompresses each page into memory before we can clamp
+        // its output. A small deflate bomb can exceed the maxChars limit during
+        // decoding — the controller's 6 MB request cap bounds the compressed size
+        // but not the decompressed text. Full fix needs an isolated worker with
+        // a memory limit; the 1,000,000-char output clamp is the in-process ceiling.
         var allPages = document.GetPages().ToList();
         if (allPages.Count > maxPages)
             throw new ValidationException(new Dictionary<string, string[]>
@@ -100,13 +106,16 @@ public static class TextExtractor
         {
             cancellationToken.ThrowIfCancellationRequested();
             var pageText = ContentOrderTextExtractor.GetText(page);
-            if (pageText.Length > maxChars - total)
+            // Page separators count toward the budget so 50 pages × 20k chars
+            // can't slip past 1,000,000 by 98 chars of "\n\n" padding.
+            var separatorLength = pages.Count > 0 ? "\n\n".Length : 0;
+            if (pageText.Length + separatorLength > maxChars - total)
                 throw new ValidationException(new Dictionary<string, string[]>
                 {
                     ["file"] = new[] { $"Resume exceeds {maxChars} characters." }
                 });
             pages.Add(pageText);
-            total += pageText.Length;
+            total += separatorLength + pageText.Length;
         }
         return string.Join("\n\n", pages);
     }
