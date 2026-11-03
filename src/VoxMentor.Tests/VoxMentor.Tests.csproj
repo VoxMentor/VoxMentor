@@ -8,6 +8,7 @@
     <PackageReference Include="coverlet.collector" Version="6.0.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.12" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="PdfPig" Version="0.1.16" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.12" />
@@ -20,7 +21,18 @@
     <ProjectReference Include="..\VoxMentor.Application\VoxMentor.Application.csproj" />
     <ProjectReference Include="..\VoxMentor.Infrastructure\VoxMentor.Infrastructure.csproj" />
     <ProjectReference Include="..\VoxMentor.Domain\VoxMentor.Domain.csproj" />
+    <!-- PDF extraction worker: copied to output dir for PdfPigTextExtractor. -->
+    <ProjectReference Include="..\VoxMentor.Workers.PdfExtractor\VoxMentor.Workers.PdfExtractor.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
+
+  <!-- Copy the PDF extraction worker exe next to the test dll so
+       PdfPigTextExtractor can launch it at runtime. -->
+  <Target Name="CopyPdfExtractorWorker" AfterTargets="Build">
+    <ItemGroup>
+      <_WorkerFiles Include="$(MSBuildProjectDirectory)\..\VoxMentor.Workers.PdfExtractor\bin\$(Configuration)\net8.0\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_WorkerFiles)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  </Target>
 
   <ItemGroup>
     <Using Include="Xunit" />

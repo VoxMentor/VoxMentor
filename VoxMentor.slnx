@@ -8,5 +8,6 @@
     <Project Path="src/VoxMentor.Infrastructure/VoxMentor.Infrastructure.csproj" />
     <Project Path="src/VoxMentor.Tests/VoxMentor.Tests.csproj" />
     <Project Path="src/VoxMentor.TutorService/VoxMentor.TutorService.csproj" />
+    <Project Path="src/VoxMentor.Workers.PdfExtractor/VoxMentor.Workers.PdfExtractor.csproj" />
   </Folder>
 </Solution>

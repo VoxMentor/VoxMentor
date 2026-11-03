@@ -92,8 +92,10 @@ public static class DependencyInjection
         });
         services.AddScoped<ICurrentTokenService, CurrentTokenService>();
 
-        // #151: PDF text extraction for resume analysis.
-        services.AddScoped<ITextExtractor>(sp => new Services.TextExtractor.TextExtractorAdapter());
+        // #151: PDF text extraction runs in an isolated worker process with
+        // OS-enforced memory/time limits (CodeRabbit finding). The worker exe
+        // is copied to the output dir by the Infrastructure build target.
+        services.AddScoped<ITextExtractor>(sp => new Services.PdfPigTextExtractor());
 
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
