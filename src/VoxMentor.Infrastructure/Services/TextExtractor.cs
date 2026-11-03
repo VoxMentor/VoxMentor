@@ -88,11 +88,15 @@ public static class TextExtractor
     private static string ExtractPdf(Stream stream, int maxPages = int.MaxValue, int maxChars = int.MaxValue, CancellationToken cancellationToken = default)
     {
         using var document = PdfDocument.Open(stream);
-        // ponytail: PdfPig decompresses each page into memory before we can clamp
-        // its output. A small deflate bomb can exceed the maxChars limit during
-        // decoding — the controller's 6 MB request cap bounds the compressed size
-        // but not the decompressed text. Full fix needs an isolated worker with
-        // a memory limit; the 1,000,000-char output clamp is the in-process ceiling.
+        // ponytail: PdfPig v0.1.16 has no decoded-size or memory limit.
+        // ParsingOptions (UseLenientParsing, SkipMissingFonts, FilterProvider,
+        // Password) exposes nothing to cap Flate decoder output. ContentOrderTextExtractor
+        // GetText(page) is atomic — a 6 KB deflate bomb can allocate ~2 GB before
+        // our maxChars check runs. The controller's 6 MB request cap bounds the
+        // compressed input, not decompressed memory. Full fix requires an isolated
+        // worker process with a memory limit (JobObject on Windows, cgroup/rlimit
+        // on Linux); see follow-up issue. The 1,000,000-char output clamp is the
+        // in-process ceiling — it bounds returned text, not peak decoding memory.
         if (document.NumberOfPages > maxPages)
             throw new ValidationException(new Dictionary<string, string[]>
             {
