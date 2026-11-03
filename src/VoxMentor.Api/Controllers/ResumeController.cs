@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Features.Resume.AnalyzeResume;
 
@@ -23,6 +24,7 @@ public class ResumeController : ControllerBase
     /// </summary>
     [HttpPost("analyze")]
     [Authorize(Roles = "Student")]
+    [EnableRateLimiting("resume-analyze")]
     [RequestSizeLimit(6 * 1024 * 1024)]
     [RequestFormLimits(MultipartBodyLengthLimit = 6 * 1024 * 1024)]
     [ProducesResponseType(typeof(ApiResponse<AnalyzeResumeResultDto>), StatusCodes.Status200OK)]

@@ -156,6 +156,20 @@ public class AnalyzeResumeHandlerTests
     }
 
     [Fact]
+    public async Task Handle_SingleLetterSkill_DoesNotMatchCppOrCsharp()
+    {
+        var db = CreateDb();
+        var jdId = await SeedJdAsync(db, "user-1", ("C", 1f));
+        var extractor = new FakeTextExtractor { Text = "Experienced in C++ and C#" };
+        var handler = new AnalyzeResumeHandler(db, new FakeCurrentUserService(), extractor);
+
+        var result = await handler.Handle(new AnalyzeResumeCommand("r.pdf", new MemoryStream(), 10, jdId), CancellationToken.None);
+
+        Assert.Contains("C", result.Data!.KeywordMatch.Missing);
+        Assert.DoesNotContain("C", result.Data.KeywordMatch.Matched);
+    }
+
+    [Fact]
     public async Task Handle_SkillWithRegexMetacharacters_MatchesLiterally()
     {
         var db = CreateDb();
@@ -246,6 +260,20 @@ public class AnalyzeResumeHandlerTests
         var result = await handler.Handle(new AnalyzeResumeCommand("r.pdf", new MemoryStream(), 10, jdId), CancellationToken.None);
 
         Assert.Contains("System Design", result.Data!.KeywordMatch.Matched);
+        Assert.Equal(100, result.Data.MatchScore);
+    }
+
+    [Fact]
+    public async Task Handle_SkillWithIrregularWhitespace_MatchesNormalized()
+    {
+        var db = CreateDb();
+        var jdId = await SeedJdAsync(db, "user-1", ("System  Design", 1f));
+        var extractor = new FakeTextExtractor { Text = "System Design experience" };
+        var handler = new AnalyzeResumeHandler(db, new FakeCurrentUserService(), extractor);
+
+        var result = await handler.Handle(new AnalyzeResumeCommand("r.pdf", new MemoryStream(), 10, jdId), CancellationToken.None);
+
+        Assert.Contains("System  Design", result.Data!.KeywordMatch.Matched);
         Assert.Equal(100, result.Data.MatchScore);
     }
 

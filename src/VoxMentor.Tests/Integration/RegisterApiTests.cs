@@ -29,6 +29,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
         // Disable Hangfire storage — would dial localhost:5432 at server start.
         builder.UseSetting("ConnectionStrings:Hangfire", "");
         builder.UseSetting("JwtSettings:Secret", "TestJwtSecretKeyThatIsAtLeast32BytesLong!!");
+        // Rate limiting is per remote-IP/Name, which the in-memory test host
+        // doesn't set — every test would share one bucket and 429 itself.
+        builder.UseSetting("RateLimiting:ResumeAnalyze", "false");
 
         builder.ConfigureServices(services =>
         {

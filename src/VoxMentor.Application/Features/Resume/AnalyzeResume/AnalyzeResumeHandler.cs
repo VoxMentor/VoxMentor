@@ -50,7 +50,7 @@ public sealed class AnalyzeResumeHandler : IRequestHandler<AnalyzeResumeCommand,
         {
             text = await _extractor.ExtractAsync(request.Content, extension, cancellationToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not (OperationCanceledException or ValidationException))
         {
             throw new ValidationException(new Dictionary<string, string[]>
             {
@@ -126,15 +126,17 @@ public sealed class AnalyzeResumeHandler : IRequestHandler<AnalyzeResumeCommand,
 
     /// <summary>
     /// Case-insensitive word-boundary match. Boundary is alphanumerics so that
-    /// "Java" does not match "JavaScript" but "C#" still matches.
-    /// ponytail: ASCII boundary only — single-letter skills (e.g. "C") can
-    /// false-positive inside "C++"/"C#"-style tokens; restrict or document if
-    /// such skills are ever added to a JD.
+    /// "Java" does not match "JavaScript"; trailing "+" and "#" keep single-letter
+    /// "C" from matching "C++"/"C#" text while full skills like "C#" still match.
+    /// Stored skill names are whitespace-normalized so "System  Design" matches.
+    /// ponytail: ASCII boundary only — single-letter skills can still false-positive
+    /// inside "C++"/"C#"-style tokens; restrict or document if such skills are added.
     /// </summary>
     private static bool SkillAppearsInText(string skill, string text)
     {
         if (string.IsNullOrWhiteSpace(skill)) return false;
-        return Regex.IsMatch(text, $@"(?<![A-Za-z0-9]){Regex.Escape(skill)}(?![A-Za-z0-9])",
+        var normalizedSkill = Regex.Replace(skill.Trim(), @"\s+", " ");
+        return Regex.IsMatch(text, $@"(?<![A-Za-z0-9]){Regex.Escape(normalizedSkill)}(?![A-Za-z0-9+#])",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     }
 }
