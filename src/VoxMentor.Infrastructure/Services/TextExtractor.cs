@@ -93,16 +93,15 @@ public static class TextExtractor
         // decoding — the controller's 6 MB request cap bounds the compressed size
         // but not the decompressed text. Full fix needs an isolated worker with
         // a memory limit; the 1,000,000-char output clamp is the in-process ceiling.
-        var allPages = document.GetPages().ToList();
-        if (allPages.Count > maxPages)
+        if (document.NumberOfPages > maxPages)
             throw new ValidationException(new Dictionary<string, string[]>
             {
                 ["file"] = new[] { $"Resume exceeds {maxPages} pages." }
             });
 
-        var pages = new List<string>(allPages.Count);
+        var pages = new List<string>(document.NumberOfPages);
         var total = 0;
-        foreach (var page in allPages)
+        foreach (var page in document.GetPages())
         {
             cancellationToken.ThrowIfCancellationRequested();
             var pageText = ContentOrderTextExtractor.GetText(page);
