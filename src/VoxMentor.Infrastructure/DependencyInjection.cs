@@ -119,7 +119,17 @@ public static class DependencyInjection
             options.AbortOnConnectFail = false;
             return ConnectionMultiplexer.Connect(options);
         });
-        services.AddSingleton<IRateLimiter, RedisSlidingWindowRateLimiter>();
+
+        // #151: Dedicated rate limiter for resume analysis — 5 analyses per user per minute,
+        // shared across API instances via Redis. Separate from other IRateLimiter consumers.
+        services.AddSingleton<IRateLimiter>(sp =>
+        {
+            var redis = sp.GetRequiredService<IConnectionMultiplexer>();
+            return new RedisSlidingWindowRateLimiter(
+                redis,
+                limit: 5,
+                window: TimeSpan.FromMinutes(1));
+        });
 
         services.AddAuthentication(options =>
         {

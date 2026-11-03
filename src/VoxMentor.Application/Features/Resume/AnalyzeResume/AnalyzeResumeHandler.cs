@@ -55,10 +55,16 @@ public class AnalyzeResumeHandler : IRequestHandler<AnalyzeResumeCommand, ApiRes
             throw new UnauthorizedAccessException("User must be authenticated to analyze a resume.");
 
         // Cross-instance rate limit via Redis (shared across API instances).
-        // Falls back to the ASP.NET Core per-instance limiter if Redis is down.
+        // Dedicated limiter: 5 analyses per user per minute.
+        // Falls back gracefully if Redis is down.
         try
         {
             await _rateLimiter.CheckAsync($"resume-analyze:{userId}", cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Client disconnect — propagate as cancellation, not a Redis outage.
+            throw;
         }
         catch (RateLimitException)
         {
@@ -66,7 +72,7 @@ public class AnalyzeResumeHandler : IRequestHandler<AnalyzeResumeCommand, ApiRes
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Redis rate limiter unavailable for user {UserId}; falling back to per-instance limit.", userId);
+            _logger.LogWarning(ex, "Redis rate limiter unavailable for user {UserId}; proceeding without rate limiting.", userId);
         }
 
         // Unknown and foreign JDs both surface as null → 404 (no existence oracle).

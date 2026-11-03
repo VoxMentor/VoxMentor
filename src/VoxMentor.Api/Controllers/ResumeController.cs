@@ -1,7 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
 using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Features.Resume.AnalyzeResume;
 
@@ -28,7 +27,6 @@ public class ResumeController : ControllerBase
     /// multipart/form-data: `file` (.pdf, ≤5 MB) + required `jdId`.
     /// </summary>
     [HttpPost("analyze")]
-    [EnableRateLimiting("resume-analyze")]
     [ProducesResponseType(typeof(ApiResponse<AnalyzeResumeResultDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]

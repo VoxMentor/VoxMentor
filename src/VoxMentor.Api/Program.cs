@@ -1,10 +1,7 @@
 using System.Diagnostics;
-using System.Security.Claims;
-using System.Threading.RateLimiting;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using VoxMentor.Api.Authorization;
 using VoxMentor.Api.Hubs;
@@ -105,37 +102,6 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(Policies.ManageRoles, policy => policy.RequireRole("SuperAdmin"));
 });
 
-// #151: bound PDF-resume analysis per user (in-process PdfPig parse is the
-// remaining unbounded work on the route; rate limiting limits repeated
-// exposure). The ASP.NET Core fixed-window limiter is in-memory — per
-// instance, not shared across replicas. Behind a load balancer each node
-// tracks its own 5/min bucket, so a client can exceed 5/min in aggregate.
-// For multi-node deployments, swap AddRateLimiter for a Redis-backed
-// PartitionedRateLimiter.
-// Off in tests: the shared in-memory host has no remote IP / Name claim, so
-// every test would share one "unknown" bucket and 429 itself.
-var resumeRateLimiting = builder.Configuration.GetValue("RateLimiting:ResumeAnalyze", true);
-if (resumeRateLimiting)
-{
-    builder.Services.AddRateLimiter(options =>
-    {
-        options.AddPolicy("resume-analyze", httpContext =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                // NameIdentifier maps from the JWT "sub" claim; Identity.Name is
-                // not reliably populated from the "name" claim in all JWT handlers.
-                httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
-                ?? httpContext.User.Identity?.Name
-                ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 5,
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0
-                }));
-        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    });
-}
-
 var app = builder.Build();
 
 // Without this the two nightly jobs silently never exist: the AddOrUpdate block
@@ -209,7 +175,6 @@ app.UseCors("AllowFrontend");
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
-if (resumeRateLimiting) app.UseRateLimiter();
 
 app.MapControllers();
 

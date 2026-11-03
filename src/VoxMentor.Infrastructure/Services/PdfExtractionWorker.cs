@@ -19,19 +19,14 @@ namespace VoxMentor.Infrastructure.Services;
 /// </summary>
 public sealed class PdfExtractionWorker : IDisposable
 {
-    private const int MaxPrivateMemoryBytes = 300 * 1024 * 1024; // 300 MiB
     private static readonly TimeSpan ExtractionTimeout = TimeSpan.FromSeconds(30);
 
     private readonly string _workerExePath;
-    private readonly string _tempOutputPath;
 
     /// <summary>Creates a worker that launches <c>VoxMentor.Workers.PdfExtractor.exe</c>.</summary>
-    public PdfExtractionWorker(string workerExePath, string? tempOutputPath = null)
+    public PdfExtractionWorker(string workerExePath)
     {
         _workerExePath = workerExePath;
-        _tempOutputPath = tempOutputPath ?? Path.Combine(
-            Path.GetTempPath(),
-            $"voxmentor-pdf-{Guid.NewGuid():N}.txt");
     }
 
     /// <summary>Extracts text from a PDF file via the isolated worker process.</summary>
@@ -50,16 +45,15 @@ public sealed class PdfExtractionWorker : IDisposable
                 "Build VoxMentor.Workers.PdfExtractor and copy it next to the API.");
         }
 
-        // Ensure a clean output file.
-        if (File.Exists(_tempOutputPath))
-        {
-            File.Delete(_tempOutputPath);
-        }
+        // Unique output path per call so concurrent analyses don't collide.
+        var tempOutputPath = Path.Combine(
+            Path.GetTempPath(),
+            $"voxmentor-pdf-out-{Guid.NewGuid():N}.txt");
 
         var startInfo = new ProcessStartInfo
         {
             FileName = _workerExePath,
-            Arguments = $"\"{inputPdfPath}\" \"{_tempOutputPath}\"",
+            Arguments = $"\"{inputPdfPath}\" \"{tempOutputPath}\"",
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
@@ -70,22 +64,6 @@ public sealed class PdfExtractionWorker : IDisposable
 
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Failed to start PDF extraction worker.");
-
-        // OS-enforced memory cap (best effort; JobObject limits need native interop).
-        try
-        {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ||
-                RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ||
-                RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            {
-                process.MaxWorkingSet = (nint)MaxPrivateMemoryBytes;
-                process.MinWorkingSet = (nint)MaxPrivateMemoryBytes;
-            }
-        }
-        catch
-        {
-            // Not all runtimes honor working-set limits; timeout is the backstop.
-        }
 
         // Register cancellation so a client disconnect kills the worker
         // instead of leaving it running until its own timeout fires.
@@ -99,9 +77,10 @@ public sealed class PdfExtractionWorker : IDisposable
         if (!exited)
         {
             try { process.Kill(); } catch { }
-            throw new OperationCanceledException(
-                $"PDF extraction timed out after {ExtractionTimeout.TotalSeconds}s.",
-                cts.Token);
+            throw new ValidationException(new Dictionary<string, string[]>
+            {
+                ["file"] = [$"PDF extraction timed out after {ExtractionTimeout.TotalSeconds}s."]
+            });
         }
 
         var exitCode = process.ExitCode;
@@ -110,7 +89,7 @@ public sealed class PdfExtractionWorker : IDisposable
         switch (exitCode)
         {
             case 0:
-                if (!File.Exists(_tempOutputPath))
+                if (!File.Exists(tempOutputPath))
                 {
                     throw new ValidationException(new Dictionary<string, string[]>
                     {
@@ -119,11 +98,11 @@ public sealed class PdfExtractionWorker : IDisposable
                 }
                 try
                 {
-                    return File.ReadAllText(_tempOutputPath);
+                    return File.ReadAllText(tempOutputPath);
                 }
                 finally
                 {
-                    try { File.Delete(_tempOutputPath); } catch { }
+                    try { File.Delete(tempOutputPath); } catch { }
                 }
 
             case 2: // too many pages
@@ -143,6 +122,5 @@ public sealed class PdfExtractionWorker : IDisposable
 
     public void Dispose()
     {
-        try { if (File.Exists(_tempOutputPath)) File.Delete(_tempOutputPath); } catch { }
     }
 }
