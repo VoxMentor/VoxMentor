@@ -22,7 +22,8 @@ Both simulations run against every scenario (spike first, then sustained baselin
 - Steady-state throughput/latency baseline.
 
 ### Spike — `Simulation.RampingInject`
-- Injection rate ramps to 200 users/s over a 1-second interval, sustained for 2 minutes.
+- Injection rate rises linearly from 0 to 200 users/s over the full 2 minutes.
+- Peak rate (200 users/s) is reached only at the end of the run.
 - Validates behavior under burst load and recovery.
 
 ## Expected baselines (pre-v2.0.0 targets)
@@ -37,10 +38,8 @@ These are **planning baselines**, to be confirmed against the first checked-in r
 | `practice_submit_code` | spike | ~80–100 | < 400 ms | < 1 s | < 2 s |
 | `mock_interview_start_answer` | sustained | ~15–25 | < 300 ms | < 800 ms | < 1.5 s |
 | `mock_interview_start_answer` | spike | ~60–80 | < 500 ms | < 1.2 s | < 2.5 s |
-| `tutor_ask` | sustained | ~10–20 | < 400 ms | < 1 s | < 2 s |
-| `tutor_ask` | spike | ~40–60 | < 700 ms | < 1.5 s | < 3 s |
 
-> `practice_submit_code` and `mock_interview_*` hit Judge0 + Ollama, so they are the slowest paths and dominate p99. `tutor_ask` is rate-limited (10/h/student) — expect `429` once an account's rolling quota is exhausted; results reflect the combined workload of all four scenarios running concurrently in one invocation, not isolated scenario capacity.
+> `practice_submit_code` and `mock_interview_*` hit Judge0 + Ollama, so they are the slowest paths and dominate p99. `tutor_ask` is rate-limited at 10 requests/hour/student and is **excluded from baseline simulations** — re-add once the tutor rate limit is raised for the load-test stack. Results reflect the combined workload of auth, practice, and mock scenarios running concurrently, not isolated scenario capacity.
 
 ## How to run
 

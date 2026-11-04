@@ -65,7 +65,8 @@ static async Task<string> GetValidQuestionIdAsync(HttpClient client)
     if (!resp.IsSuccessStatusCode)
         return Guid.NewGuid().ToString();
     using var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
-    return doc?.RootElement.TryGetProperty("questions", out var questions) == true
+    return doc?.RootElement.TryGetProperty("data", out var data) == true
+        && data.TryGetProperty("questions", out var questions)
         ? questions.EnumerateArray().FirstOrDefault().TryGetProperty("id", out var id) ? id.GetString() ?? Guid.NewGuid().ToString() : Guid.NewGuid().ToString()
         : Guid.NewGuid().ToString();
 }
@@ -156,7 +157,10 @@ var sims = new NBomber.Contracts.LoadSimulation[] { spike, sustained };
 Scenario.WithLoadSimulations(authScenario, sims);
 Scenario.WithLoadSimulations(practiceScenario, sims);
 Scenario.WithLoadSimulations(mockScenario, sims);
-Scenario.WithLoadSimulations(tutorScenario, sims);
+// tutor_ask is intentionally excluded from baseline simulations: the tutor
+// endpoint is rate-limited at 10 requests/hour/student, so it would produce
+// mostly 429s and skew baseline throughput. Re-add once the tutor rate limit
+// is raised for the load-test stack.
 
 var ctx = NBomberRunner.RegisterScenarios(authScenario, practiceScenario, mockScenario, tutorScenario);
 

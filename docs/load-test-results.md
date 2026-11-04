@@ -10,7 +10,7 @@ Before running the load test, register the test accounts used by `src/VoxMentor.
 
 ```bash
 for i in 1 2 3 4 5; do
-  curl -X POST http://localhost:5253/api/v1/auth/register \
+  curl -X POST "${VOXMENTOR_BASE_URL:-http://localhost:5253}/api/v1/auth/register" \
     -H "Content-Type: application/json" \
     -d "{\"fullName\":\"Load Test $i\",\"email\":\"loadtest$i@voxmentor.local\",\"password\":\"LoadTest!2026\"}"
 done
@@ -26,6 +26,10 @@ dotnet run -c Release
 ```
 
 Reports (HTML + CSV) are written to `src/VoxMentor.LoadTests/results/` (gitignored).
+
+## Configuration
+
+Set `MockInterview:DailyLimit` high enough (e.g. `100`) in the Core API's `appsettings.json` or via environment variable so the mock-interview scenario can run without per-account daily-quota rejections. Default is 1/day per student.
 
 ## Latest baseline
 
