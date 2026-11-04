@@ -1,7 +1,6 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   api,
@@ -13,71 +12,57 @@ import {
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Navbar from "@/components/Navbar";
 import FetchError from "@/components/FetchError";
+import QuestionCard from "@/components/QuestionCard";
+import CodeEditor from "@/components/CodeEditor";
 import QuestionList from "@/components/QuestionList";
-import QuestionNavigation from "@/components/QuestionNavigation";
 
-function PracticeSkeleton() {
+/**
+ * Rendered while question data is loading. Mirrors the 60% question / 40%
+ * editor layout so the page doesn't shift when content arrives.
+ */
+function PageSkeleton() {
   return (
-    <div className="card">
-      <div className="h-6 w-64 bg-border rounded animate-pulse mb-4" />
-      <div className="h-4 w-full bg-border rounded animate-pulse mb-2" />
-      <div className="h-4 w-3/4 bg-border rounded animate-pulse mb-6" />
-      <div className="h-40 w-full bg-border rounded-xl animate-pulse" />
+    <div className="grid lg:grid-cols-[60%_40%] gap-6 min-w-0">
+      <div className="card">
+        <div className="h-6 w-48 bg-border rounded animate-pulse mb-4" />
+        <div className="h-12 w-full bg-border rounded animate-pulse mb-3" />
+        <div className="h-3 w-3/4 bg-border rounded-full animate-pulse" />
+        <div className="h-40 w-full bg-border rounded-xl animate-pulse mt-4" />
+      </div>
+      <div className="card">
+        <div className="h-10 w-32 bg-border rounded animate-pulse mb-4" />
+        <div className="h-full bg-border rounded-xl animate-pulse" />
+      </div>
     </div>
   );
 }
 
-interface Filters {
-  conceptId?: string;
-  difficulty?: number;
+interface PracticeContentProps {
+  selectedId?: string;
 }
 
-function PracticeContent({
-  filters,
-  selectedId,
-}: {
-  filters: Filters;
-  selectedId?: string;
-}) {
+/**
+ * Renders the practice page content: a selectable question list on the left
+ * (60%) and the question detail + code editor on the right (40%). Fetches the
+ * selected question on demand with loading, not-found, and error states.
+ */
+function PracticeContent({ selectedId }: PracticeContentProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  const [detailReload, setDetailReload] = useState(0);
+  const [listReload, setListReload] = useState(0);
   const [concepts, setConcepts] = useState<MasteryConcept[]>([]);
 
-  const [listReload, setListReload] = useState(0);
-  const [detailReload, setDetailReload] = useState(0);
-
-  // keyed results: loading/error are derived (never setState synchronously in an effect)
-  const listKey = `${filters.conceptId ?? ""}|${filters.difficulty ?? ""}|${listReload}`;
-  const [listState, setListState] = useState<
-    | {
-        key: string;
-        ok: boolean;
-        questions: StudentQuestion[];
-        message?: string;
-      }
-    | null
-  >(null);
+  // --- Question detail state ---
   const detailKey = `${selectedId ?? ""}|${detailReload}`;
-  const [detailState, setDetailState] = useState<
-    | {
-        key: string;
-        status: "ok" | "notFound" | "error";
-        detail?: QuestionDetail;
-        message?: string;
-      }
-    | null
-  >(null);
-
-  const listLoading = listState?.key !== listKey;
-  const listOk = listState?.key === listKey && listState.ok;
-  const listError =
-    listState?.key === listKey && !listState.ok ? (listState.message ?? "Failed to load questions.") : null;
-  const questions = useMemo(
-    () => (listOk && listState ? listState.questions : []),
-    [listOk, listState]
-  );
+  const [detailState, setDetailState] = useState<{
+    key: string;
+    status: "ok" | "notFound" | "error";
+    detail?: QuestionDetail;
+    message?: string;
+  } | null>(null);
 
   const detailLoading = !!selectedId && detailState?.key !== detailKey;
   const detailOk = detailState?.key === detailKey && detailState.status === "ok";
@@ -103,7 +88,61 @@ function PracticeContent({
     [router, pathname, searchParams]
   );
 
-  // concept catalog for the filter dropdown; non-fatal if it fails (filter hides)
+  useEffect(() => {
+    if (!selectedId) return;
+    let cancelled = false;
+    api
+      .question(selectedId)
+      .then((q) => {
+        if (cancelled) return;
+        setDetailState({ key: detailKey, status: "ok", detail: q });
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        const notFound = e instanceof ApiError && e.status === 404;
+        setDetailState({
+          key: detailKey,
+          status: notFound ? "notFound" : "error",
+          message: notFound ? undefined : e instanceof ApiError ? e.message : "Failed to load question.",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, detailKey]);
+
+  const retryDetail = () => setDetailReload((n) => n + 1);
+
+  // --- Question list state ---
+  const filters = useMemo(
+    () => ({
+      conceptId: searchParams.get("concept") ?? undefined,
+      difficulty: searchParams.get("difficulty")
+        ? Number(searchParams.get("difficulty"))
+        : undefined,
+    }),
+    [searchParams]
+  );
+
+  const listKey = `${filters.conceptId ?? ""}|${filters.difficulty ?? ""}|${listReload}`;
+  const [listState, setListState] = useState<{
+    key: string;
+    ok: boolean;
+    questions: StudentQuestion[];
+    message?: string;
+  } | null>(null);
+
+  const listLoading = listState?.key !== listKey;
+  const listOk = listState?.key === listKey && listState.ok;
+  const listError =
+    listState?.key === listKey && !listState.ok
+      ? (listState.message ?? "Failed to load questions.")
+      : null;
+  const questions = useMemo(
+    () => (listOk && listState ? listState.questions : []),
+    [listOk, listState]
+  );
+
   useEffect(() => {
     let cancelled = false;
     api
@@ -117,11 +156,14 @@ function PracticeContent({
     };
   }, []);
 
-  // ponytail: single pageSize=100 fetch (backend max, seed = 100); add pager if bank exceeds it
   useEffect(() => {
     let cancelled = false;
     api
-      .questions({ conceptId: filters.conceptId, difficulty: filters.difficulty, pageSize: 100 })
+      .questions({
+        conceptId: filters.conceptId,
+        difficulty: filters.difficulty,
+        pageSize: 100,
+      })
       .then((res) => {
         if (cancelled) return;
         setListState({
@@ -144,7 +186,6 @@ function PracticeContent({
     };
   }, [listKey, filters.conceptId, filters.difficulty]);
 
-  // auto-select first question when nothing valid is selected
   useEffect(() => {
     if (listLoading || questions.length === 0) return;
     if (!selectedId || !questions.some((q) => q.id === selectedId)) {
@@ -152,67 +193,13 @@ function PracticeContent({
     }
   }, [listLoading, questions, selectedId, updateParams]);
 
-  useEffect(() => {
-    if (!selectedId) return;
-    let cancelled = false;
-    api
-      .question(selectedId)
-      .then((q) => {
-        if (cancelled) return;
-        setDetailState({ key: `${selectedId}|${detailReload}`, status: "ok", detail: q });
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        const notFound = e instanceof ApiError && e.status === 404;
-        setDetailState({
-          key: `${selectedId}|${detailReload}`,
-          status: notFound ? "notFound" : "error",
-          message: notFound ? undefined : e instanceof ApiError ? e.message : "Failed to load question.",
-        });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedId, detailReload]);
-
-  const index = useMemo(
-    () => questions.findIndex((q) => q.id === selectedId),
-    [questions, selectedId]
-  );
-
-  const selectAt = useCallback(
-    (nextIndex: number) => {
-      const next = questions[nextIndex];
-      if (next) updateParams({ question: next.id });
-    },
-    [questions, updateParams]
-  );
-
-  const goPrev = useCallback(() => selectAt(index - 1), [selectAt, index]);
-  const goNext = useCallback(() => selectAt(index + 1), [selectAt, index]);
-
-  // keyboard prev/next — skip when typing in a form control
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement | null;
-      if (!el) return;
-      const tag = el.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable) return;
-      if (e.key === "ArrowLeft" && index > 0) goPrev();
-      else if (e.key === "ArrowRight" && index >= 0 && index < questions.length - 1) goNext();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [goPrev, goNext, index, questions.length]);
-
   const applyFilter = useCallback(
     (updates: { conceptId?: string; difficulty?: number }) => {
       updateParams({
-        // read + write must share one key: `concept` (MasteryHeatmap deep links use it)
         concept: updates.conceptId,
         difficulty:
           updates.difficulty != null ? String(updates.difficulty) : undefined,
-        question: undefined, // refetch picks a fresh first question
+        question: undefined,
       });
     },
     [updateParams]
@@ -223,170 +210,124 @@ function PracticeContent({
   }, [updateParams]);
 
   const retryList = () => setListReload((n) => n + 1);
-  const retryDetail = () => setDetailReload((n) => n + 1);
-
-  const position = index >= 0 ? index + 1 : 0;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[18rem_1fr] items-start">
-      <aside className="flex flex-col gap-3 lg:sticky lg:top-24">
-        <div className="card !p-4 flex flex-col gap-3">
-          <div>
-            <label
-              htmlFor="concept-filter"
-              className="block text-xs font-medium text-text-muted mb-1"
-            >
-              Concept
-            </label>
-            <select
-              id="concept-filter"
-              value={filters.conceptId ?? ""}
-              onChange={(e) => applyFilter({ conceptId: e.target.value || undefined, difficulty: filters.difficulty })}
-              disabled={concepts.length === 0}
-              className="w-full text-sm rounded-[14px] border-[1.5px] border-border bg-white px-4 py-3 text-text-body focus:border-primary focus:shadow-[0_0_0_3px_rgba(74,173,219,0.12)] focus:outline-none cursor-pointer"
-            >
-              <option value="">All concepts</option>
-              {concepts.map((c) => (
-                <option key={c.conceptId} value={c.conceptId}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label
-              htmlFor="difficulty-filter"
-              className="block text-xs font-medium text-text-muted mb-1"
-            >
-              Difficulty
-            </label>
-            <select
-              id="difficulty-filter"
-              value={filters.difficulty ?? ""}
-              onChange={(e) =>
-                applyFilter({
-                  conceptId: filters.conceptId,
-                  difficulty: e.target.value ? Number(e.target.value) : undefined,
-                })
-              }
-              className="w-full text-sm rounded-[14px] border-[1.5px] border-border bg-white px-4 py-3 text-text-body focus:border-primary focus:shadow-[0_0_0_3px_rgba(74,173,219,0.12)] focus:outline-none cursor-pointer"
-            >
-              <option value="">All difficulties</option>
-              {Array.from({ length: 10 }, (_, i) => i + 1).map((d) => (
-                <option key={d} value={d}>
-                  Difficulty {d}/10
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {listLoading ? (
-          <div className="card !p-4 flex flex-col gap-2">
-            {Array.from({ length: 5 }, (_, i) => (
-              <div key={i} className="h-10 bg-border rounded-xl animate-pulse" />
-            ))}
-          </div>
-        ) : listError ? (
-          <FetchError message={listError} onRetry={retryList} />
+    <div className="grid lg:grid-cols-[60%_40%] gap-6 min-w-0">
+      {/* Left: question (60%) */}
+      <section className="flex flex-col gap-4 min-w-0">
+        {detail ? (
+          <QuestionCard detail={detail} />
         ) : (
-          <QuestionList
-            questions={questions}
-            selectedId={selectedId}
-            onSelect={(id) => updateParams({ question: id })}
-            emptyMessage={
-              filters.conceptId || filters.difficulty != null
-                ? "No questions match these filters."
-                : "No questions available yet."
-            }
-            onClearFilters={
-              filters.conceptId || filters.difficulty != null
-                ? clearFilters
-                : undefined
-            }
-          />
-        )}
-      </aside>
+          <>
+            <div className="card !p-4 flex flex-col gap-3">
+              <div>
+                <label
+                  htmlFor="concept-filter"
+                  className="block text-xs font-medium text-text-muted mb-1"
+                >
+                  Concept
+                </label>
+                <select
+                  id="concept-filter"
+                  value={filters.conceptId ?? ""}
+                  onChange={(e) =>
+                    applyFilter({
+                      conceptId: e.target.value || undefined,
+                      difficulty: filters.difficulty,
+                    })}
+                  disabled={concepts.length === 0}
+                  className="w-full text-sm rounded-[14px] border-[1.5px] border-border bg-white px-4 py-3 text-text-body focus:border-primary focus:shadow-[0_0_0_3px_rgba(74,173,219,0.12)] focus:outline-none cursor-pointer"
+                >
+                  <option value="">All concepts</option>
+                  {concepts.map((c) => (
+                    <option key={c.conceptId} value={c.conceptId}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label
+                  htmlFor="difficulty-filter"
+                  className="block text-xs font-medium text-text-muted mb-1"
+                >
+                  Difficulty
+                </label>
+                <select
+                  id="difficulty-filter"
+                  value={filters.difficulty ?? ""}
+                  onChange={(e) =>
+                    applyFilter({
+                      conceptId: filters.conceptId,
+                      difficulty: e.target.value ? Number(e.target.value) : undefined,
+                    })}
+                  className="w-full text-sm rounded-[14px] border-[1.5px] border-border bg-white px-4 py-3 text-text-body focus:border-primary focus:shadow-[0_0_0_3px_rgba(74,173,219,0.12)] focus:outline-none cursor-pointer"
+                >
+                  <option value="">All difficulties</option>
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>
+                      Difficulty {d}/10
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
+            {listLoading ? (
+              <div className="card !p-4 flex flex-col gap-2">
+                {Array.from({ length: 5 }, (_, i) => (
+                  <div key={i} className="h-10 bg-border rounded-xl animate-pulse" />
+                ))}
+              </div>
+            ) : listError ? (
+              <FetchError message={listError} onRetry={retryList} />
+            ) : (
+              <QuestionList
+                questions={questions}
+                selectedId={selectedId}
+                onSelect={(id) => updateParams({ question: id })}
+                emptyMessage={
+                  filters.conceptId || filters.difficulty != null
+                    ? "No questions match these filters."
+                    : "No questions available yet."
+                }
+                onClearFilters={
+                  filters.conceptId || filters.difficulty != null
+                    ? clearFilters
+                    : undefined
+                }
+              />
+            )}
+          </>
+        )}
+      </section>
+
+      {/* Right: code editor placeholder (40%) */}
       <section className="flex flex-col gap-4 min-w-0">
         {detailLoading && !detail ? (
-          <PracticeSkeleton />
+          <div className="card h-full flex flex-col">
+            <div className="h-10 w-32 bg-border rounded animate-pulse mb-4" />
+            <div className="h-full bg-border rounded-xl animate-pulse" />
+          </div>
         ) : detailNotFound ? (
-          <div className="card text-center py-10">
+          <div className="card text-center py-10 flex-1">
             <p className="text-sm text-text-muted mb-4">
-              This question is no longer available. Pick another from the list.
+              This question is no longer available.
             </p>
-            <Link
-              href="/dashboard"
-              className="text-sm font-medium text-primary hover:underline"
+            <button
+              onClick={() => updateParams({ question: undefined })}
+              className="text-sm font-medium text-primary hover:underline cursor-pointer"
             >
-              Back to dashboard
-            </Link>
+              Pick another question
+            </button>
           </div>
         ) : detailError ? (
           <FetchError message={detailError} onRetry={retryDetail} />
         ) : detail ? (
-          <div className="card">
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent-light-blue text-primary">
-                {detail.conceptName}
-              </span>
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-bg-light text-text-muted">
-                Difficulty {detail.difficulty}/10
-              </span>
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-bg-light text-text-muted">
-                {detail.questionType}
-              </span>
-            </div>
-
-            <h1 className="font-heading font-semibold text-navy text-xl mb-3">
-              {detail.title}
-            </h1>
-            <p className="text-sm text-text-body leading-relaxed whitespace-pre-line mb-6">
-              {detail.description}
-            </p>
-
-            {detail.exampleInputs.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                {detail.exampleInputs.map((input, i) => (
-                  <div key={i} className="bg-navy-deep rounded-xl p-4">
-                    <p className="text-xs text-accent-light-blue mb-1">
-                      Example input {i + 1}
-                    </p>
-                    <pre className="text-sm text-white whitespace-pre-wrap">{input}</pre>
-                    <p className="text-xs text-accent-light-blue mt-3 mb-1">
-                      Expected output
-                    </p>
-                    <pre className="text-sm text-white whitespace-pre-wrap">
-                      {detail.exampleOutputs[i] ?? ""}
-                    </pre>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="flex items-center justify-end">
-              {/* ponytail: no submit flow here yet — questions only advance after a submission exists */}
-              <Link
-                href="/dashboard"
-                className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary-dark rounded-xl transition-colors"
-              >
-                Back to dashboard
-              </Link>
-            </div>
-          </div>
-        ) : null}
-
-        {!listLoading && !listError && questions.length > 0 && index >= 0 && (
-          <div className="card !py-4">
-            <QuestionNavigation
-              onPrev={goPrev}
-              onNext={goNext}
-              hasPrev={index > 0}
-              hasNext={index >= 0 && index < questions.length - 1}
-              position={position}
-              total={questions.length}
-            />
+          <CodeEditor language="javascript" />
+        ) : (
+          <div className="card h-full flex flex-col items-center justify-center text-text-muted">
+            <p className="text-sm">Select a question to open the editor.</p>
           </div>
         )}
       </section>
@@ -394,35 +335,45 @@ function PracticeContent({
   );
 }
 
+/**
+ * Practice page route. Reads the question query parameter, guards the route
+ * with ProtectedRoute, and renders PracticeContent with a Navbar and Suspense
+ * boundary at /practice.
+ */
 function PracticeRoute() {
   const searchParams = useSearchParams();
-  const conceptId = searchParams.get("concept") ?? undefined;
-  const difficultyRaw = searchParams.get("difficulty");
-  const parsedDifficulty = difficultyRaw ? Number(difficultyRaw) : undefined;
-  // guard: Number("abc")/Number("1.5") would send NaN/fraction → backend 400 loop
-  const difficulty = Number.isInteger(parsedDifficulty) ? parsedDifficulty : undefined;
   const questionId = searchParams.get("question") ?? undefined;
-
-  const filters = useMemo(
-    () => ({ conceptId, difficulty }),
-    [conceptId, difficulty]
-  );
 
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-bg-light">
         <Navbar />
         <main className="max-w-6xl mx-auto px-6 py-10">
-          <PracticeContent filters={filters} selectedId={questionId} />
+          <div className="mb-8">
+            <h1 className="font-heading text-2xl sm:text-3xl font-bold text-navy">
+              Practice
+            </h1>
+            <p className="text-text-muted mt-2 max-w-2xl">
+              Work through questions and write your solution in the editor.
+            </p>
+          </div>
+
+          <Suspense fallback={<PageSkeleton />}>
+            <PracticeContent selectedId={questionId} />
+          </Suspense>
         </main>
       </div>
     </ProtectedRoute>
   );
 }
 
+/**
+ * Top-level practice page route. Wraps the practice content in ProtectedRoute,
+ * Navbar, and a Suspense boundary, then renders at /practice.
+ */
 export default function PracticePage() {
   return (
-    <Suspense fallback={<PracticeSkeleton />}>
+    <Suspense fallback={<PageSkeleton />}>
       <PracticeRoute />
     </Suspense>
   );
