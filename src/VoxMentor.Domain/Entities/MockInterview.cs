@@ -42,6 +42,9 @@ public class MockInterview : IUserOwned
     /// <summary>JSON array of ordered conversation turns (candidate/interviewer messages).</summary>
     public string? TranscriptJson { get; set; }
 
+    /// <summary>Whether the run was started in voice mode (interviewer turns are spoken via TTS).</summary>
+    public bool VoiceMode { get; set; }
+
     /// <summary>Structured AI review payload (score, per-problem feedback, next steps).</summary>
     public string? ReviewJson { get; set; }
 }
