@@ -32,11 +32,12 @@
   <PropertyGroup>
     <_PdfWorkerProject>$(MSBuildThisFileDirectory)src\VoxMentor.Workers.PdfExtractor\VoxMentor.Workers.PdfExtractor.csproj</_PdfWorkerProject>
     <!-- Build when this project owns the build (Infrastructure) or when it is
-         RID-specific (Infrastructure cannot build the RID variant for it). -->
+         RID-specific (Infrastructure cannot build the RID variant for it);
+         otherwise read-only path resolution. The publish copy target runs in
+         Api's context, which never sets BuildPdfExtractorWorker, so the same
+         property serves both targets. -->
     <_PdfWorkerTargets Condition="'$(BuildPdfExtractorWorker)' == 'true' or '$(RuntimeIdentifier)' != ''">Restore;Build;GetTargetPath</_PdfWorkerTargets>
     <_PdfWorkerTargets Condition="'$(BuildPdfExtractorWorker)' != 'true' and '$(RuntimeIdentifier)' == ''">GetTargetPath</_PdfWorkerTargets>
-    <_PdfWorkerPublishTargets Condition="'$(RuntimeIdentifier)' != ''">Restore;Build;GetTargetPath</_PdfWorkerPublishTargets>
-    <_PdfWorkerPublishTargets Condition="'$(RuntimeIdentifier)' == ''">GetTargetPath</_PdfWorkerPublishTargets>
   </PropertyGroup>
 
   <Target Name="CopyPdfExtractorWorker" AfterTargets="Build" Condition="'$(CopyPdfExtractorWorker)' == 'true'">
@@ -53,7 +54,7 @@
   </Target>
 
   <Target Name="CopyPdfExtractorWorkerToPublish" AfterTargets="Publish" Condition="'$(CopyPdfExtractorWorkerToPublish)' == 'true'">
-    <MSBuild Projects="$(_PdfWorkerProject)" Targets="$(_PdfWorkerPublishTargets)"
+    <MSBuild Projects="$(_PdfWorkerProject)" Targets="$(_PdfWorkerTargets)"
              Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier)">
       <Output TaskParameter="TargetOutputs" ItemName="_PdfWorkerPublishTargetPath" />
     </MSBuild>
