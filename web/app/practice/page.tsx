@@ -1,13 +1,20 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { api, ApiError, type QuestionDetail } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  type MasteryConcept,
+  type QuestionDetail,
+  type StudentQuestion,
+} from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Navbar from "@/components/Navbar";
 import FetchError from "@/components/FetchError";
 import QuestionCard from "@/components/QuestionCard";
 import CodeEditor from "@/components/CodeEditor";
+import QuestionList from "@/components/QuestionList";
 
 function PageSkeleton() {
   return (
@@ -36,7 +43,10 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
   const searchParams = useSearchParams();
 
   const [detailReload, setDetailReload] = useState(0);
+  const [listReload, setListReload] = useState(0);
+  const [concepts, setConcepts] = useState<MasteryConcept[]>([]);
 
+  // --- Question detail state ---
   const detailKey = `${selectedId ?? ""}|${detailReload}`;
   const [detailState, setDetailState] = useState<{
     key: string;
@@ -94,16 +104,201 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
 
   const retryDetail = () => setDetailReload((n) => n + 1);
 
+  // --- Question list state ---
+  const filters = useMemo(
+    () => ({
+      conceptId: searchParams.get("concept") ?? undefined,
+      difficulty: searchParams.get("difficulty")
+        ? Number(searchParams.get("difficulty"))
+        : undefined,
+    }),
+    [searchParams]
+  );
+
+  const listKey = `${filters.conceptId ?? ""}|${filters.difficulty ?? ""}|${listReload}`;
+  const [listState, setListState] = useState<{
+    key: string;
+    ok: boolean;
+    questions: StudentQuestion[];
+    message?: string;
+  } | null>(null);
+
+  const listLoading = listState?.key !== listKey;
+  const listOk = listState?.key === listKey && listState.ok;
+  const listError =
+    listState?.key === listKey && !listState.ok
+      ? (listState.message ?? "Failed to load questions.")
+      : null;
+  const questions = useMemo(
+    () => (listOk && listState ? listState.questions : []),
+    [listOk, listState]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .mastery()
+      .then((m) => {
+        if (!cancelled) setConcepts(m.concepts);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .questions({
+        conceptId: filters.conceptId,
+        difficulty: filters.difficulty,
+        pageSize: 100,
+      })
+      .then((res) => {
+        if (cancelled) return;
+        setListState({
+          key: listKey,
+          ok: true,
+          questions: res.questions,
+        });
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setListState({
+          key: listKey,
+          ok: false,
+          questions: [],
+          message: e instanceof ApiError ? e.message : "Failed to load questions.",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [listKey, filters.conceptId, filters.difficulty]);
+
+  useEffect(() => {
+    if (listLoading || questions.length === 0) return;
+    if (!selectedId || !questions.some((q) => q.id === selectedId)) {
+      updateParams({ question: questions[0].id }, true);
+    }
+  }, [listLoading, questions, selectedId, updateParams]);
+
+  const applyFilter = useCallback(
+    (updates: { conceptId?: string; difficulty?: number }) => {
+      updateParams({
+        concept: updates.conceptId,
+        difficulty:
+          updates.difficulty != null ? String(updates.difficulty) : undefined,
+        question: undefined,
+      });
+    },
+    [updateParams]
+  );
+
+  const clearFilters = useCallback(() => {
+    updateParams({ concept: undefined, difficulty: undefined, question: undefined });
+  }, [updateParams]);
+
+  const retryList = () => setListReload((n) => n + 1);
+
   return (
     <div className="grid lg:grid-cols-[60%_40%] gap-6 min-w-0">
       {/* Left: question (60%) */}
       <section className="flex flex-col gap-4 min-w-0">
+        {detail ? (
+          <QuestionCard detail={detail} />
+        ) : (
+          <>
+            <div className="card !p-4 flex flex-col gap-3">
+              <div>
+                <label
+                  htmlFor="concept-filter"
+                  className="block text-xs font-medium text-text-muted mb-1"
+                >
+                  Concept
+                </label>
+                <select
+                  id="concept-filter"
+                  value={filters.conceptId ?? ""}
+                  onChange={(e) =>
+                    applyFilter({
+                      conceptId: e.target.value || undefined,
+                      difficulty: filters.difficulty,
+                    })}
+                  disabled={concepts.length === 0}
+                  className="w-full text-sm rounded-[14px] border-[1.5px] border-border bg-white px-4 py-3 text-text-body focus:border-primary focus:shadow-[0_0_0_3px_rgba(74,173,219,0.12)] focus:outline-none cursor-pointer"
+                >
+                  <option value="">All concepts</option>
+                  {concepts.map((c) => (
+                    <option key={c.conceptId} value={c.conceptId}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label
+                  htmlFor="difficulty-filter"
+                  className="block text-xs font-medium text-text-muted mb-1"
+                >
+                  Difficulty
+                </label>
+                <select
+                  id="difficulty-filter"
+                  value={filters.difficulty ?? ""}
+                  onChange={(e) =>
+                    applyFilter({
+                      conceptId: filters.conceptId,
+                      difficulty: e.target.value ? Number(e.target.value) : undefined,
+                    })}
+                  className="w-full text-sm rounded-[14px] border-[1.5px] border-border bg-white px-4 py-3 text-text-body focus:border-primary focus:shadow-[0_0_0_3px_rgba(74,173,219,0.12)] focus:outline-none cursor-pointer"
+                >
+                  <option value="">All difficulties</option>
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>
+                      Difficulty {d}/10
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {listLoading ? (
+              <div className="card !p-4 flex flex-col gap-2">
+                {Array.from({ length: 5 }, (_, i) => (
+                  <div key={i} className="h-10 bg-border rounded-xl animate-pulse" />
+                ))}
+              </div>
+            ) : listError ? (
+              <FetchError message={listError} onRetry={retryList} />
+            ) : (
+              <QuestionList
+                questions={questions}
+                selectedId={selectedId}
+                onSelect={(id) => updateParams({ question: id })}
+                emptyMessage={
+                  filters.conceptId || filters.difficulty != null
+                    ? "No questions match these filters."
+                    : "No questions available yet."
+                }
+                onClearFilters={
+                  filters.conceptId || filters.difficulty != null
+                    ? clearFilters
+                    : undefined
+                }
+              />
+            )}
+          </>
+        )}
+      </section>
+
+      {/* Right: code editor placeholder (40%) */}
+      <section className="flex flex-col gap-4 min-w-0">
         {detailLoading && !detail ? (
           <div className="card h-full flex flex-col">
-            <div className="h-6 w-48 bg-border rounded animate-pulse mb-4 flex-shrink-0" />
-            <div className="h-12 w-full bg-border rounded animate-pulse mb-3 flex-shrink-0" />
-            <div className="h-3 w-3/4 bg-border rounded-full animate-pulse flex-shrink-0" />
-            <div className="flex-1 h-40 w-full bg-border rounded-xl animate-pulse" />
+            <div className="h-10 w-32 bg-border rounded animate-pulse mb-4" />
+            <div className="h-full bg-border rounded-xl animate-pulse" />
           </div>
         ) : detailNotFound ? (
           <div className="card text-center py-10 flex-1">
@@ -120,13 +315,6 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
         ) : detailError ? (
           <FetchError message={detailError} onRetry={retryDetail} />
         ) : detail ? (
-          <QuestionCard detail={detail} />
-        ) : null}
-      </section>
-
-      {/* Right: code editor placeholder (40%) */}
-      <section className="flex flex-col gap-4 min-w-0">
-        {detail ? (
           <CodeEditor language="javascript" />
         ) : (
           <div className="card h-full flex flex-col items-center justify-center text-text-muted">

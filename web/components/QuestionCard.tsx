@@ -45,8 +45,8 @@ export default function QuestionCard({
               <p className="text-xs text-accent-light-blue mt-3 mb-1 font-medium">
                 Expected output
               </p>
-              <pre className="text-sm text-white whitespace-pre-wrap break-all">
-                {detail.exampleOutputs[i] ?? ""}
+              <pre className="text-sm text-white whitespace-pre-wrap break-all opacity-50">
+                {detail.exampleOutputs[i] ?? "— no expected output —"}
               </pre>
             </div>
           ))}
