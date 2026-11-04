@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using NBomber.Contracts;
 using NBomber.CSharp;
 
@@ -54,12 +55,17 @@ var practiceScenario = Scenario.Create("practice_submit_code", async context =>
     }) is { IsSuccessStatusCode: true } ? Response.Ok() : Response.Fail();
 });
 
-// Mock interview: login, start, then answer.
+// Mock interview: login, start (capture the real interviewId), then answer it.
 var mockScenario = Scenario.Create("mock_interview_start_answer", async context =>
 {
     await PostJson(client, "/api/v1/auth/login", new { Email, Password });
-    await PostJson(client, "/api/v1/mock/start", new { type = "Technical", voiceMode = false });
-    return await PostJson(client, "/api/v1/mock/00000000-0000-0000-0000-000000000000/answer", new
+    var startResp = await PostJson(client, "/api/v1/mock/start", new { type = "Technical", voiceMode = false });
+    if (!startResp.IsSuccessStatusCode)
+        return Response.Fail();
+    var startBody = await startResp.Content.ReadFromJsonAsync<JsonDocument?>();
+    var interviewId = startBody?.RootElement.GetProperty("interviewId").GetString()
+        ?? Guid.Empty.ToString();
+    return await PostJson(client, $"/api/v1/mock/{interviewId}/answer", new
     {
         message = "I would use Kadane's algorithm — track the running sum and reset on negatives.",
     }) is { IsSuccessStatusCode: true } ? Response.Ok() : Response.Fail();
