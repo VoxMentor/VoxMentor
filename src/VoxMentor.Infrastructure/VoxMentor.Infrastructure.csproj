@@ -24,6 +24,15 @@
     <ProjectReference Include="..\VoxMentor.Domain\VoxMentor.Domain.csproj" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <!-- Opt in to the shared worker copy target (see Directory.Build.targets).
+         Infrastructure is the common dependency of Api and Tests, so it owns the
+         worker build (BuildPdfExtractorWorker) — exactly one builder per build
+         session; Api/Tests only resolve the output path read-only. -->
+    <CopyPdfExtractorWorker>true</CopyPdfExtractorWorker>
+    <BuildPdfExtractorWorker>true</BuildPdfExtractorWorker>
+  </PropertyGroup>
+
   <ItemGroup>
     <!-- Single-source tutor prompt (#77): same file scripts/eval-tutor.py renders. -->
     <EmbeddedResource Include="..\..\prompts\tutor-prompt.txt" LogicalName="VoxMentor.Infrastructure.tutor-prompt.txt" />

@@ -26,6 +26,7 @@ public interface IApplicationDbContext
     DbSet<TutorSession> TutorSessions { get; }
     DbSet<TextbookJob> TextbookJobs { get; }
     DbSet<TextbookChunk> TextbookChunks { get; }
+    DbSet<ResumeAnalysis> ResumeAnalyses { get; }
     /// <summary>Persists tracked changes and returns the number of affected rows.</summary>
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 

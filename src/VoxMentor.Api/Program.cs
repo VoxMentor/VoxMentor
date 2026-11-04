@@ -156,6 +156,7 @@ app.UseStatusCodePages(async statusCodeContext =>
         StatusCodes.Status403Forbidden => "You do not have permission to perform this action.",
         StatusCodes.Status404NotFound => "The requested resource was not found.",
         StatusCodes.Status405MethodNotAllowed => "The HTTP method is not allowed for this resource.",
+        StatusCodes.Status429TooManyRequests => "Too many requests. Please retry later.",
         _ when status >= 500 => "An error occurred while processing your request.",
         _ => "The request could not be processed."
     };
