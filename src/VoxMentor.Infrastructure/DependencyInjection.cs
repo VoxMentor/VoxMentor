@@ -90,6 +90,12 @@ public static class DependencyInjection
         {
             client.Timeout = TimeSpan.FromSeconds(30);
         });
+        // Voice Service (#152): 60s cap; voice failures degrade to text-only
+        // interviews in the dialogue layer — never a thrown error or hung stream.
+        services.AddHttpClient<IVoiceClient, VoiceServiceClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(60);
+        });
         services.AddScoped<ICurrentTokenService, CurrentTokenService>();
 
         // #151: PDF text extraction runs in an isolated worker process with

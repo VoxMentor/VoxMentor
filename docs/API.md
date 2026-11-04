@@ -661,14 +661,17 @@ Auth: JWT via `?access_token=<token>` query string on the hub URL.
 ### /hubs/interview — Mock interview real-time (voice + text)
 | Event | Direction | Data |
 |---|---|---|
-| `StartMock` | Client → Server | positional args `(jdId, type, voiceMode)` → returns the 202 start body (or null on error) |
-| `SendAnswer` | Client → Server | positional args `(interviewId, message)` → returns the 200 answer body (or null on error) |
+| `StartMock` | Client → Server | positional args `(jdId, type, voiceMode)` → returns the 202 start body; when `voiceMode` is true the body also carries `audioBase64` (base64 WAV) and `audioContentType` (`audio/wav`) of the TTS-rendered opening |
+| `SendAnswer` | Client → Server | positional args `(interviewId, message)` → returns the 200 answer body; each interviewer reply rides the same `audioBase64`/`audioContentType` fields when voice mode is on |
 | `CompleteMock` | Client → Server | positional args `(interviewId)` |
 | `InterviewerMessage` | Server → Client | `"text"` (streamed tokens for both the opening and each probe) |
+| `InterviewerVoice` | Server → Client | not a separate event — TTS audio is delivered in the start/answer result DTOs (`audioBase64`, `audioContentType`) |
 | `InterviewComplete` | Server → Client | `{ interviewId, score, status, startedAt, completedAt, review }` (real score; only when the run actually ends) |
 | `InterviewError` | Server → Client | `{ interviewId, message }` (validation, 404, 409, 429, or the AI interviewer being unavailable — the client is never left hanging) |
 
-The hub routes the same commands and dialogue service as the REST endpoints (#126) — no parallel business logic. `InterviewerVoice` is not wired yet (Voice Service).
+The hub routes the same commands and dialogue service as the REST endpoints (#126) — no parallel business logic. `voiceMode` is accepted on `StartMock`, persisted on the `MockInterviews` row (#152), and read back on every `SendAnswer` so the whole run stays in one mode.
+
+Voice mode degrades gracefully: when `voiceMode` is true and the Voice Service is unreachable (`POST /stt`/`POST /tts` return 503, time out, or refuse the connection) the interview continues with text only (`audioBase64: null`), a warning is logged, and neither the stream nor the endpoint fails or hangs because of voice. STT is client-side: the caller records audio chunks and POSTs them to the Voice Service (`POST /stt`, multipart field `audio` → `{ text, language, durationMs }`, §9) before sending the transcript as `SendAnswer`'s `message`.
 
 ---
 
@@ -712,7 +715,7 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | `JobDescriptions` | Id, UserId, RawText, CompanyName, Role, Difficulty, EstimatedWeeks |
 | `JdSkillWeights` | Id, JobDescriptionId, SkillName, Weight (0–1), IsTechnical — unique (JobDescriptionId, SkillName) |
 | `CodeSubmissions` | Id, UserId, QuestionId, Code, Language, TestCasesPassed/Total, ExecutionTimeMs, MemoryUsageKb, AiEvaluationJson, PlagiarismScore, MasteryBefore/After |
-| `MockInterviews` | Id, UserId, JdId?, Type, Status, Score?, TranscriptJson, ReviewJson, StartedAt, CompletedAt? |
+| `MockInterviews` | Id, UserId, JdId?, Type, Status, Score?, TranscriptJson, ReviewJson, StartedAt, CompletedAt?, VoiceMode |
 | `ResumeAnalyses` | Id, UserId, JdId, FileName, MatchScore, KeywordMatchJson, AtsParseabilityJson, SuggestionsJson |
 | `TutorSessions` | Id, UserId, ConceptId?, Question, Answer, Status, TotalTokens |
 | `TextbookJobs` | Id, FileName, Status, TotalChunks, ProcessedChunks, Error? |
