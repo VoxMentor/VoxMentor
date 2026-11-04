@@ -17,42 +17,10 @@
     <ProjectReference Include="..\VoxMentor.Infrastructure\VoxMentor.Infrastructure.csproj" />
   </ItemGroup>
 
-  <!-- Copy the PDF extraction worker exe next to the API dll so
-       PdfPigTextExtractor can launch it at runtime with an OS memory limit.
-       No ProjectReference to the worker: the SDK's publish pipeline would
-       build it twice (with and without RID) and fail with NETSDK1152
-       duplicate-output errors. These targets own the worker build instead. -->
   <PropertyGroup>
-    <_WorkerProject>$(MSBuildProjectDirectory)\..\VoxMentor.Workers.PdfExtractor\VoxMentor.Workers.PdfExtractor.csproj</_WorkerProject>
+    <!-- Opt in to the shared worker copy targets (see Directory.Build.targets). -->
+    <CopyPdfExtractorWorker>true</CopyPdfExtractorWorker>
+    <CopyPdfExtractorWorkerToPublish>true</CopyPdfExtractorWorkerToPublish>
   </PropertyGroup>
-
-  <!-- Resolve the worker's output inside the target (not at project evaluation):
-       a project-level wildcard expands before the worker builds and is empty on
-       a clean build (CodeRabbit r4464130409). Passing RuntimeIdentifier makes the
-       worker build into its RID-specific output folder, matching a self-contained
-       API publish (CodeRabbit r4464130429).
-       ponytail: worker stays framework-dependent; also pass SelfContained if
-       deployments ever target machines without the shared .NET runtime. -->
-  <Target Name="CopyPdfExtractorWorker" AfterTargets="Build">
-    <MSBuild Projects="$(_WorkerProject)" Targets="Restore;Build;GetTargetPath"
-             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier)">
-      <Output TaskParameter="TargetOutputs" ItemName="_WorkerTargetPath" />
-    </MSBuild>
-    <ItemGroup>
-      <_WorkerFiles Include="%(_WorkerTargetPath.RootDir)%(_WorkerTargetPath.Directory)*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(_WorkerFiles)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
-  </Target>
-
-  <Target Name="CopyPdfExtractorWorkerToPublish" AfterTargets="Publish">
-    <MSBuild Projects="$(_WorkerProject)" Targets="Restore;Build;GetTargetPath"
-             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier)">
-      <Output TaskParameter="TargetOutputs" ItemName="_WorkerPublishTargetPath" />
-    </MSBuild>
-    <ItemGroup>
-      <_WorkerPublishFiles Include="%(_WorkerPublishTargetPath.RootDir)%(_WorkerPublishTargetPath.Directory)*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(_WorkerPublishFiles)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
-  </Target>
 
 </Project>

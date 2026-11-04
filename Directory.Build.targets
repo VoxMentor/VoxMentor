@@ -1,0 +1,53 @@
+<Project>
+
+  <!-- #151: PDF extraction worker (VoxMentor.Workers.PdfExtractor) is built as a
+       standalone exe and copied next to its consumers (Api, Infrastructure, Tests)
+       so PdfPigTextExtractor can launch it in an isolated process.
+
+       Projects opt in with <CopyPdfExtractorWorker>true</CopyPdfExtractorWorker>
+       (and <CopyPdfExtractorWorkerToPublish>true</...> for publish output).
+
+       The worker is deliberately NOT a ProjectReference and NOT in the slnx:
+       - As a ProjectReference, the SDK's publish pipeline builds it twice (with
+         and without RID) and fails with NETSDK1152 duplicate-output errors, and
+         self-contained restore omits the RID for referenced projects (NETSDK1047).
+       - Outside the solution, the only real worker build happens in the first
+         consumer's copy target (Infrastructure, which Api and Tests depend on);
+         every later consumer build is a strictly-after incremental no-op, so two
+         builds of the worker can never run concurrently.
+
+       The output path is resolved inside the target via GetTargetPath — a
+       project-level wildcard would expand before the worker builds and come up
+       empty on clean builds (CodeRabbit r4464130409) — and RuntimeIdentifier is
+       forwarded so self-contained publishes copy from the worker's RID-specific
+       output folder (CodeRabbit r4464130429). Restore runs inside the target
+       because the worker is not part of the solution restore graph.
+       ponytail: worker stays framework-dependent; also pass SelfContained if
+       deployments ever target machines without the shared .NET runtime. -->
+  <PropertyGroup>
+    <_PdfWorkerProject>$(MSBuildThisFileDirectory)src\VoxMentor.Workers.PdfExtractor\VoxMentor.Workers.PdfExtractor.csproj</_PdfWorkerProject>
+  </PropertyGroup>
+
+  <Target Name="CopyPdfExtractorWorker" AfterTargets="Build" Condition="'$(CopyPdfExtractorWorker)' == 'true'">
+    <MSBuild Projects="$(_PdfWorkerProject)" Targets="Restore;Build;GetTargetPath"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier)">
+      <Output TaskParameter="TargetOutputs" ItemName="_PdfWorkerTargetPath" />
+    </MSBuild>
+    <ItemGroup>
+      <_PdfWorkerFiles Include="%(_PdfWorkerTargetPath.RootDir)%(_PdfWorkerTargetPath.Directory)*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_PdfWorkerFiles)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyPdfExtractorWorkerToPublish" AfterTargets="Publish" Condition="'$(CopyPdfExtractorWorkerToPublish)' == 'true'">
+    <MSBuild Projects="$(_PdfWorkerProject)" Targets="Restore;Build;GetTargetPath"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier)">
+      <Output TaskParameter="TargetOutputs" ItemName="_PdfWorkerPublishTargetPath" />
+    </MSBuild>
+    <ItemGroup>
+      <_PdfWorkerPublishFiles Include="%(_PdfWorkerPublishTargetPath.RootDir)%(_PdfWorkerPublishTargetPath.Directory)*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_PdfWorkerPublishFiles)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

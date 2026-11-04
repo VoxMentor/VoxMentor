@@ -24,29 +24,10 @@
     <ProjectReference Include="..\VoxMentor.Domain\VoxMentor.Domain.csproj" />
   </ItemGroup>
 
-  <!-- Copy the PDF extraction worker exe next to the Infrastructure dll so
-       PdfExtractionWorker can launch it at runtime with an OS memory limit.
-       No ProjectReference to the worker: it would make the SDK's publish
-       pipeline build the worker twice (with and without RID) and fail with
-       NETSDK1152 duplicate-output errors. This target owns the worker build. -->
   <PropertyGroup>
-    <_WorkerProject>$(MSBuildProjectDirectory)\..\VoxMentor.Workers.PdfExtractor\VoxMentor.Workers.PdfExtractor.csproj</_WorkerProject>
+    <!-- Opt in to the shared worker copy target (see Directory.Build.targets). -->
+    <CopyPdfExtractorWorker>true</CopyPdfExtractorWorker>
   </PropertyGroup>
-
-  <!-- Resolve the worker's output inside the target (not at project evaluation):
-       a project-level wildcard expands before the worker builds and is empty on
-       a clean build (CodeRabbit r4464130409). RuntimeIdentifier is passed so a
-       RID-specific build copies from the worker's RID-specific output folder. -->
-  <Target Name="CopyPdfExtractorWorker" AfterTargets="Build">
-    <MSBuild Projects="$(_WorkerProject)" Targets="Restore;Build;GetTargetPath"
-             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier)">
-      <Output TaskParameter="TargetOutputs" ItemName="_WorkerTargetPath" />
-    </MSBuild>
-    <ItemGroup>
-      <_WorkerFiles Include="%(_WorkerTargetPath.RootDir)%(_WorkerTargetPath.Directory)*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(_WorkerFiles)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
-  </Target>
 
   <ItemGroup>
     <!-- Single-source tutor prompt (#77): same file scripts/eval-tutor.py renders. -->
