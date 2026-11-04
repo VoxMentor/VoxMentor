@@ -3,7 +3,6 @@
 AI-powered interview preparation platform for college students. Paste a job description, practice DSA problems, take mock interviews with voice, and get a readiness score.
 
 [![Build](https://img.shields.io/github/actions/workflow/status/VoxMentor/VoxMentor/ci.yml?branch=main&label=build)](https://github.com/VoxMentor/VoxMentor/actions)
-[![License](https://img.shields.io/github/license/VoxMentor/VoxMentor)](https://github.com/VoxMentor/VoxMentor/blob/main/LICENSE)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD8?logo=dotnet)](https://dotnet.microsoft.com/)
 
 ## Hero
