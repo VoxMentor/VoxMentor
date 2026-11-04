@@ -21,15 +21,24 @@
     <ProjectReference Include="..\VoxMentor.Application\VoxMentor.Application.csproj" />
     <ProjectReference Include="..\VoxMentor.Infrastructure\VoxMentor.Infrastructure.csproj" />
     <ProjectReference Include="..\VoxMentor.Domain\VoxMentor.Domain.csproj" />
-    <!-- PDF extraction worker: copied to output dir for PdfPigTextExtractor. -->
-    <ProjectReference Include="..\VoxMentor.Workers.PdfExtractor\VoxMentor.Workers.PdfExtractor.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!-- Copy the PDF extraction worker exe next to the test dll so
-       PdfPigTextExtractor can launch it at runtime. -->
+       PdfPigTextExtractor can launch it at runtime.
+       No ProjectReference to the worker: this target owns the worker build
+       (same pattern as Api/Infrastructure — avoids SDK publish-pipeline
+       duplicate-output errors and empty wildcards on clean builds). -->
+  <PropertyGroup>
+    <_WorkerProject>$(MSBuildProjectDirectory)\..\VoxMentor.Workers.PdfExtractor\VoxMentor.Workers.PdfExtractor.csproj</_WorkerProject>
+  </PropertyGroup>
+
   <Target Name="CopyPdfExtractorWorker" AfterTargets="Build">
+    <MSBuild Projects="$(_WorkerProject)" Targets="Restore;Build;GetTargetPath"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier)">
+      <Output TaskParameter="TargetOutputs" ItemName="_WorkerTargetPath" />
+    </MSBuild>
     <ItemGroup>
-      <_WorkerFiles Include="$(MSBuildProjectDirectory)\..\VoxMentor.Workers.PdfExtractor\bin\$(Configuration)\net8.0\*" />
+      <_WorkerFiles Include="%(_WorkerTargetPath.RootDir)%(_WorkerTargetPath.Directory)*" />
     </ItemGroup>
     <Copy SourceFiles="@(_WorkerFiles)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
   </Target>
