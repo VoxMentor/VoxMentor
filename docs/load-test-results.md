@@ -6,6 +6,20 @@ Baseline throughput/latency results for the VoxMentor API (established ahead of 
 
 The Core API must be running and reachable at `http://localhost:5253` (override with `VOXMENTOR_BASE_URL`). Start the compose stack (database, redis, ollama, judge0, judge0-worker, seq), then run the API (`dotnet run` in `src/VoxMentor.Api`) or point at a deployed instance.
 
+Before running the load test, register the test accounts used by `src/VoxMentor.LoadTests/Program.cs` against the Core API (one `POST /api/v1/auth/register` per account):
+
+```bash
+for i in 1 2 3 4 5; do
+  curl -X POST http://localhost:5253/api/v1/auth/register \
+    -H "Content-Type: application/json" \
+    -d "{\"fullName\":\"Load Test $i\",\"email\":\"loadtest$i@voxmentor.local\",\"password\":\"LoadTest!2026\"}"
+done
+```
+
+(409 responses for already-registered accounts are expected and safe to ignore.)
+
+Then run the load test:
+
 ```bash
 cd src/VoxMentor.LoadTests
 dotnet run -c Release

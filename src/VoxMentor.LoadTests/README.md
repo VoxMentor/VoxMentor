@@ -11,7 +11,7 @@ Baseline throughput/latency tests for the VoxMentor API ahead of `v2.0.0`. Built
 | `mock_interview_start_answer` | `POST /api/v1/auth/login`, `POST /api/v1/mock/start`, `POST /api/v1/mock/{id}/answer` | JWT (cookie) |
 | `tutor_ask` | `POST /api/v1/auth/login`, `POST /api/v1/tutor/ask` | JWT (cookie) |
 
-A single cookie-enabled `HttpClient` is shared across a simulated user's steps so the `access_token`/`refresh_token` HttpOnly cookies set by login are replayed on subsequent requests. All four scenarios run under both load simulations.
+Each virtual user is assigned one account from a pre-registered pool (round-robin by iteration) and gets its own cookie-enabled `HttpClient`, so the `access_token`/`refresh_token` HttpOnly cookies set by login are replayed only within that user's session — sessions are never shared across users. All four scenarios run under both load simulations.
 
 ## Load simulations
 
@@ -40,7 +40,7 @@ These are **planning baselines**, to be confirmed against the first checked-in r
 | `tutor_ask` | sustained | ~10–20 | < 400 ms | < 1 s | < 2 s |
 | `tutor_ask` | spike | ~40–60 | < 700 ms | < 1.5 s | < 3 s |
 
-> `practice_submit_code` and `mock_interview_*` hit Judge0 + Ollama, so they are the slowest paths and dominate p99. `tutor_ask` is rate-limited (10/h/student) — expect `429` once the shared test user's quota is exhausted; results reflect that.
+> `practice_submit_code` and `mock_interview_*` hit Judge0 + Ollama, so they are the slowest paths and dominate p99. `tutor_ask` is rate-limited (10/h/student) — expect `429` once an account's rolling quota is exhausted; results reflect the combined workload of all four scenarios running concurrently in one invocation, not isolated scenario capacity.
 
 ## How to run
 
@@ -54,12 +54,12 @@ cd src/VoxMentor.LoadTests
 dotnet run -c Release
 
 # 3. Reports are written to ./results (HTML + CSV). Compare against the baselines above
-> and store a snapshot in docs/load-test-results.md.
+# and store a snapshot in docs/load-test-results.md.
 ```
 
 ## Notes / known ceiling
 
-- ponytail: all simulated users share one `HttpClient`/cookie jar, so they effectively replay a single login session rather than representing many distinct students. Per-user session isolation (distinct tokens per virtual user) can be added when baseline variance demands it.
+- ponytail: each virtual user is assigned a pre-registered account and a dedicated cookie-enabled `HttpClient`; sessions are never shared. The account pool size caps concurrent distinct sessions — add more accounts to the pool in `Program.cs` if baseline variance demands it. Accounts must be pre-registered against the target API before running.
 - `tutor_ask` and `mock_interview_start_answer` depend on Ollama/Judge0 being healthy in the stack; downtime shows as elevated latency/`503`, which is part of the baseline we want to capture.
 
 ## Results
