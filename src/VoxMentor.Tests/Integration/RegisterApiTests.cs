@@ -75,6 +75,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             // every resume-analyze request would 500. Tests use the in-memory
             // limiter (10/hour default is far above what a test can hit).
             services.AddSingleton<IRateLimiter>(new InMemorySlidingWindowRateLimiter());
+            services.AddKeyedSingleton<IRateLimiter>("ResumeAnalysis", new InMemorySlidingWindowRateLimiter());
         });
     }
 }

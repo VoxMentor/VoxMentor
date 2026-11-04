@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
@@ -34,7 +35,7 @@ public class AnalyzeResumeHandler : IRequestHandler<AnalyzeResumeCommand, ApiRes
         IApplicationDbContext db,
         ITextExtractor extractor,
         ICurrentUserService currentUser,
-        IRateLimiter rateLimiter,
+        [FromKeyedServices("ResumeAnalysis")] IRateLimiter rateLimiter,
         ILogger<AnalyzeResumeHandler> logger)
     {
         _db = db;
