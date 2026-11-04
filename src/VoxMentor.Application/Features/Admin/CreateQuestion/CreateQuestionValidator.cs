@@ -33,11 +33,6 @@ public class CreateQuestionValidator : AbstractValidator<CreateQuestionCommand>
             .Must(testCases => TestCasePayload.Parse(testCases).Errors.Count == 0)
             .WithMessage(x => string.Join(" ", TestCasePayload.Parse(x.TestCases).Errors));
 
-        RuleFor(x => x.ExampleInputs)
-            .Must((cmd, inputs) =>
-                cmd.ExampleOutputs == null || inputs == null || inputs.Length == cmd.ExampleOutputs.Length)
-            .WithMessage("ExampleInputs and ExampleOutputs must have the same length.");
-
         RuleFor(x => x.Rubric!)
             .Must(rubric => RubricPayload.Parse(rubric).IsValid)
             .When(x => x.Rubric is not null)

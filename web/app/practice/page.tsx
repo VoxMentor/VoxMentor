@@ -16,6 +16,10 @@ import QuestionCard from "@/components/QuestionCard";
 import CodeEditor from "@/components/CodeEditor";
 import QuestionList from "@/components/QuestionList";
 
+/**
+ * Rendered while question data is loading. Mirrors the 60% question / 40%
+ * editor layout so the page doesn't shift when content arrives.
+ */
 function PageSkeleton() {
   return (
     <div className="grid lg:grid-cols-[60%_40%] gap-6 min-w-0">
@@ -37,6 +41,11 @@ interface PracticeContentProps {
   selectedId?: string;
 }
 
+/**
+ * Renders the practice page content: a selectable question list on the left
+ * (60%) and the question detail + code editor on the right (40%). Fetches the
+ * selected question on demand with loading, not-found, and error states.
+ */
 function PracticeContent({ selectedId }: PracticeContentProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -353,6 +362,10 @@ function PracticeRoute() {
   );
 }
 
+/**
+ * Top-level practice page route. Wraps the practice content in ProtectedRoute,
+ * Navbar, and a Suspense boundary, then renders at /practice.
+ */
 export default function PracticePage() {
   return (
     <Suspense fallback={<PageSkeleton />}>

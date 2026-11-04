@@ -120,17 +120,9 @@ public static class DependencyInjection
             return ConnectionMultiplexer.Connect(options);
         });
 
-        // #151: Default rate limiter for tutors (AskTutorHandler, TutorHub) — shared across
-        // API instances via Redis. Resume analysis gets its own dedicated limiter below.
+        // #151: Dedicated rate limiter for resume analysis — 5 analyses per user per minute,
+        // shared across API instances via Redis. Separate from other IRateLimiter consumers.
         services.AddSingleton<IRateLimiter>(sp =>
-        {
-            var redis = sp.GetRequiredService<IConnectionMultiplexer>();
-            return new RedisSlidingWindowRateLimiter(redis); // defaults: limit=10, window=1h
-        });
-
-        // #151: Dedicated resume-analysis rate limiter — 5 analyses per user per minute,
-        // separate from the tutor quota so the two never share counters.
-        services.AddKeyedSingleton<IRateLimiter>("ResumeAnalysis", (sp, _) =>
         {
             var redis = sp.GetRequiredService<IConnectionMultiplexer>();
             return new RedisSlidingWindowRateLimiter(

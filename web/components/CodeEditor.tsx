@@ -4,6 +4,10 @@ interface CodeEditorProps {
   language?: string;
 }
 
+/**
+ * Placeholder for the code editor (Monaco integration in the next issue).
+ * Renders a card reserving the editor column of the practice layout.
+ */
 export default function CodeEditor({
   language = "javascript",
 }: CodeEditorProps) {

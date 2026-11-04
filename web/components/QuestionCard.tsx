@@ -6,6 +6,10 @@ interface QuestionCardProps {
   detail: QuestionDetail;
 }
 
+/**
+ * Displays a single practice question's detail: concept and difficulty badges,
+ * title, description, and example input/output pairs.
+ */
 const badgeBase = "text-xs font-medium px-2 py-0.5 rounded-full";
 
 export default function QuestionCard({
