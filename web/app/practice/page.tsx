@@ -335,6 +335,11 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
   );
 }
 
+/**
+ * Practice page route. Reads the question query parameter, guards the route
+ * with ProtectedRoute, and renders PracticeContent with a Navbar and Suspense
+ * boundary at /practice.
+ */
 function PracticeRoute() {
   const searchParams = useSearchParams();
   const questionId = searchParams.get("question") ?? undefined;
