@@ -11,7 +11,6 @@ namespace VoxMentor.Infrastructure.Services;
 ///
 /// The worker executable (<c>VoxMentor.Workers.PdfExtractor</c>) parses the
 /// PDF and writes extracted text to a temp output file. This class:
-///   - caps the worker's private memory (<see cref="MaxPrivateMemoryBytes"/>),
 ///   - caps wall-clock time (<see cref="ExtractionTimeout"/>),
 ///   - honors request cancellation by killing the worker process,
 ///   - reads the output file on success,
@@ -65,58 +64,60 @@ public sealed class PdfExtractionWorker : IDisposable
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Failed to start PDF extraction worker.");
 
-        // Register cancellation so a client disconnect kills the worker
-        // instead of leaving it running until its own timeout fires.
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.Token.Register(() =>
+        // Async wait so the request thread isn't blocked; a client disconnect
+        // or the 30s timeout cancels the wait and kills the worker.
+        try
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(ExtractionTimeout);
+            await process.WaitForExitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException)
         {
             try { process.Kill(); } catch { }
-        });
-
-        var exited = process.WaitForExit((int)ExtractionTimeout.TotalMilliseconds);
-        if (!exited)
-        {
-            try { process.Kill(); } catch { }
+            // Client cancellation → rethrow; our timeout → clean 400.
+            cancellationToken.ThrowIfCancellationRequested();
             throw new ValidationException(new Dictionary<string, string[]>
             {
                 ["file"] = [$"PDF extraction timed out after {ExtractionTimeout.TotalSeconds}s."]
             });
         }
 
-        var exitCode = process.ExitCode;
-        var stderr = process.StandardError.ReadToEnd();
-
-        switch (exitCode)
+        try
         {
-            case 0:
-                if (!File.Exists(tempOutputPath))
-                {
-                    throw new ValidationException(new Dictionary<string, string[]>
-                    {
-                        ["file"] = ["Worker produced no output."]
-                    });
-                }
-                try
-                {
-                    return File.ReadAllText(tempOutputPath);
-                }
-                finally
-                {
-                    try { File.Delete(tempOutputPath); } catch { }
-                }
+            // Cancellation after the wait but before reading results must not
+            // be misreported as an invalid PDF (#151, CodeRabbit finding).
+            cancellationToken.ThrowIfCancellationRequested();
 
-            case 2: // too many pages
-            case 3: // too many chars
+            var exitCode = process.ExitCode;
+            var stderr = await process.StandardError.ReadToEndAsync(cancellationToken);
+
+            if (exitCode != 0)
+            {
+                var reason = exitCode is 2 or 3
+                    ? $"{(string.IsNullOrWhiteSpace(stderr) ? "Resume exceeds extraction limits." : stderr.TrimEnd())} (worker exit code {exitCode})"
+                    : $"Worker failed (exit code {exitCode}): {stderr.TrimEnd()}".TrimEnd(':');
                 throw new ValidationException(new Dictionary<string, string[]>
                 {
-                    ["file"] = [$"{(stderr.TrimEnd() ?? "Resume exceeds extraction limits.")} (worker exit code {exitCode})"]
+                    ["file"] = [reason]
                 });
+            }
 
-            default: // 1 (usage), 4 (exception), or other
+            if (!File.Exists(tempOutputPath))
+            {
                 throw new ValidationException(new Dictionary<string, string[]>
                 {
-                    ["file"] = [$"Worker failed (exit code {exitCode}): {stderr.TrimEnd()}".TrimEnd(':')]
+                    ["file"] = ["Worker produced no output."]
                 });
+            }
+
+            return await File.ReadAllTextAsync(tempOutputPath, cancellationToken);
+        }
+        finally
+        {
+            // Delete on every exit path — success, worker failure, timeout,
+            // cancellation — so extracted resume text never lingers in temp.
+            try { File.Delete(tempOutputPath); } catch { }
         }
     }
 

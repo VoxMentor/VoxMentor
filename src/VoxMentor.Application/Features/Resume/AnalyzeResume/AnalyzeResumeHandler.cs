@@ -54,26 +54,10 @@ public class AnalyzeResumeHandler : IRequestHandler<AnalyzeResumeCommand, ApiRes
         if (string.IsNullOrEmpty(userId))
             throw new UnauthorizedAccessException("User must be authenticated to analyze a resume.");
 
-        // Cross-instance rate limit via Redis (shared across API instances).
+        // Cross-instance rate limit via Redis — fail-closed per the
+        // Infrastructure contract: Redis down → error, quota never bypassed.
         // Dedicated limiter: 5 analyses per user per minute.
-        // Falls back gracefully if Redis is down.
-        try
-        {
-            await _rateLimiter.CheckAsync($"resume-analyze:{userId}", cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            // Client disconnect — propagate as cancellation, not a Redis outage.
-            throw;
-        }
-        catch (RateLimitException)
-        {
-            throw; // → 429 via ExceptionHandlingMiddleware
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Redis rate limiter unavailable for user {UserId}; proceeding without rate limiting.", userId);
-        }
+        await _rateLimiter.CheckAsync($"resume-analyze:{userId}", cancellationToken);
 
         // Unknown and foreign JDs both surface as null → 404 (no existence oracle).
         var jd = await _db.JobDescriptions

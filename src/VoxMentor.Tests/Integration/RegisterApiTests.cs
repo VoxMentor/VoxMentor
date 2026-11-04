@@ -14,6 +14,7 @@ using VoxMentor.Application.Features.MockInterviews;
 using VoxMentor.Domain.Entities;
 using VoxMentor.Domain.Enums;
 using VoxMentor.Infrastructure.Persistence;
+using VoxMentor.Infrastructure.RateLimiting;
 using Xunit;
 
 namespace VoxMentor.Tests.Integration;
@@ -69,6 +70,11 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             services.AddSingleton<StubMockInterviewGenerator>();
             services.AddSingleton<IMockInterviewGenerator>(
                 provider => provider.GetRequiredService<StubMockInterviewGenerator>());
+
+            // #151: the Redis limiter is fail-closed, so without a Redis server
+            // every resume-analyze request would 500. Tests use the in-memory
+            // limiter (10/hour default is far above what a test can hit).
+            services.AddSingleton<IRateLimiter>(new InMemorySlidingWindowRateLimiter());
         });
     }
 }
