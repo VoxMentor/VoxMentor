@@ -4,6 +4,7 @@ using System.Text.Json;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
@@ -54,10 +55,12 @@ public class MockInterviewSessionService
     private readonly ISender _sender;
     private readonly IMockInterviewGenerator _generator;
     private readonly IConfiguration _configuration;
+    private readonly IVoiceClient? _voiceClient;
     private readonly AsyncKeyedLock _lock;
     private readonly TimeProvider _clock;
+    private readonly ILogger<MockInterviewSessionService> _logger;
 
-    /// <summary>Initializes the service with the data context, user, selector sender, generator, config, and lock.</summary>
+    /// <summary>Initializes the service with the data context, user, selector sender, generator, config, voice client, and lock.</summary>
     public MockInterviewSessionService(
         IApplicationDbContext db,
         ICurrentUserService currentUser,
@@ -65,6 +68,8 @@ public class MockInterviewSessionService
         IMockInterviewGenerator generator,
         IConfiguration configuration,
         AsyncKeyedLock @lock,
+        IVoiceClient? voiceClient = null,
+        ILogger<MockInterviewSessionService>? logger = null,
         TimeProvider? clock = null)
     {
         _db = db;
@@ -72,8 +77,10 @@ public class MockInterviewSessionService
         _sender = sender;
         _generator = generator;
         _configuration = configuration;
+        _voiceClient = voiceClient;
         _lock = @lock;
         _clock = clock ?? TimeProvider.System;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<MockInterviewSessionService>.Instance;
     }
 
     /// <summary>Buffered start for REST: aggregate the stream, degrading to the canned opener when generation fails.</summary>
@@ -188,6 +195,9 @@ public class MockInterviewSessionService
                 throw new MockInterviewGenerationException("The AI interviewer returned an empty opening.");
 
             var openingMessage = opening.ToString();
+            var voiceMode = request.VoiceMode;
+            var (audioBase64, audioContentType) = await SynthesizeIfVoiceModeAsync(openingMessage, voiceMode, cancellationToken);
+
             var interview = new MockInterview
             {
                 Id = Guid.NewGuid(),
@@ -198,6 +208,7 @@ public class MockInterviewSessionService
                 StartedAt = now,
                 JdId = request.JdId,
                 Status = MockInterviewStatus.InProgress,
+                VoiceMode = voiceMode,
                 TranscriptJson = JsonSerializer.Serialize(
                     new List<TranscriptTurn>
                     {
@@ -216,7 +227,9 @@ public class MockInterviewSessionService
                 interview.Status.ToString(),
                 DurationMinutes,
                 interview.StartedAt,
-                openingMessage));
+                openingMessage,
+                audioBase64,
+                audioContentType));
         }
     }
 
@@ -354,6 +367,9 @@ public class MockInterviewSessionService
                 turns.Add(new TranscriptTurn(TranscriptTurn.InterviewerRole, reply, problem.QuestionId, DateTime.UtcNow));
             }
 
+            var voiceMode = interview.VoiceMode;
+            var (audioBase64, audioContentType) = await SynthesizeIfVoiceModeAsync(reply, voiceMode, cancellationToken);
+
             // Every generation call above succeeded — only now mutate and save.
             interview.AnsweredQuestions = answeredAfter;
             interview.TranscriptJson = JsonSerializer.Serialize(turns, TranscriptTurn.JsonOptions);
@@ -363,7 +379,9 @@ public class MockInterviewSessionService
                 reply,
                 turns.Count,
                 InterviewOngoing: answeredAfter < interview.TotalQuestions,
-                QuestionId: replyQuestionId));
+                QuestionId: replyQuestionId,
+                audioBase64,
+                audioContentType));
         }
     }
 
@@ -429,6 +447,32 @@ public class MockInterviewSessionService
                 result = r;
         }
         return result ?? throw new MockInterviewGenerationException("The interview ended before a result was produced.");
+    }
+
+    /// <summary>
+    /// Synthesizes <paramref name="text"/> to WAV when voice mode is on. Any
+    /// voice-service failure (503, timeout, unreachable, bad payload) degrades
+    /// to silent text with a warning — this never throws and never holds the
+    /// stream hostage to the voice backend.
+    /// </summary>
+    private async Task<(string? AudioBase64, string? AudioContentType)> SynthesizeIfVoiceModeAsync(
+        string text,
+        bool voiceMode,
+        CancellationToken cancellationToken)
+    {
+        if (!voiceMode || _voiceClient is null)
+            return (null, null);
+
+        try
+        {
+            var wav = await _voiceClient.SynthesizeAsync(text, ct: cancellationToken);
+            return (Convert.ToBase64String(wav), "audio/wav");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Voice service unavailable; continuing the interview in text-only mode");
+            return (null, null);
+        }
     }
 
     /// <summary>Drains an answer stream and returns the final result chunk.</summary>

@@ -10,4 +10,6 @@ public record AnswerMockInterviewResultDto(
     string InterviewerMessage,
     int TurnNumber,
     bool InterviewOngoing,
-    Guid? QuestionId = null);
+    Guid? QuestionId = null,
+    string? AudioBase64 = null,
+    string? AudioContentType = null);
