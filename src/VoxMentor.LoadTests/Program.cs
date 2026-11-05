@@ -171,14 +171,16 @@ var mockScenario = Scenario.Create("mock_interview_start_answer", async _ =>
 //
 // Spike runs 2 minutes, then sustained 5 minutes. Gate state resets between the
 // two phases so spike reservations never suppress sustained-phase sends; within
-// each phase each account still sends at most once per gate interval.
+// each phase each account still sends at most once per gate interval. The reset
+// deadline is anchored to the first tutor iteration, not setup time, so a
+// scheduling delay before the first iteration doesn't shift the boundary.
 var tutorNextSlot = new DateTime[accountCount];
 var tutorLocks = Enumerable.Range(0, accountCount).Select(_ => new object()).ToArray();
 var tutorGateMinutes = ParseTutorGateMinutes();
-// Spike is exactly 2 minutes; reset gate state at the spike→sustained boundary
-// (T+2 min) so the sustained phase starts with every account's slot free. Set
-// exactly at the boundary — the reset fires once via the phaseResetDone flag.
-var phaseResetAt = DateTime.UtcNow.AddMinutes(2);
+// Anchored to the first tutor iteration (set inside the scenario below), not
+// setup time — the spike→sustained boundary is exactly 2 minutes after the
+// first iteration; the reset fires once via the phaseResetDone flag.
+var phaseStart = default(DateTime);
 var phaseResetDone = false;
 var phaseResetLock = new object();
 
@@ -191,7 +193,17 @@ var tutorScenario = Scenario.Create("tutor_ask", async scnCtx =>
     var acct = accounts[idx];
 
     // Reset gate state at the spike→sustained phase boundary so a slot taken
-    // late in spike does not suppress sends during sustained.
+    // late in spike does not suppress sends during sustained. The deadline is
+    // anchored to the first tutor iteration (phaseStart), not setup time.
+    if (phaseStart == default(DateTime))
+    {
+        lock (phaseResetLock)
+        {
+            if (phaseStart == default(DateTime))
+                phaseStart = DateTime.UtcNow;
+        }
+    }
+    var phaseResetAt = phaseStart.AddMinutes(2);
     if (!phaseResetDone && DateTime.UtcNow > phaseResetAt)
     {
         lock (phaseResetLock)
