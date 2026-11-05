@@ -148,48 +148,46 @@ var mockScenario = Scenario.Create("mock_interview_start_answer", async _ =>
 });
 
 // Per-account tutor admission gate: each account sends at most one ask per
-// 6 minutes (tutor rate limit is 10 requests/hour/student). A copy whose
-// account slot is free sends immediately and reserves the next slot (+6
-// minutes). Any other copy returns Ok without calling the API — an
-// intentional local drop, not an API failure: no wait is ever queued, so no
-// iteration can outlive or cross a load-simulation phase and nothing needs
-// cancellation. The gate is per-process and resets between runs.
+// 6 minutes (tutor rate limit is 10 requests/hour/student). Admission is
+// checked *before* login so a dropped copy performs neither an auth request
+// nor a tutor call — the gate is purely local, no API traffic, no wait is
+// ever queued, so no iteration can outlive or cross a load-simulation phase
+// and nothing needs cancellation. Only copies that pass the gate call the
+// tutor API, timed in its own step so tutor stats never count drops as tutor
+// responses. The gate is per-process and resets between runs.
 var tutorNextSlot = new DateTime[accountCount];
 var tutorLocks = Enumerable.Range(0, accountCount).Select(_ => new object()).ToArray();
 
-// AI Coach: login then ask (omit optional conceptId so AskTutorHandler can
-// proceed to session creation without requiring a concept).
-var tutorScenario = Scenario.Create("tutor_ask", async _ =>
+// AI Coach: admission-gated tutor ask (omit optional conceptId so
+// AskTutorHandler can proceed to session creation without requiring a concept).
+var tutorScenario = Scenario.Create("tutor_ask", async scnCtx =>
 {
     var idx = Interlocked.Increment(ref _userCounter) % accountCount;
     var client = clients[idx].Client;
     var acct = accounts[idx];
 
-    if (!await LoginAsync(client, acct.Email, acct.Password))
-        return Response.Fail();
-
-    TimeSpan wait;
     bool dropped;
     lock (tutorLocks[idx])
     {
         var now = DateTime.UtcNow;
         var next = tutorNextSlot[idx];
-        wait = next > now ? next - now : TimeSpan.Zero;
-        if (wait <= TimeSpan.Zero)
+        dropped = next > now;
+        if (!dropped)
             tutorNextSlot[idx] = now + TimeSpan.FromMinutes(6);
-        dropped = wait > TimeSpan.Zero;
     }
-    // Intentional local drop, not an API failure: the account's quota slot was
-    // taken by another copy, so no request is sent and no wait is queued —
-    // this keeps iterations inside their load-simulation phase (nothing to
-    // cancel) and avoids NBomber restart-on-fail loops.
     if (dropped)
-        return Response.Ok();
+        return Response.Ok(); // intentional local drop: quota respected, nothing sent
 
-    return await PostJson(client, "/api/v1/tutor/ask", new
-    {
-        question = "Why is Kadane's algorithm O(n)?",
-    }) is { IsSuccessStatusCode: true } ? Response.Ok() : Response.Fail();
+    if (!await LoginAsync(client, acct.Email, acct.Password))
+        return Response.Fail();
+
+    // Only the actual tutor API request is timed in its own step, so drops
+    // never contribute to tutor-request success/throughput/latency stats.
+    return await NBomber.CSharp.Step.Run("tutor_api", scnCtx, async () =>
+        (await PostJson(client, "/api/v1/tutor/ask", new
+        {
+            question = "Why is Kadane's algorithm O(n)?",
+        })) is { IsSuccessStatusCode: true } ? Response.Ok() : Response.Fail());
 });
 
 // ---------- Load simulations ----------

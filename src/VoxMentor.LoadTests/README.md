@@ -30,7 +30,7 @@ Both simulations run against every scenario (spike first, then sustained baselin
 
 ### Tutor pacing
 
-- `tutor_ask` uses a per-account zero-wait admission gate: a copy whose account slot is free sends immediately and reserves the next slot (+6 minutes); any other copy returns Ok without calling the API (intentional local drop). No waits are ever queued, so no iteration crosses a load-simulation phase, and each account stays within the tutor rate limit of 10 requests/hour/student (the gate is per-process and resets between runs). With 5 pre-registered accounts, each simulation generates at most ~5 tutor asks total (one per account), well within quota. Warm-up is disabled for this scenario (`WithoutWarmUp`) because warm-up iterations would consume quota slots.
+- `tutor_ask` uses a per-account zero-wait admission gate: admission is checked *before* login, so a copy whose account slot is taken performs neither an auth request nor a tutor call — a truly local drop that respects the tutor rate limit of 10 requests/hour/student. A copy whose slot is free logs in and sends one tutor API request, then reserves the next slot (+6 minutes). No waits are ever queued, so no iteration crosses a load-simulation phase. With 5 pre-registered accounts, each simulation generates at most ~5 tutor sends total (one per account), well within quota. Warm-up is disabled for this scenario (`WithoutWarmUp`) because warm-up iterations would consume quota slots. The gate caps measured sends at one per account per 6 minutes (~0.014 RPS across 5 accounts) regardless of injection rate; raising the server tutor quota does not increase measured capacity while the gate is in place — an uncapped capacity run requires raising/removing the server rate limit and the load-test-side gate together.
 
 ## Expected baselines (pre-v2.0.0 targets)
 
@@ -44,8 +44,10 @@ These are **planning baselines**, to be confirmed against the first checked-in r
 | `practice_submit_code` | spike | ~80–100 | < 400 ms | < 1 s | < 2 s |
 | `mock_interview_start_answer` | sustained | ~15–25 | < 300 ms | < 800 ms | < 1.5 s |
 | `mock_interview_start_answer` | spike | ~60–80 | < 500 ms | < 1.2 s | < 2.5 s |
+| `tutor_ask` | sustained | ≤ ~0.014 | n/a (drop local) | n/a | < 1 s |
+| `tutor_ask` | spike | ≤ ~0.014 | n/a (drop local) | n/a | < 1 s |
 
-> `practice_submit_code` and `mock_interview_*` hit Judge0 + Ollama, so they are the slowest paths and dominate p99. `tutor_ask` runs under both simulations but is admission-paced by a load-test-side zero-wait gate (at most one send per account per 6 minutes; non-quota copies are dropped without calling the API), so it is quota-bound rather than capacity-bound — its RPS is capped by the rate limit (~0.014 RPS across 5 accounts) and tutor_ask scenario stats mix local drops and real API sends, so no per-send RPS/latency target is listed here. Results reflect the combined workload of all four scenarios running concurrently, not isolated scenario capacity.
+> `practice_submit_code` and `mock_interview_*` hit Judge0 + Ollama, so they are the slowest paths and dominate p99. `tutor_ask` runs under both simulations but is admission-paced by a load-test-side zero-wait gate (at most one send per account per 6 minutes; non-quota copies are dropped without calling the API), so it is quota-bound rather than capacity-bound — its RPS target is the rate-limit cap (~0.014 RPS across 5 accounts) rather than a measured capacity; tutor_ask `p50/p95/p99` target (< 1 s) covers the send path only, since drops are local and excluded from the `tutor_api` step stats. Results reflect the combined workload of all four scenarios running concurrently, not isolated scenario capacity.
 
 ## How to run
 
