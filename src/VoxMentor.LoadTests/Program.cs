@@ -65,10 +65,15 @@ static async Task<string> GetValidQuestionIdAsync(HttpClient client)
     if (!resp.IsSuccessStatusCode)
         return Guid.NewGuid().ToString();
     using var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
-    return doc?.RootElement.TryGetProperty("data", out var data) == true
-        && data.TryGetProperty("questions", out var questions)
-        ? questions.EnumerateArray().FirstOrDefault().TryGetProperty("id", out var id) ? id.GetString() ?? Guid.NewGuid().ToString() : Guid.NewGuid().ToString()
-        : Guid.NewGuid().ToString();
+    if (doc is null || !doc.RootElement.TryGetProperty("data", out var data) ||
+        !data.TryGetProperty("questions", out var questions))
+        return Guid.NewGuid().ToString();
+    foreach (var q in questions.EnumerateArray())
+    {
+        if (q.TryGetProperty("id", out var id) && id.ValueKind != JsonValueKind.Null)
+            return id.GetString() ?? Guid.NewGuid().ToString();
+    }
+    return Guid.NewGuid().ToString();
 }
 
 // ---------- Scenarios ----------
