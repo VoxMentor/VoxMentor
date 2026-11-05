@@ -30,7 +30,7 @@ Both simulations run against every scenario (spike first, then sustained baselin
 
 ### Tutor pacing
 
-- `tutor_ask` uses a per-account admission gate: each account reserves its next slot *before* the request, spaced 6 minutes apart, so concurrent copies cannot fire together and each account stays within the tutor rate limit of 10 requests/hour/student (the gate is per-process and resets between runs). With 5 pre-registered accounts, each simulation generates at most ~5 tutor asks total (one per account), well within quota; copies whose next slot falls beyond the simulation window are dropped rather than queued, so nothing outlives the run.
+- `tutor_ask` uses a per-account zero-wait admission gate: a copy whose account slot is free sends immediately and reserves the next slot (+6 minutes); any other copy returns Ok without calling the API (intentional local drop). No waits are ever queued, so no iteration crosses a load-simulation phase, and each account stays within the tutor rate limit of 10 requests/hour/student (the gate is per-process and resets between runs). With 5 pre-registered accounts, each simulation generates at most ~5 tutor asks total (one per account), well within quota. Warm-up is disabled for this scenario (`WithoutWarmUp`) because warm-up iterations would consume quota slots.
 
 ## Expected baselines (pre-v2.0.0 targets)
 
@@ -45,7 +45,7 @@ These are **planning baselines**, to be confirmed against the first checked-in r
 | `mock_interview_start_answer` | sustained | ~15–25 | < 300 ms | < 800 ms | < 1.5 s |
 | `mock_interview_start_answer` | spike | ~60–80 | < 500 ms | < 1.2 s | < 2.5 s |
 
-> `practice_submit_code` and `mock_interview_*` hit Judge0 + Ollama, so they are the slowest paths and dominate p99. `tutor_ask` runs under both simulations but is admission-paced (one ask per account per 6 minutes), so it is quota-bound rather than capacity-bound — its RPS is fixed by the rate limit (~0.014 RPS with 5 accounts) and its reported latency includes the admission wait, so it has no throughput/latency target here. Results reflect the combined workload of all four scenarios running concurrently, not isolated scenario capacity.
+> `practice_submit_code` and `mock_interview_*` hit Judge0 + Ollama, so they are the slowest paths and dominate p99. `tutor_ask` runs under both simulations but is admission-paced by a load-test-side zero-wait gate (at most one send per account per 6 minutes; non-quota copies are dropped without calling the API), so it is quota-bound rather than capacity-bound — its RPS is capped by the rate limit (~0.014 RPS across 5 accounts) and tutor_ask scenario stats mix local drops and real API sends, so no per-send RPS/latency target is listed here. Results reflect the combined workload of all four scenarios running concurrently, not isolated scenario capacity.
 
 ## How to run
 

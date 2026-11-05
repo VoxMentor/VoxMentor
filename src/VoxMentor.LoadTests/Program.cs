@@ -147,10 +147,13 @@ var mockScenario = Scenario.Create("mock_interview_start_answer", async _ =>
     }) is { IsSuccessStatusCode: true } ? Response.Ok() : Response.Fail();
 });
 
-// Per-account tutor admission gate: each account may send at most one ask
-// per 6 minutes (tutor rate limit is 10 requests/hour/student). The slot is
-// reserved *before* waiting so concurrent copies for the same account are
-// queued apart instead of all firing at once.
+// Per-account tutor admission gate: each account sends at most one ask per
+// 6 minutes (tutor rate limit is 10 requests/hour/student). A copy whose
+// account slot is free sends immediately and reserves the next slot (+6
+// minutes). Any other copy returns Ok without calling the API — an
+// intentional local drop, not an API failure: no wait is ever queued, so no
+// iteration can outlive or cross a load-simulation phase and nothing needs
+// cancellation. The gate is per-process and resets between runs.
 var tutorNextSlot = new DateTime[accountCount];
 var tutorLocks = Enumerable.Range(0, accountCount).Select(_ => new object()).ToArray();
 
@@ -165,25 +168,23 @@ var tutorScenario = Scenario.Create("tutor_ask", async _ =>
     if (!await LoginAsync(client, acct.Email, acct.Password))
         return Response.Fail();
 
-    // The longest simulation is 5 minutes, so a slot further out than that
-    // can never be reached within the run. Drop those copies instead of
-    // queueing them: NBomber scenario delays are not cancellable, and a
-    // queued spike copy would otherwise wait for days and outlive the run.
-    const int maxReachableWaitMinutes = 5;
     TimeSpan wait;
+    bool dropped;
     lock (tutorLocks[idx])
     {
         var now = DateTime.UtcNow;
         var next = tutorNextSlot[idx];
         wait = next > now ? next - now : TimeSpan.Zero;
-        if (wait <= TimeSpan.FromMinutes(maxReachableWaitMinutes))
-            tutorNextSlot[idx] = (next > now ? next : now) + TimeSpan.FromMinutes(6);
+        if (wait <= TimeSpan.Zero)
+            tutorNextSlot[idx] = now + TimeSpan.FromMinutes(6);
+        dropped = wait > TimeSpan.Zero;
     }
-    if (wait > TimeSpan.FromMinutes(maxReachableWaitMinutes))
-        return Response.Fail();
-
-    if (wait > TimeSpan.Zero)
-        await Task.Delay(wait);
+    // Intentional local drop, not an API failure: the account's quota slot was
+    // taken by another copy, so no request is sent and no wait is queued —
+    // this keeps iterations inside their load-simulation phase (nothing to
+    // cancel) and avoids NBomber restart-on-fail loops.
+    if (dropped)
+        return Response.Ok();
 
     return await PostJson(client, "/api/v1/tutor/ask", new
     {
@@ -204,6 +205,7 @@ Scenario.WithLoadSimulations(authScenario, sims);
 Scenario.WithLoadSimulations(practiceScenario, sims);
 Scenario.WithLoadSimulations(mockScenario, sims);
 Scenario.WithLoadSimulations(tutorScenario, sims);
+Scenario.WithoutWarmUp(tutorScenario);
 
 var ctx = NBomberRunner.RegisterScenarios(authScenario, practiceScenario, mockScenario, tutorScenario);
 

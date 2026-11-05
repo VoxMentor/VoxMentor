@@ -41,6 +41,10 @@ Set `MockInterview:DailyLimit` high enough (e.g. `100`) in the Core API's `appse
 
 See `src/VoxMentor.LoadTests/README.md` for the planned per-scenario targets (RPS, p50/p95/p99).
 
+## tutor_ask baseline
+
+No measured RPS/p50/p95/p99 baseline is recorded for `tutor_ask`. The tutor endpoint is rate-limited at 10 requests/hour/student, and the load test enforces a load-test-side zero-wait admission gate (at most one send per account per 6 minutes; copies whose account slot is taken return Ok without calling the API), so throughput is fixed by the rate limit rather than capacity — equivalent to ~0.014 RPS across the 5 pre-registered accounts. The pacing model is documented in `src/VoxMentor.LoadTests/README.md` ("Tutor pacing") per issue #153. A real baseline needs a stack run with the tutor rate limit raised.
+
 ## Result storage
 
 Raw run artifacts live in `results/` (gitignored). Summaries are recorded in this document and referenced from `docs/CHANGELOG.md`. Load tests are manual/nightly only and are **not** wired into PR CI.
