@@ -8,8 +8,10 @@ var baseUrl = Environment.GetEnvironmentVariable("VOXMENTOR_BASE_URL") ?? "http:
 
 // Pool of accounts that must be pre-registered against the target Core API
 // (see docs/load-test-results.md). Each virtual user is assigned one account
-// round-robin by a static counter and gets its own cookie-enabled HttpClient
-// so sessions are never shared across users.
+// round-robin by a static counter. Each account has one cookie-enabled
+// HttpClient shared by all virtual users and scenarios using that account;
+// login/refresh cookies set by one iteration are visible to others on the
+// same account. Sessions are therefore shared per account, not per user.
 var accounts = new (string Email, string Password)[]
 {
     ("loadtest1@voxmentor.local", "LoadTest!2026"),
