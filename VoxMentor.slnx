@@ -6,6 +6,7 @@
     <Project Path="src/VoxMentor.Domain/VoxMentor.Domain.csproj" />
     <Project Path="src/VoxMentor.Gateway/VoxMentor.Gateway.csproj" />
     <Project Path="src/VoxMentor.Infrastructure/VoxMentor.Infrastructure.csproj" />
+    <Project Path="src/VoxMentor.LoadTests/VoxMentor.LoadTests.csproj" />
     <Project Path="src/VoxMentor.Tests/VoxMentor.Tests.csproj" />
     <Project Path="src/VoxMentor.TutorService/VoxMentor.TutorService.csproj" />
   </Folder>
