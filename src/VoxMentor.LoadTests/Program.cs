@@ -61,13 +61,27 @@ static async Task<bool> LoginAsync(HttpClient client, string email, string passw
 // a generated ID when the bank is empty or unreachable.
 static async Task<string> GetValidQuestionIdAsync(HttpClient client)
 {
-    using var resp = await client.GetAsync("/api/v1/questions?page=1&pageSize=1");
+    using var resp = await client.GetAsync("/api/v1/questions?page=1&pageSize=20");
     if (!resp.IsSuccessStatusCode)
         return Guid.NewGuid().ToString();
     using var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
     if (doc is null || !doc.RootElement.TryGetProperty("data", out var data) ||
         !data.TryGetProperty("questions", out var questions))
         return Guid.NewGuid().ToString();
+    // Prefer a code question with at least one test case so the scenario
+    // actually reaches Judge0 instead of a not-found path.
+    foreach (var q in questions.EnumerateArray())
+    {
+        if (!q.TryGetProperty("questionType", out var type) ||
+            type.GetString() != "Code")
+            continue;
+        if (!q.TryGetProperty("id", out var id) || id.ValueKind == JsonValueKind.Null)
+            continue;
+        if (q.TryGetProperty("totalTestCases", out var totalCases) &&
+            totalCases.TryGetInt32(out var n) && n > 0)
+            return id.GetString() ?? Guid.NewGuid().ToString();
+    }
+    // No qualifying question found; fall back to any question with an id.
     foreach (var q in questions.EnumerateArray())
     {
         if (q.TryGetProperty("id", out var id) && id.ValueKind != JsonValueKind.Null)
@@ -134,7 +148,8 @@ var mockScenario = Scenario.Create("mock_interview_start_answer", async _ =>
 });
 
 // AI Coach: login then ask (omit optional conceptId so AskTutorHandler can
-// proceed to session creation without requiring a concept).
+// proceed to session creation without requiring a concept). Paced so each
+// account stays within the tutor rate limit (10 requests/hour/student).
 var tutorScenario = Scenario.Create("tutor_ask", async _ =>
 {
     var idx = Interlocked.Increment(ref _userCounter) % accountCount;
@@ -144,10 +159,16 @@ var tutorScenario = Scenario.Create("tutor_ask", async _ =>
     if (!await LoginAsync(client, acct.Email, acct.Password))
         return Response.Fail();
 
-    return await PostJson(client, "/api/v1/tutor/ask", new
+    var result = await PostJson(client, "/api/v1/tutor/ask", new
     {
         question = "Why is Kadane's algorithm O(n)?",
     }) is { IsSuccessStatusCode: true } ? Response.Ok() : Response.Fail();
+
+    // Pace tutor asks to stay within the 10 req/hour/student rate limit:
+    // one ask per account every ~6 minutes.
+    await Task.Delay(TimeSpan.FromMinutes(6));
+
+    return result;
 });
 
 // ---------- Load simulations ----------
@@ -162,10 +183,7 @@ var sims = new NBomber.Contracts.LoadSimulation[] { spike, sustained };
 Scenario.WithLoadSimulations(authScenario, sims);
 Scenario.WithLoadSimulations(practiceScenario, sims);
 Scenario.WithLoadSimulations(mockScenario, sims);
-// tutor_ask is intentionally excluded from baseline simulations: the tutor
-// endpoint is rate-limited at 10 requests/hour/student, so it would produce
-// mostly 429s and skew baseline throughput. Re-add once the tutor rate limit
-// is raised for the load-test stack.
+Scenario.WithLoadSimulations(tutorScenario, sims);
 
 var ctx = NBomberRunner.RegisterScenarios(authScenario, practiceScenario, mockScenario, tutorScenario);
 

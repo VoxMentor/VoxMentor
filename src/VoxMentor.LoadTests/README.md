@@ -26,6 +26,9 @@ Both simulations run against every scenario (spike first, then sustained baselin
 - Peak rate (200 users/s) is reached only at the end of the run.
 - Validates behavior under burst load and recovery.
 
+### Tutor pacing
+- `tutor_ask` is paced at one ask per account every ~6 minutes to stay within the tutor rate limit of 10 requests/hour/student. With 5 pre-registered accounts, the sustained run generates at most ~5 tutor asks total, well within quota.
+
 ## Expected baselines (pre-v2.0.0 targets)
 
 These are **planning baselines**, to be confirmed against the first checked-in run in `docs/load-test-results.md`.
@@ -38,8 +41,10 @@ These are **planning baselines**, to be confirmed against the first checked-in r
 | `practice_submit_code` | spike | ~80–100 | < 400 ms | < 1 s | < 2 s |
 | `mock_interview_start_answer` | sustained | ~15–25 | < 300 ms | < 800 ms | < 1.5 s |
 | `mock_interview_start_answer` | spike | ~60–80 | < 500 ms | < 1.2 s | < 2.5 s |
+| `tutor_ask` | sustained | ~10–20 | < 400 ms | < 1 s | < 2 s |
+| `tutor_ask` | spike | ~40–60 | < 700 ms | < 1.5 s | < 3 s |
 
-> `practice_submit_code` and `mock_interview_*` hit Judge0 + Ollama, so they are the slowest paths and dominate p99. `tutor_ask` is rate-limited at 10 requests/hour/student and is **excluded from baseline simulations** — re-add once the tutor rate limit is raised for the load-test stack. Results reflect the combined workload of auth, practice, and mock scenarios running concurrently, not isolated scenario capacity.
+> `practice_submit_code` and `mock_interview_*` hit Judge0 + Ollama, so they are the slowest paths and dominate p99. `tutor_ask` is paced at one ask per account every ~6 minutes to stay within the 10 req/hour/student rate limit. Results reflect the combined workload of all four scenarios running concurrently, not isolated scenario capacity.
 
 ## How to run
 
