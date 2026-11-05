@@ -147,9 +147,15 @@ var mockScenario = Scenario.Create("mock_interview_start_answer", async _ =>
     }) is { IsSuccessStatusCode: true } ? Response.Ok() : Response.Fail();
 });
 
+// Per-account tutor admission gate: each account may send at most one ask
+// per 6 minutes (tutor rate limit is 10 requests/hour/student). The slot is
+// reserved *before* waiting so concurrent copies for the same account are
+// queued apart instead of all firing at once.
+var tutorNextSlot = new DateTime[accountCount];
+var tutorLocks = Enumerable.Range(0, accountCount).Select(_ => new object()).ToArray();
+
 // AI Coach: login then ask (omit optional conceptId so AskTutorHandler can
-// proceed to session creation without requiring a concept). Paced so each
-// account stays within the tutor rate limit (10 requests/hour/student).
+// proceed to session creation without requiring a concept).
 var tutorScenario = Scenario.Create("tutor_ask", async _ =>
 {
     var idx = Interlocked.Increment(ref _userCounter) % accountCount;
@@ -159,16 +165,30 @@ var tutorScenario = Scenario.Create("tutor_ask", async _ =>
     if (!await LoginAsync(client, acct.Email, acct.Password))
         return Response.Fail();
 
-    var result = await PostJson(client, "/api/v1/tutor/ask", new
+    // The longest simulation is 5 minutes, so a slot further out than that
+    // can never be reached within the run. Drop those copies instead of
+    // queueing them: NBomber scenario delays are not cancellable, and a
+    // queued spike copy would otherwise wait for days and outlive the run.
+    const int maxReachableWaitMinutes = 5;
+    TimeSpan wait;
+    lock (tutorLocks[idx])
+    {
+        var now = DateTime.UtcNow;
+        var next = tutorNextSlot[idx];
+        wait = next > now ? next - now : TimeSpan.Zero;
+        if (wait <= TimeSpan.FromMinutes(maxReachableWaitMinutes))
+            tutorNextSlot[idx] = (next > now ? next : now) + TimeSpan.FromMinutes(6);
+    }
+    if (wait > TimeSpan.FromMinutes(maxReachableWaitMinutes))
+        return Response.Fail();
+
+    if (wait > TimeSpan.Zero)
+        await Task.Delay(wait);
+
+    return await PostJson(client, "/api/v1/tutor/ask", new
     {
         question = "Why is Kadane's algorithm O(n)?",
     }) is { IsSuccessStatusCode: true } ? Response.Ok() : Response.Fail();
-
-    // Pace tutor asks to stay within the 10 req/hour/student rate limit:
-    // one ask per account every ~6 minutes.
-    await Task.Delay(TimeSpan.FromMinutes(6));
-
-    return result;
 });
 
 // ---------- Load simulations ----------
