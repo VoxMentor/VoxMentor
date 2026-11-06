@@ -17,4 +17,10 @@
     <ProjectReference Include="..\VoxMentor.Infrastructure\VoxMentor.Infrastructure.csproj" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <!-- Opt in to the shared worker copy targets (see Directory.Build.targets). -->
+    <CopyPdfExtractorWorker>true</CopyPdfExtractorWorker>
+    <CopyPdfExtractorWorkerToPublish>true</CopyPdfExtractorWorkerToPublish>
+  </PropertyGroup>
+
 </Project>

@@ -271,24 +271,31 @@ public class MockInterviewApiTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
-    public async Task Answer_GrowsTranscriptByTwoTurnsPerAnswer_PreservesOrder()
+    public async Task Answer_FirstAnswerProbes_SecondAdvances_HonestFlagsAndOrder()
     {
         await LoginAsStudentAsync();
         await SeedConceptWithQuestionAsync();
         var interviewId = await StartAsync();
 
-        for (var i = 1; i <= 2; i++)
-        {
-            var response = await PostAsync($"/api/v1/mock/{interviewId}/answer",
-                new { message = $"answer {i}" });
+        // Answer 1: no verdict, no probe spent yet → probe, still problem 1.
+        var first = await PostAsync($"/api/v1/mock/{interviewId}/answer", new { message = "answer 1" });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var firstResult = await first.Content.ReadFromJsonAsync<ApiResponse<AnswerMockInterviewResultDto>>();
+        Assert.NotNull(firstResult?.Data);
+        Assert.Equal(3, firstResult!.Data!.TurnNumber);
+        Assert.Equal(StubMockInterviewGenerator.FollowUp, firstResult.Data.InterviewerMessage);
+        Assert.True(firstResult.Data.InterviewOngoing);
+        Assert.NotNull(firstResult.Data.QuestionId);
 
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            var result = await response.Content.ReadFromJsonAsync<ApiResponse<AnswerMockInterviewResultDto>>();
-            Assert.NotNull(result?.Data);
-            Assert.Equal(2 * i + 1, result!.Data!.TurnNumber);
-            Assert.Equal(StubMockInterviewGenerator.FollowUp, result.Data.InterviewerMessage);
-            Assert.True(result.Data.InterviewOngoing);
-        }
+        // Answer 2: probe budget spent → advances to the next problem (#148).
+        var second = await PostAsync($"/api/v1/mock/{interviewId}/answer", new { message = "answer 2" });
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        var secondResult = await second.Content.ReadFromJsonAsync<ApiResponse<AnswerMockInterviewResultDto>>();
+        Assert.NotNull(secondResult?.Data);
+        Assert.Equal(5, secondResult!.Data!.TurnNumber);
+        Assert.Equal(StubMockInterviewGenerator.Opening, secondResult.Data.InterviewerMessage);
+        Assert.True(secondResult.Data.InterviewOngoing); // 1 of 3 problems answered
+        Assert.NotNull(secondResult.Data.QuestionId);
 
         var turns = await ReadTranscriptAsync(interviewId);
         Assert.Equal(5, turns.Count);
@@ -303,6 +310,42 @@ public class MockInterviewApiTests : IClassFixture<CustomWebApplicationFactory>
         Assert.Equal(new[] { "answer 1", "answer 2" },
             turns.Where(t => t.Role == TranscriptTurn.CandidateRole).Select(t => t.Message).ToArray());
         Assert.Equal(StubMockInterviewGenerator.Opening, turns[0].Message);
+
+        // The introduced problem's turn carries its question id so /complete can map verdicts.
+        Assert.Equal(secondResult.Data.QuestionId, turns[4].QuestionId);
+    }
+
+    /// <summary>Six answers exhaust the 3-problem run: honest ongoing flag, 409 after the end, and /complete still closes with a review.</summary>
+    [Fact]
+    public async Task Answer_ExhaustingAllProblems_ReturnsOngoingFalse_Then409_ThenCompleteCloses()
+    {
+        await LoginAsStudentAsync();
+        await SeedConceptWithQuestionAsync(); // single question → selector falls back to a repeat
+        var interviewId = await StartAsync();
+
+        // 3 problems × (probe + advance) = 6 answers; the 6th finishes the run.
+        for (var i = 1; i <= 5; i++)
+        {
+            var response = await PostAsync($"/api/v1/mock/{interviewId}/answer", new { message = $"answer {i}" });
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var result = await response.Content.ReadFromJsonAsync<ApiResponse<AnswerMockInterviewResultDto>>();
+            Assert.True(result?.Data?.InterviewOngoing, $"answer {i} must still report an ongoing interview");
+        }
+
+        var last = await PostAsync($"/api/v1/mock/{interviewId}/answer", new { message = "answer 6" });
+        Assert.Equal(HttpStatusCode.OK, last.StatusCode);
+        var lastResult = await last.Content.ReadFromJsonAsync<ApiResponse<AnswerMockInterviewResultDto>>();
+        Assert.False(lastResult?.Data?.InterviewOngoing);
+        Assert.Null(lastResult?.Data?.QuestionId);
+        Assert.Contains("finish the interview", lastResult!.Data!.InterviewerMessage, StringComparison.OrdinalIgnoreCase);
+
+        // The client learned the run ended from interviewOngoing — not from a surprise 409.
+        var afterEnd = await PostAsync($"/api/v1/mock/{interviewId}/answer", new { message = "answer 7" });
+        Assert.Equal(HttpStatusCode.Conflict, afterEnd.StatusCode);
+
+        // /complete still closes out with the review over all problems.
+        var complete = await PostAsync($"/api/v1/mock/{interviewId}/complete", new { });
+        Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
     }
 
     [Fact]

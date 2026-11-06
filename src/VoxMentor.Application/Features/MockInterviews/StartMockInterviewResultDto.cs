@@ -8,4 +8,6 @@ public record StartMockInterviewResultDto(
     string Status,
     int Duration,
     DateTime StartedAt,
-    string OpeningMessage);
+    string OpeningMessage,
+    string? AudioBase64 = null,
+    string? AudioContentType = null);

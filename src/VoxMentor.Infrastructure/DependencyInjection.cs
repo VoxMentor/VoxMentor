@@ -91,7 +91,18 @@ public static class DependencyInjection
         {
             client.Timeout = TimeSpan.FromSeconds(30);
         });
+        // Voice Service (#152): 60s cap; voice failures degrade to text-only
+        // interviews in the dialogue layer — never a thrown error or hung stream.
+        services.AddHttpClient<IVoiceClient, VoiceServiceClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(60);
+        });
         services.AddScoped<ICurrentTokenService, CurrentTokenService>();
+
+        // #151: PDF text extraction runs in an isolated worker process with
+        // OS-enforced memory/time limits (CodeRabbit finding). The worker exe
+        // is copied to the output dir by the Infrastructure build target.
+        services.AddScoped<ITextExtractor>(sp => new Services.PdfPigTextExtractor());
 
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -115,9 +126,17 @@ public static class DependencyInjection
             options.AbortOnConnectFail = false;
             return ConnectionMultiplexer.Connect(options);
         });
-        services.AddSingleton<IRateLimiter, RedisSlidingWindowRateLimiter>();
+        // #151: Dedicated rate limiter for resume analysis — 5 analyses per user per minute,
+        // shared across API instances via Redis. Separate from other IRateLimiter consumers.
+        services.AddSingleton<IRateLimiter>(sp =>
+        {
+            var redis = sp.GetRequiredService<IConnectionMultiplexer>();
+            return new RedisSlidingWindowRateLimiter(
+                redis,
+                limit: 5,
+                window: TimeSpan.FromMinutes(1));
+        });
         services.AddDistributedMemoryCache();
-
 
         services.AddAuthentication(options =>
         {

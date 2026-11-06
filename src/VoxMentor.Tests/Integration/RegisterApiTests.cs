@@ -14,6 +14,7 @@ using VoxMentor.Application.Features.MockInterviews;
 using VoxMentor.Domain.Entities;
 using VoxMentor.Domain.Enums;
 using VoxMentor.Infrastructure.Persistence;
+using VoxMentor.Infrastructure.RateLimiting;
 using Xunit;
 
 namespace VoxMentor.Tests.Integration;
@@ -69,6 +70,11 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             services.AddSingleton<StubMockInterviewGenerator>();
             services.AddSingleton<IMockInterviewGenerator>(
                 provider => provider.GetRequiredService<StubMockInterviewGenerator>());
+
+            // #151: the Redis limiter is fail-closed, so without a Redis server
+            // every resume-analyze request would 500. Tests use the in-memory
+            // limiter (10/hour default is far above what a test can hit).
+            services.AddSingleton<IRateLimiter>(new InMemorySlidingWindowRateLimiter());
         });
     }
 }
@@ -101,11 +107,20 @@ public sealed class StubMockInterviewGenerator : IMockInterviewGenerator
 
     public async IAsyncEnumerable<TutorChunk> FollowUpStreamAsync(
         IReadOnlyList<TranscriptTurn> transcript,
+        string? company,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await Task.CompletedTask;
         yield return new TutorChunk(FollowUp);
     }
+
+    /// <summary>Verdict for #148: false keeps the probe on the first answer; advancement runs are exercised via the probe budget (shared-fixture stub stays immutable).</summary>
+    public Task<bool?> AssessAnswerSolvedAsync(
+        IReadOnlyList<TranscriptTurn> transcript,
+        InterviewType type,
+        string? company,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<bool?>(false);
 
     public Task<MockInterviewReviewDraft?> ReviewAsync(
         IReadOnlyList<TranscriptTurn> transcript,

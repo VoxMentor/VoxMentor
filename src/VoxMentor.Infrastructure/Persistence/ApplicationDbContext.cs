@@ -64,6 +64,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<TextbookJob> TextbookJobs { get; set; } = null!;
     /// <summary>EF Core set for TextbookChunk entities.</summary>
     public DbSet<TextbookChunk> TextbookChunks { get; set; } = null!;
+    /// <summary>EF Core set for ResumeAnalysis entities.</summary>
+    public DbSet<ResumeAnalysis> ResumeAnalyses { get; set; } = null!;
 
     /// <inheritdoc />
     public void ClearChangeTracker() => ChangeTracker.Clear();
@@ -238,6 +240,23 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.HasOne<JobDescription>()
                 .WithMany()
                 .HasForeignKey(e => e.JobDescriptionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ResumeAnalysis>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.UserId).IsRequired();
+            entity.HasQueryFilter(e => e.UserId == CurrentUserId);
+            entity.Property(e => e.FileName).IsRequired().HasMaxLength(260);
+            entity.Property(e => e.KeywordMatchJson).IsRequired();
+            entity.Property(e => e.AtsParseabilityJson).IsRequired();
+            entity.Property(e => e.SuggestionsJson).IsRequired();
+            entity.HasIndex(e => e.JdId);
+            entity.HasIndex(e => new { e.UserId, e.CreatedAt });
+            entity.HasOne<JobDescription>()
+                .WithMany()
+                .HasForeignKey(e => e.JdId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

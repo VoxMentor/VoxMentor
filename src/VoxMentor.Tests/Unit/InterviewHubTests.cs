@@ -56,6 +56,7 @@ public class InterviewHubTests
 
         public async IAsyncEnumerable<TutorChunk> FollowUpStreamAsync(
             IReadOnlyList<TranscriptTurn> transcript,
+            string? company,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             if (FollowUpThrow is not null)
@@ -67,6 +68,13 @@ public class InterviewHubTests
                 yield return chunk;
             }
         }
+
+        public Task<bool?> AssessAnswerSolvedAsync(
+            IReadOnlyList<TranscriptTurn> transcript,
+            InterviewType type,
+            string? company,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<bool?>(false);
 
         public Task<MockInterviewReviewDraft?> ReviewAsync(
             IReadOnlyList<TranscriptTurn> transcript,
@@ -375,6 +383,7 @@ public class InterviewHubTests
         var message = error.Args[0]!.GetType().GetProperty("message")!.GetValue(error.Args[0])!.ToString();
         Assert.Contains("required", message);
 
+        app.Db.ChangeTracker.Clear();
         var stored = await app.Db.MockInterviews.IgnoreQueryFilters().SingleAsync(m => m.Id == interview.Id);
         Assert.Single(System.Text.Json.JsonSerializer.Deserialize<List<TranscriptTurn>>(
             stored.TranscriptJson!, TranscriptTurn.JsonOptions)!);
@@ -423,6 +432,7 @@ public class InterviewHubTests
         var message = error.Args[0]!.GetType().GetProperty("message")!.GetValue(error.Args[0])!.ToString();
         Assert.Contains("temporarily unavailable", message);
 
+        app.Db.ChangeTracker.Clear();
         var stored = await app.Db.MockInterviews.IgnoreQueryFilters().SingleAsync(m => m.Id == interview.Id);
         Assert.Single(System.Text.Json.JsonSerializer.Deserialize<List<TranscriptTurn>>(
             stored.TranscriptJson!, TranscriptTurn.JsonOptions)!);

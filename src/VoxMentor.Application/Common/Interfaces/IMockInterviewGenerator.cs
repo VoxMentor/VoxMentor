@@ -23,9 +23,27 @@ public interface IMockInterviewGenerator
 
     /// <summary>Streams one follow-up question or probe for the candidate's latest turn.</summary>
     /// <param name="transcript">Ordered conversation turns so far.</param>
+    /// <param name="company">JD company name, or null when the interview has no JD; selects the interview track (#150).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     IAsyncEnumerable<TutorChunk> FollowUpStreamAsync(
-        IReadOnlyList<TranscriptTurn> transcript, CancellationToken cancellationToken = default);
+        IReadOnlyList<TranscriptTurn> transcript, string? company, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Judges whether the candidate's latest answer sufficiently solves the
+    /// current problem (#148): true → advance to the next problem, false →
+    /// keep probing. Buffered, null-on-failure contract like ReviewAsync —
+    /// the caller falls back to its probe budget, so an unavailable model can
+    /// never stall the interview on one problem.
+    /// </summary>
+    /// <param name="transcript">Ordered conversation turns so far.</param>
+    /// <param name="type">Interview format, which shifts the judging standard.</param>
+    /// <param name="company">JD company name, or null when the interview has no JD; selects the evaluation rubric (#150).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<bool?> AssessAnswerSolvedAsync(
+        IReadOnlyList<TranscriptTurn> transcript,
+        InterviewType type,
+        string? company,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Rubric review of a finished transcript: overall score, one

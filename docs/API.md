@@ -416,13 +416,13 @@ Response `202`:
   "status": "InProgress",
   "duration": 45,
   "startedAt": "2026-08-28T14:00:00Z",
-  "openingMessage": "Hi, I'm your interviewer at Amazon for the SDE-1 position. Let's start with your first problem: ..."
+  "openingMessage": "Hi, I'm your interviewer at Amazon for the SDE-1 position. Let's take on this problem: ..."
 }
 ```
 Errors: `404` JD not found, `429` daily limit.
 
 ### POST /api/v1/mock/{interviewId}/answer
-Submit the candidate's answer; the interviewer replies with a follow-up or the next problem (up to 3 problems).
+Submit the candidate's answer; the interviewer replies with a follow-up probe — or, when the answer sufficiently solves the current problem (AI verdict, #148), advances: `AnsweredQuestions` increments, the adaptive selector introduces the next problem (up to 3; if the pool runs dry an older problem may repeat — never the one just answered unless it is the pool's only problem), and the reply becomes that problem's introduction. Each problem gets at most one probe before the interview advances regardless, so a down model can never stall a run. The final problem's answer returns a wrap-up line with `interviewOngoing: false`; further answers then get `409` and `/complete` closes out with a review over all problems.
 
 Request:
 ```json
@@ -431,9 +431,9 @@ Request:
 
 Response `200`:
 ```json
-{ "interviewerMessage": "Good. What's the space complexity? Can you handle all-negative arrays?", "turnNumber": 4, "interviewOngoing": true }
+{ "interviewerMessage": "Good. What's the space complexity? Can you handle all-negative arrays?", "turnNumber": 4, "interviewOngoing": true, "questionId": "uuid" }
 ```
-Errors: `404` interview not found, `409` interview already ended, `400` empty message.
+`questionId` is the problem the interview is now on: the newly introduced problem after an advance, the same problem after a probe, `null` once the final problem has been answered. Errors: `404` interview not found, `409` interview already ended (terminal status **or** all problems answered), `400` empty message.
 
 ### POST /api/v1/mock/{interviewId}/complete
 End the interview and get the AI review (score, per-problem feedback, next steps). Flips `status` to `Completed`, sets `completedAt`, persists the review, and applies BKT mastery updates from the review's `solved` verdicts. If the review model is unreachable, a canned review is stored (score 50, no mastery writes).
@@ -484,31 +484,37 @@ Response `200`:
 
 ---
 
-# 7. Resume ATS — 🚧 To be built
+# 7. Resume ATS — ✅ Implemented (#151)
 
 ### POST /api/v1/resume/analyze
-Upload resume + optional JD for ATS analysis. `multipart/form-data`: `file` (`.pdf` or `.txt`) + optional `jdId`. Without `jdId`, keywords are extracted from the raw JD text heuristically.
+Upload a PDF resume and match it against a JD's weighted skills. `multipart/form-data`: `file` (`.pdf`, ≤5 MB) + required `jdId`. Returns a fit report with a weighted match score, matched/missing skills, an ATS parseability score, and suggestions. Every analysis is persisted (`ResumeAnalyses` table, `analysisId` in the response).
 
 Response `200`:
 ```json
 {
-  "analysisId": "uuid",
-  "matchScore": 72,
-  "keywordMatch": {
-    "matched": ["Python", "Databases", "Teamwork"],
-    "missing": ["System Design", "DP", "Leadership"]
-  },
-  "atsParseability": {
-    "score": 85,
-    "issues": ["No 'projects' section detected — ATS parsers expect clearly labeled sections."]
-  },
-  "suggestions": [
-    "Add 'System Design' to your resume — it appears in the JD but is missing from your resume.",
-    "Use plain, clearly-labeled section headings (Education, Experience, Skills, Projects) instead of tables or columns."
-  ]
+  "success": true,
+  "message": "Resume analyzed successfully.",
+  "data": {
+    "analysisId": "uuid",
+    "matchScore": 72,
+    "keywordMatch": {
+      "matched": ["Python", "Databases", "Teamwork"],
+      "missing": ["System Design", "DP", "Leadership"]
+    },
+    "atsParseability": {
+      "score": 85,
+      "issues": ["No 'projects' section detected — ATS parsers expect clearly labeled sections."]
+    },
+    "suggestions": [
+      "Add 'System Design' to your resume — it appears in the JD but is missing from your resume.",
+      "Use plain, clearly-labeled section headings (Education, Experience, Skills, Projects) instead of tables or columns."
+    ]
+  }
 }
 ```
-Errors: `400` missing/unsupported file, `404` JD not found.
+Errors: `401` unauthenticated, `400` missing/unsupported/empty/unreadable PDF, `404` unknown or foreign `jdId`, `429` rate limit exceeded (5/min per user).
+
+Matching reads `JdSkillWeights` (`JobDescriptions` itself has no skill columns — technical/HR skill weights live in that table; `TechnicalSkillsJson`/`HrSkillsJson` were dropped in favor of the weight table at #117).
 
 ---
 
@@ -655,14 +661,17 @@ Auth: JWT via `?access_token=<token>` query string on the hub URL.
 ### /hubs/interview — Mock interview real-time (voice + text)
 | Event | Direction | Data |
 |---|---|---|
-| `StartMock` | Client → Server | `{ jdId, type, voiceMode }` → returns the 202 start body (or null on error) |
-| `SendAnswer` | Client → Server | `{ interviewId, message }` → returns the 200 answer body (or null on error) |
-| `CompleteMock` | Client → Server | `{ interviewId }` |
+| `StartMock` | Client → Server | positional args `(jdId, type, voiceMode)` → returns the 202 start body; when `voiceMode` is true the body also carries `audioBase64` (base64 WAV) and `audioContentType` (`audio/wav`) of the TTS-rendered opening |
+| `SendAnswer` | Client → Server | positional args `(interviewId, message)` → returns the 200 answer body; each interviewer reply rides the same `audioBase64`/`audioContentType` fields when voice mode is on |
+| `CompleteMock` | Client → Server | positional args `(interviewId)` |
 | `InterviewerMessage` | Server → Client | `"text"` (streamed tokens for both the opening and each probe) |
+| `InterviewerVoice` | Server → Client | not a separate event — TTS audio is delivered in the start/answer result DTOs (`audioBase64`, `audioContentType`) |
 | `InterviewComplete` | Server → Client | `{ interviewId, score, status, startedAt, completedAt, review }` (real score; only when the run actually ends) |
 | `InterviewError` | Server → Client | `{ interviewId, message }` (validation, 404, 409, 429, or the AI interviewer being unavailable — the client is never left hanging) |
 
-The hub routes the same commands and dialogue service as the REST endpoints (#126) — no parallel business logic. `InterviewerVoice` is not wired yet (Voice Service).
+The hub routes the same commands and dialogue service as the REST endpoints (#126) — no parallel business logic. `voiceMode` is accepted on `StartMock`, persisted on the `MockInterviews` row (#152), and read back on every `SendAnswer` so the whole run stays in one mode.
+
+Voice mode degrades gracefully: when `voiceMode` is true and the Voice Service is unreachable (`POST /stt`/`POST /tts` return 503, time out, or refuse the connection) the interview continues with text only (`audioBase64: null`), a warning is logged, and neither the stream nor the endpoint fails or hangs because of voice. STT is client-side: the caller records audio chunks and POSTs them to the Voice Service (`POST /stt`, multipart field `audio` → `{ text, language, durationMs }`, §9) before sending the transcript as `SendAnswer`'s `message`.
 
 ---
 
@@ -703,10 +712,11 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | `Questions` | Id, ConceptId, Text, QuestionType, Difficulty, TemplateVariablesJson, RubricJson |
 | `QuestionTestCases` | Id, QuestionId, Input, Expected, Hidden, IsExample |
 | `StudentMasteries` | Id, UserId, ConceptId, Mastery (0–1), CorrectAttempts, IncorrectAttempts — unique (UserId, ConceptId) |
-| `JobDescriptions` | Id, UserId, RawText, CompanyName, Role, TechnicalSkillsJson, HrSkillsJson, Difficulty, EstimatedWeeks |
+| `JobDescriptions` | Id, UserId, RawText, CompanyName, Role, Difficulty, EstimatedWeeks |
+| `JdSkillWeights` | Id, JobDescriptionId, SkillName, Weight (0–1), IsTechnical — unique (JobDescriptionId, SkillName) |
 | `CodeSubmissions` | Id, UserId, QuestionId, Code, Language, TestCasesPassed/Total, ExecutionTimeMs, MemoryUsageKb, AiEvaluationJson, PlagiarismScore, MasteryBefore/After |
-| `MockInterviews` | Id, UserId, JdId?, Type, Status, Score?, TranscriptJson, ReviewJson, StartedAt, CompletedAt? |
-| `ResumeAnalyses` | Id, UserId, JdId?, FileName, MatchScore, KeywordMatchJson, AtsParseabilityJson, SuggestionsJson |
+| `MockInterviews` | Id, UserId, JdId?, Type, Status, Score?, TranscriptJson, ReviewJson, StartedAt, CompletedAt?, VoiceMode |
+| `ResumeAnalyses` | Id, UserId, JdId, FileName, MatchScore, KeywordMatchJson, AtsParseabilityJson, SuggestionsJson |
 | `TutorSessions` | Id, UserId, ConceptId?, Question, Answer, Status, TotalTokens |
 | `TextbookJobs` | Id, FileName, Status, TotalChunks, ProcessedChunks, Error? |
 | `TextbookChunks` | Id, JobId, ConceptId?, Content, Source (+ pgvector embedding column) |
@@ -724,7 +734,7 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | Knowledge graph | 1 (concept prerequisite chain) | ✅ Done |
 | AI Coach | 2 REST (ask, session) + hub | ✅ hub + session; 🚧 ask generation (#72) |
 | Mock Interviews | 5 REST (start, answer, complete, review, history) + hub | ✅ REST (#124, #125) + hub (#126) |
-| Resume ATS | 1 (analyze) | 🚧 |
+| Resume ATS | 1 (analyze) | ✅ (#151) |
 | Admin (content) | 4 (questions create/list, textbook upload/status) | ✅ Done |
 | Admin (content, unbuilt) | 2 (concepts, prerequisites) | 🚧 |
 | Role management (SuperAdmin) | 4 (list roles, list users, assign, remove) | ✅ Done |
@@ -732,4 +742,4 @@ Gateway responsibilities: JWT validation, rate limiting, CORS, request routing, 
 | Code Exec Service | 1 (execute) | ✅ Done |
 | Voice Service | 3 (stt, tts, health) | ✅ Done |
 | Gateway | YARP routing + rate limiting | 🚧 |
-| **Total** | **48 REST + 3 hubs** | **42 done / 6 to build REST; 2/3 hubs done; AI Coach REST generation deferred (#72)** |
+| **Total** | **48 REST + 3 hubs** | **45 done / 3 to build REST; 3/3 hubs done; AI Coach REST generation deferred (#72)** |

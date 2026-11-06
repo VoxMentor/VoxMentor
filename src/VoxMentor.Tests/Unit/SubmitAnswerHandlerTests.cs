@@ -320,6 +320,7 @@ public class SubmitAnswerHandlerTests
         public DbSet<TutorSession> TutorSessions => _inner.TutorSessions;
         public DbSet<TextbookJob> TextbookJobs => _inner.TextbookJobs;
         public DbSet<TextbookChunk> TextbookChunks => _inner.TextbookChunks;
+        public DbSet<ResumeAnalysis> ResumeAnalyses => _inner.ResumeAnalyses;
 
         /// <summary>Throws the injected fault (if any) before delegating the save.</summary>
         public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -610,6 +611,7 @@ public class SubmitAnswerHandlerTests
         public DbSet<TutorSession> TutorSessions => _inner.TutorSessions;
         public DbSet<TextbookJob> TextbookJobs => _inner.TextbookJobs;
         public DbSet<TextbookChunk> TextbookChunks => _inner.TextbookChunks;
+        public DbSet<ResumeAnalysis> ResumeAnalyses => _inner.ResumeAnalyses;
 
         /// <summary>Waits until all barrier participants reach the save boundary, then saves.</summary>
         public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

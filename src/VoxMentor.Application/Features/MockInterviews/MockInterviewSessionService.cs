@@ -4,8 +4,10 @@ using System.Text.Json;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
+using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Common.Services;
 using VoxMentor.Application.Features.Practice.GetNextQuestion;
 using VoxMentor.Domain.Entities;
@@ -25,11 +27,17 @@ public sealed record AnswerMockInterviewChunk(string? Token, AnswerMockInterview
 /// to a canned line when generation fails, the #124 never-500 contract — and
 /// InterviewHub forwards the same chunks to the client as they are generated.
 /// Complete/review stays on CompleteMockInterviewCommand (no streaming).
+/// #148: an answer that satisfies the current problem (or spends the probe
+/// budget) increments AnsweredQuestions and introduces the next problem, so
+/// interviewOngoing is honest and /complete closes out over all problems.
 /// </summary>
 public class MockInterviewSessionService
 {
     /// <summary>Planned problem count per run (API.md §6 caps it at 3).</summary>
     private const int TotalQuestions = 3;
+
+    /// <summary>Probe turns allowed per problem before #148 advances regardless of the verdict.</summary>
+    private const int ProbesPerProblem = 1;
 
     /// <summary>Response duration in minutes, per the documented 202 body.</summary>
     private const int DurationMinutes = 45;
@@ -38,15 +46,21 @@ public class MockInterviewSessionService
     private const string CannedFollowUp =
         "Good. What's the time and space complexity of your approach, and which edge cases break it?";
 
+    /// <summary>Canned wrap-up once the final problem is answered (#148) — no generator call that could fail.</summary>
+    private const string CannedClosing =
+        "That's all the problems I have for you. Whenever you're ready, finish the interview to get your review.";
+
     private readonly IApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly ISender _sender;
     private readonly IMockInterviewGenerator _generator;
     private readonly IConfiguration _configuration;
+    private readonly IVoiceClient? _voiceClient;
     private readonly AsyncKeyedLock _lock;
     private readonly TimeProvider _clock;
+    private readonly ILogger<MockInterviewSessionService> _logger;
 
-    /// <summary>Initializes the service with the data context, user, selector sender, generator, config, and lock.</summary>
+    /// <summary>Initializes the service with the data context, user, selector sender, generator, config, voice client, and lock.</summary>
     public MockInterviewSessionService(
         IApplicationDbContext db,
         ICurrentUserService currentUser,
@@ -54,6 +68,8 @@ public class MockInterviewSessionService
         IMockInterviewGenerator generator,
         IConfiguration configuration,
         AsyncKeyedLock @lock,
+        IVoiceClient? voiceClient = null,
+        ILogger<MockInterviewSessionService>? logger = null,
         TimeProvider? clock = null)
     {
         _db = db;
@@ -61,8 +77,10 @@ public class MockInterviewSessionService
         _sender = sender;
         _generator = generator;
         _configuration = configuration;
+        _voiceClient = voiceClient;
         _lock = @lock;
         _clock = clock ?? TimeProvider.System;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<MockInterviewSessionService>.Instance;
     }
 
     /// <summary>Buffered start for REST: aggregate the stream, degrading to the canned opener when generation fails.</summary>
@@ -80,18 +98,27 @@ public class MockInterviewSessionService
         }
     }
 
-    /// <summary>Buffered answer for REST: aggregate the stream, degrading to the canned probe when generation fails.</summary>
+    /// <summary>
+    /// Buffered answer for REST: aggregate the stream, degrading to the canned
+    /// line when generation fails. The solved verdict rides along in a box so
+    /// the retry — whose canned judge always answers null — cannot demote a
+    /// satisfying answer to a probe instead of advancing it (#148).
+    /// </summary>
     public async Task<AnswerMockInterviewResultDto> AnswerAsync(
         AnswerMockInterviewCommand request, CancellationToken cancellationToken = default)
     {
+        var solvedAcrossRetry = new StrongBox<bool>();
         try
         {
-            return await FinalizeAnswerAsync(StreamAnswerAsync(request, cancellationToken: cancellationToken), cancellationToken);
+            return await FinalizeAnswerAsync(
+                StreamAnswerAsync(request, solvedAcrossRetry: solvedAcrossRetry, cancellationToken: cancellationToken),
+                cancellationToken);
         }
         catch (MockInterviewGenerationException)
         {
             return await FinalizeAnswerAsync(
-                StreamAnswerAsync(request, CannedDialogueGenerator.Instance, cancellationToken), cancellationToken);
+                StreamAnswerAsync(request, CannedDialogueGenerator.Instance, solvedAcrossRetry, cancellationToken),
+                cancellationToken);
         }
     }
 
@@ -168,6 +195,9 @@ public class MockInterviewSessionService
                 throw new MockInterviewGenerationException("The AI interviewer returned an empty opening.");
 
             var openingMessage = opening.ToString();
+            var voiceMode = request.VoiceMode;
+            var (audioBase64, audioContentType) = await SynthesizeIfVoiceModeAsync(openingMessage, voiceMode, cancellationToken);
+
             var interview = new MockInterview
             {
                 Id = Guid.NewGuid(),
@@ -178,6 +208,7 @@ public class MockInterviewSessionService
                 StartedAt = now,
                 JdId = request.JdId,
                 Status = MockInterviewStatus.InProgress,
+                VoiceMode = voiceMode,
                 TranscriptJson = JsonSerializer.Serialize(
                     new List<TranscriptTurn>
                     {
@@ -196,19 +227,29 @@ public class MockInterviewSessionService
                 interview.Status.ToString(),
                 DurationMinutes,
                 interview.StartedAt,
-                openingMessage));
+                openingMessage,
+                audioBase64,
+                audioContentType));
         }
     }
 
     /// <summary>
-    /// Appends the candidate's turn, streams the interviewer's probe under the
-    /// per-interview lock, then persists both turns; the final chunk carries
-    /// the answer result. 404 for unknown/foreign ids (IUserOwned filter),
-    /// 409 once the run has ended.
+    /// Appends the candidate's turn, then either advances the interview (#148:
+    /// satisfied verdict or spent probe budget → AnsweredQuestions++, select
+    /// and introduce the next problem, capped at TotalQuestions) or streams one
+    /// probe — all under the per-interview lock; the final chunk carries an
+    /// honest interviewOngoing and the problem id the interview is now on.
+    /// 404 for unknown/foreign ids (IUserOwned filter), 409 once the run has
+    /// ended — including after the last problem was answered. Every generator
+    /// call runs BEFORE any entity mutation, so the canned retry of
+    /// AnswerAsync re-runs against a clean unit of work — carrying the verdict
+    /// already reached in solvedAcrossRetry (null on the hub path, which never
+    /// retries) so a solved answer cannot be re-judged as a probe.
     /// </summary>
     public async IAsyncEnumerable<AnswerMockInterviewChunk> StreamAnswerAsync(
         AnswerMockInterviewCommand request,
         IMockInterviewGenerator? generatorOverride = null,
+        StrongBox<bool>? solvedAcrossRetry = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var generator = generatorOverride ?? _generator;
@@ -227,33 +268,172 @@ public class MockInterviewSessionService
             if (interview.Status is MockInterviewStatus.Completed or MockInterviewStatus.Failed)
                 throw new ConflictException("Interview has already ended.");
 
+            // #148: all problems answered (the client already saw
+            // interviewOngoing=false) — only /complete may close the run now.
+            if (interview.AnsweredQuestions >= interview.TotalQuestions)
+                throw new ConflictException("Interview has already ended. Complete it to get your review.");
+
             var turns = string.IsNullOrEmpty(interview.TranscriptJson)
                 ? new List<TranscriptTurn>()
                 : JsonSerializer.Deserialize<List<TranscriptTurn>>(interview.TranscriptJson, TranscriptTurn.JsonOptions)
                   ?? new List<TranscriptTurn>();
 
+            // Only intro turns carry a QuestionId, so the last one marks the
+            // current problem; interviewer turns after it are probes on it.
+            var currentIndex = turns.FindLastIndex(t => t.QuestionId.HasValue);
+            var currentQuestionId = currentIndex >= 0 ? turns[currentIndex].QuestionId : null;
+            var probesSpent = currentIndex >= 0
+                ? turns.Skip(currentIndex + 1).Count(t => t.Role == TranscriptTurn.InterviewerRole)
+                : 0;
+
             turns.Add(new TranscriptTurn(TranscriptTurn.CandidateRole, request.Message, null, DateTime.UtcNow));
 
-            var probe = new StringBuilder();
-            await foreach (var chunk in generator.FollowUpStreamAsync(turns, cancellationToken))
+            // #150: JD context once per answer — feeds the verdict rubric, the
+            // follow-up style, and the mid-run opening below (the advance
+            // branch previously did its own copy of this lookup).
+            string? company = null;
+            string? role = null;
+            if (interview.JdId is { } jdId)
             {
-                if (chunk.Text.Length == 0)
-                    continue;
-                probe.Append(chunk.Text);
-                yield return new AnswerMockInterviewChunk(chunk.Text);
+                // IUserOwned global filter scopes this like complete does.
+                var jd = await _db.JobDescriptions
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(j => j.Id == jdId, cancellationToken);
+                company = jd?.CompanyName;
+                role = jd?.Role;
             }
-            if (probe.Length == 0)
-                throw new MockInterviewGenerationException("The AI interviewer returned an empty follow-up.");
 
-            var followUp = probe.ToString();
-            turns.Add(new TranscriptTurn(TranscriptTurn.InterviewerRole, followUp, null, DateTime.UtcNow));
+            // #148: advance when the model is satisfied OR the probe budget is
+            // spent (short-circuit: one verdict call per problem at most, and a
+            // dead or contrary model can never strand the run on one problem).
+            // The box carries an already-solved verdict across AnswerAsync's
+            // canned retry, whose judge always answers null.
+            var advance = solvedAcrossRetry is { Value: true }
+                || probesSpent >= ProbesPerProblem
+                || await generator.AssessAnswerSolvedAsync(turns, interview.Type, company, cancellationToken) == true;
+            if (solvedAcrossRetry is not null)
+            {
+                solvedAcrossRetry.Value = advance;
+            }
+            var answeredAfter = advance ? interview.AnsweredQuestions + 1 : interview.AnsweredQuestions;
 
+            string reply;
+            Guid? replyQuestionId;
+            if (!advance)
+            {
+                var probe = new StringBuilder();
+                await foreach (var chunk in generator.FollowUpStreamAsync(turns, company, cancellationToken))
+                {
+                    if (chunk.Text.Length == 0)
+                        continue;
+                    probe.Append(chunk.Text);
+                    yield return new AnswerMockInterviewChunk(chunk.Text);
+                }
+                if (probe.Length == 0)
+                    throw new MockInterviewGenerationException("The AI interviewer returned an empty follow-up.");
+
+                reply = probe.ToString();
+                replyQuestionId = currentQuestionId;
+                turns.Add(new TranscriptTurn(TranscriptTurn.InterviewerRole, reply, null, DateTime.UtcNow));
+            }
+            else if (answeredAfter >= interview.TotalQuestions)
+            {
+                // Final problem answered: canned closing keeps the degrade
+                // contract — no Ollama call here can fail the request (#148).
+                // Not an introduction, so no QuestionId: CannedReview counts
+                // id-bearing turns and would report a fourth problem.
+                reply = CannedClosing;
+                replyQuestionId = null;
+                yield return new AnswerMockInterviewChunk(reply);
+                turns.Add(new TranscriptTurn(TranscriptTurn.InterviewerRole, reply, null, DateTime.UtcNow));
+            }
+            else
+            {
+                var problem = await SelectNextProblemAsync(interview, turns, currentQuestionId, cancellationToken);
+
+                var intro = new StringBuilder();
+                await foreach (var chunk in generator.OpeningStreamAsync(company, role, problem.Title, cancellationToken))
+                {
+                    if (chunk.Text.Length == 0)
+                        continue;
+                    intro.Append(chunk.Text);
+                    yield return new AnswerMockInterviewChunk(chunk.Text);
+                }
+                if (intro.Length == 0)
+                    throw new MockInterviewGenerationException("The AI interviewer returned an empty opening.");
+
+                reply = intro.ToString();
+                replyQuestionId = problem.QuestionId;
+                turns.Add(new TranscriptTurn(TranscriptTurn.InterviewerRole, reply, problem.QuestionId, DateTime.UtcNow));
+            }
+
+            var voiceMode = interview.VoiceMode;
+            var (audioBase64, audioContentType) = await SynthesizeIfVoiceModeAsync(reply, voiceMode, cancellationToken);
+
+            // Every generation call above succeeded — only now mutate and save.
+            interview.AnsweredQuestions = answeredAfter;
             interview.TranscriptJson = JsonSerializer.Serialize(turns, TranscriptTurn.JsonOptions);
             await _db.SaveChangesAsync(cancellationToken);
 
             yield return new AnswerMockInterviewChunk(null, new AnswerMockInterviewResultDto(
-                followUp, turns.Count, InterviewOngoing: true));
+                reply,
+                turns.Count,
+                InterviewOngoing: answeredAfter < interview.TotalQuestions,
+                QuestionId: replyQuestionId,
+                audioBase64,
+                audioContentType));
         }
+    }
+
+    /// <summary>
+    /// Next problem for a running interview: the adaptive selector minus every
+    /// problem already asked (#148). When the pool runs dry the fallback
+    /// loosens one tier at a time — every asked id, then only the problem just
+    /// answered (an older repeat beats repeating it), then no exclusions at
+    /// all as the single-problem last resort (a repeat beats a mid-interview
+    /// 404).
+    /// </summary>
+    private async Task<NextQuestionDto> SelectNextProblemAsync(
+        MockInterview interview,
+        IReadOnlyList<TranscriptTurn> turns,
+        Guid? currentQuestionId,
+        CancellationToken cancellationToken)
+    {
+        var asked = turns
+            .Where(t => t.QuestionId.HasValue)
+            .Select(t => t.QuestionId!.Value)
+            .Distinct()
+            .ToList();
+
+        // Strictest exclusions first; each NotFound loosens by one tier.
+        var tiers = new List<IReadOnlyCollection<Guid>?> { asked };
+        if (currentQuestionId is { } current)
+        {
+            tiers.Add(new[] { current });
+        }
+        tiers.Add(null); // last resort: any repeat at all
+
+        foreach (var exclude in tiers)
+        {
+            try
+            {
+                var next = await _sender.Send(new GetNextQuestionQuery
+                {
+                    JdId = interview.JdId,
+                    ExcludeQuestionIds = exclude
+                }, cancellationToken);
+                if (next.Data is { } data)
+                {
+                    return data;
+                }
+            }
+            catch (NotFoundException)
+            {
+                // pool exhausted for this tier — loosen and try the next
+            }
+        }
+
+        throw new NotFoundException("No questions available for an interview.");
     }
 
     /// <summary>Drains a start stream and returns the final result chunk.</summary>
@@ -267,6 +447,32 @@ public class MockInterviewSessionService
                 result = r;
         }
         return result ?? throw new MockInterviewGenerationException("The interview ended before a result was produced.");
+    }
+
+    /// <summary>
+    /// Synthesizes <paramref name="text"/> to WAV when voice mode is on. Any
+    /// voice-service failure (503, timeout, unreachable, bad payload) degrades
+    /// to silent text with a warning — this never throws and never holds the
+    /// stream hostage to the voice backend.
+    /// </summary>
+    private async Task<(string? AudioBase64, string? AudioContentType)> SynthesizeIfVoiceModeAsync(
+        string text,
+        bool voiceMode,
+        CancellationToken cancellationToken)
+    {
+        if (!voiceMode || _voiceClient is null)
+            return (null, null);
+
+        try
+        {
+            var wav = await _voiceClient.SynthesizeAsync(text, ct: cancellationToken);
+            return (Convert.ToBase64String(wav), "audio/wav");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Voice service unavailable; continuing the interview in text-only mode");
+            return (null, null);
+        }
     }
 
     /// <summary>Drains an answer stream and returns the final result chunk.</summary>
@@ -297,13 +503,13 @@ public class MockInterviewSessionService
             ? limit
             : 1;
 
-    /// <summary>Canned opener used when Ollama is unreachable — degrade, never 500.</summary>
+    /// <summary>Canned problem intro used when Ollama is unreachable — degrade, never 500. Worded for both the opening and a #148 mid-run advance.</summary>
     private static string BuildFallbackOpening(string? company, string? role, string problemTitle)
     {
         var greeting = company is not null && role is not null
             ? $"Hi, I'm your AI interviewer at {company} for the {role} position. "
             : "Hi, I'm your AI interviewer today. ";
-        return $"{greeting}Let's start with your first problem: {problemTitle}.";
+        return $"{greeting}Let's take on this problem: {problemTitle}.";
     }
 
     /// <summary>Case-insensitive enum parse; anything not a named defined value → Technical (the validator rejects the rest).</summary>
@@ -330,13 +536,24 @@ public class MockInterviewSessionService
             yield return new TutorChunk(BuildFallbackOpening(company, role, problemTitle));
         }
 
+        /// <summary>Canned probe — the company parameter is accepted for contract parity and intentionally ignored (generic degrade path, #150).</summary>
         public async IAsyncEnumerable<TutorChunk> FollowUpStreamAsync(
             IReadOnlyList<TranscriptTurn> transcript,
+            string? company,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await Task.CompletedTask;
             yield return new TutorChunk(CannedFollowUp);
         }
+
+        // Canned dialogue never judges → null → the probe budget governs (#148);
+        // company ignored like above — the model-down path stays generic (#150).
+        public Task<bool?> AssessAnswerSolvedAsync(
+            IReadOnlyList<TranscriptTurn> transcript,
+            InterviewType type,
+            string? company,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<bool?>(null);
 
         public Task<MockInterviewReviewDraft?> ReviewAsync(
             IReadOnlyList<TranscriptTurn> transcript,

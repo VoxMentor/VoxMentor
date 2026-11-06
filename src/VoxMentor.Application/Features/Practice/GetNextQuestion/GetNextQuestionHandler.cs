@@ -31,6 +31,7 @@ public class GetNextQuestionHandler : IRequestHandler<GetNextQuestionQuery, ApiR
         _random = random;
     }
 
+    /// <summary>Next adaptive question for the signed-in student: validates the caller, then serves the selector's closest unanswered question.</summary>
     public async Task<ApiResponse<NextQuestionDto>> Handle(
         GetNextQuestionQuery request, CancellationToken cancellationToken)
     {
@@ -59,6 +60,11 @@ public class GetNextQuestionHandler : IRequestHandler<GetNextQuestionQuery, ApiR
             .Where(s => s.UserId == userId)
             .Select(s => s.QuestionId)
             .ToListAsync(cancellationToken));
+
+        // #148: questions the caller already served inline (mock-interview
+        // advances) count as answered for selection too.
+        if (request.ExcludeQuestionIds is { } excluded)
+            attemptedIds.UnionWith(excluded);
 
         // Find the concept: pin to the requested one, otherwise JD-weighted
         // ε-greedy when the user has a JD, otherwise weakest by raw mastery.
