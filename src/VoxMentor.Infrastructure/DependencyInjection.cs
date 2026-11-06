@@ -103,7 +103,21 @@ public static class DependencyInjection
         // #151: PDF text extraction runs in an isolated worker process with
         // OS-enforced memory/time limits (CodeRabbit finding). The worker exe
         // is copied to the output dir by the Infrastructure build target.
-        services.AddScoped<ITextExtractor>(sp => new Services.PdfPigTextExtractor());
+        // If the worker is unavailable (e.g. not copied in a given deploy),
+        // fall back to a resilient extractor so DI resolution never throws:
+        // .txt still extracts in-process, .pdf throws a ValidationException
+        // that AnalyzeResumeHandler converts to a 400 instead of a 500.
+        services.AddScoped<ITextExtractor>(sp =>
+        {
+            try
+            {
+                return new Services.PdfPigTextExtractor();
+            }
+            catch
+            {
+                return new PdfPigTextExtractor.FallbackTextExtractor();
+            }
+        });
 
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
