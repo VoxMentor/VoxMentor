@@ -113,8 +113,11 @@ public static class DependencyInjection
             {
                 return new Services.PdfPigTextExtractor();
             }
-            catch
+            catch (InvalidOperationException)
             {
+                // Worker missing is the ctor's only failure mode — fall back so
+                // DI resolution never throws. Any other construction error
+                // propagates instead of being masked behind the fallback.
                 return new PdfPigTextExtractor.FallbackTextExtractor();
             }
         });
