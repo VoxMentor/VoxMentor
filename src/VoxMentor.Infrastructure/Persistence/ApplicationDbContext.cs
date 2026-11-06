@@ -66,6 +66,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<TextbookChunk> TextbookChunks { get; set; } = null!;
     /// <summary>EF Core set for ResumeAnalysis entities.</summary>
     public DbSet<ResumeAnalysis> ResumeAnalyses { get; set; } = null!;
+    /// <summary>EF Core set for QuestionHintUsage entities.</summary>
+    public DbSet<QuestionHintUsage> QuestionHintUsages { get; set; } = null!;
 
     /// <inheritdoc />
     public void ClearChangeTracker() => ChangeTracker.Clear();
@@ -322,6 +324,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
                 .HasDatabaseName("IX_TextbookChunks_Embedding")
                 .HasMethod("hnsw")
                 .HasOperators("vector_cosine_ops");
+        });
+
+        builder.Entity<QuestionHintUsage>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.UserId, e.QuestionId }).IsUnique();
+            entity.HasQueryFilter(e => e.UserId == CurrentUserId);
         });
     }
 }

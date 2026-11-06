@@ -34,6 +34,7 @@ internal sealed class KnowledgeGraphTestDbContext : DbContext, IApplicationDbCon
     public DbSet<TextbookJob> TextbookJobs => null!;
     public DbSet<TextbookChunk> TextbookChunks => null!;
     public DbSet<ResumeAnalysis> ResumeAnalyses => null!;
+    public DbSet<QuestionHintUsage> QuestionHintUsages => null!;
 
     public KnowledgeGraphTestDbContext(DbContextOptions<KnowledgeGraphTestDbContext> options)
         : base(options)
