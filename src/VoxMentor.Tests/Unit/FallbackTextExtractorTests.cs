@@ -27,14 +27,14 @@ public class FallbackTextExtractorTests
     }
 
     [Fact]
-    public async Task ExtractAsync_Pdf_ThrowsValidation()
+    public async Task ExtractAsync_Pdf_ThrowsServiceUnavailable()
     {
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("%PDF-1.4"));
 
-        var ex = await Assert.ThrowsAsync<ValidationException>(() =>
+        var ex = await Assert.ThrowsAsync<ServiceUnavailableException>(() =>
             Create().ExtractAsync(stream, ".pdf"));
 
-        Assert.Contains("worker is unavailable", ex.Errors["file"][0]);
+        Assert.Contains("worker is unavailable", ex.Message);
     }
 
     [Fact]

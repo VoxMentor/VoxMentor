@@ -144,7 +144,14 @@ public static class DependencyInjection
             options.AbortOnConnectFail = false;
             return ConnectionMultiplexer.Connect(options);
         });
-        services.AddSingleton<IRateLimiter, RedisSlidingWindowRateLimiter>();
+        services.AddSingleton<IRateLimiter>(sp =>
+        {
+            var redis = sp.GetRequiredService<IConnectionMultiplexer>();
+            return new RedisSlidingWindowRateLimiter(
+                redis,
+                limit: 5,
+                window: TimeSpan.FromMinutes(1));
+        });
         // Distributed cache backing the three read-through handlers, backed by the
         // same Redis connection configuration as the rate limiter (#127). Falls back
         // gracefully if Redis is unavailable; reads/writes are failure-tolerant.
