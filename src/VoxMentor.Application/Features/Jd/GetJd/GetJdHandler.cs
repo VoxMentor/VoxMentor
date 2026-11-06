@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
@@ -16,13 +17,18 @@ namespace VoxMentor.Application.Features.Jd.GetJd;
 /// </summary>
 public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultDto>>
 {
+    /// <summary>Cached JD data (the JD row plus its skill weights). Readiness is computed fresh per request.</summary>
+    private sealed record JdSnapshot(JobDescription Jd, List<JdSkillWeight> SkillWeights);
+
     private readonly IApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly IDistributedCache _cache;
 
-    public GetJdHandler(IApplicationDbContext db, ICurrentUserService currentUser)
+    public GetJdHandler(IApplicationDbContext db, ICurrentUserService currentUser, IDistributedCache cache)
     {
         _db = db;
         _currentUser = currentUser;
+        _cache = cache;
     }
 
     /// <exception cref="UnauthorizedAccessException">No authenticated user.</exception>
@@ -34,18 +40,35 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
         if (string.IsNullOrEmpty(userId))
             throw new UnauthorizedAccessException("User must be authenticated to view a JD.");
 
-        // Foreign and unknown JDs both surface as null → 404 (no existence oracle).
-        var jd = await _db.JobDescriptions
-            .AsNoTracking()
-            .FirstOrDefaultAsync(j => j.Id == request.JdId, cancellationToken);
+        // Cache the raw JD data separately from the derived readiness results so a
+        // mastery change never serves a stale readiness score — readiness is
+        // recomputed from the student's current mastery on every request.
+        var cacheKey = $"jd:{userId}:{request.JdId}";
+        var snapshot = ApplicationCacheService.GetT<JdSnapshot>(_cache, cacheKey);
+        JobDescription? jd = null;
+        List<JdSkillWeight>? skillWeights = null;
+        if (snapshot is not null)
+        {
+            jd = snapshot.Jd;
+            skillWeights = snapshot.SkillWeights;
+        }
+        else
+        {
+            // Foreign and unknown JDs both surface as null → 404 (no existence oracle).
+            jd = await _db.JobDescriptions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(j => j.Id == request.JdId, cancellationToken);
 
-        if (jd is null)
-            throw new NotFoundException("No job description found for the user.");
+            if (jd is null)
+                throw new NotFoundException("No job description found for the user.");
 
-        var skillWeights = await _db.JdSkillWeights
-            .AsNoTracking()
-            .Where(sw => sw.JobDescriptionId == jd.Id)
-            .ToListAsync(cancellationToken);
+            skillWeights = await _db.JdSkillWeights
+                .AsNoTracking()
+                .Where(sw => sw.JobDescriptionId == jd.Id)
+                .ToListAsync(cancellationToken);
+
+            ApplicationCacheService.SetT(_cache, cacheKey, new JdSnapshot(jd, skillWeights));
+        }
 
         var concepts = await _db.Concepts
             .AsNoTracking()

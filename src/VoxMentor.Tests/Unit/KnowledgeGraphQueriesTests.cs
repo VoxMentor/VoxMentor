@@ -1,5 +1,8 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Features.KnowledgeGraph.GetEligibleConcepts;
 using VoxMentor.Application.Features.KnowledgeGraph.GetPrerequisiteChain;
@@ -199,7 +202,7 @@ public class KnowledgeGraphQueriesTests : IDisposable
         await using var db = CreateDb();
         SeedGraph(db);
 
-        var handler = new GetEligibleConceptsHandler(db, new FakeCurrentUser { UserId = UserId });
+        var handler = new GetEligibleConceptsHandler(db, new FakeCurrentUser { UserId = UserId }, new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
         var result = await handler.Handle(new GetEligibleConceptsQuery(), CancellationToken.None);
 
         Assert.True(result.Success);
@@ -217,7 +220,7 @@ public class KnowledgeGraphQueriesTests : IDisposable
         SeedGraph(db);
         SeedMastery(db, Root, Mastered);
 
-        var handler = new GetEligibleConceptsHandler(db, new FakeCurrentUser { UserId = UserId });
+        var handler = new GetEligibleConceptsHandler(db, new FakeCurrentUser { UserId = UserId }, new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
         var result = await handler.Handle(new GetEligibleConceptsQuery(), CancellationToken.None);
 
         Assert.True(result.Success);
@@ -235,7 +238,7 @@ public class KnowledgeGraphQueriesTests : IDisposable
         // Mid needs Root (unmet) → almost; Side same; Leaf needs Mid → almost.
         // Root/Lonely vacuous → eligible.
 
-        var handler = new GetEligibleConceptsHandler(db, new FakeCurrentUser { UserId = UserId });
+        var handler = new GetEligibleConceptsHandler(db, new FakeCurrentUser { UserId = UserId }, new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
         var result = await handler.Handle(new GetEligibleConceptsQuery(), CancellationToken.None);
 
         Assert.True(result.Success);
@@ -252,7 +255,7 @@ public class KnowledgeGraphQueriesTests : IDisposable
         SeedGraph(db);
         // Locked needs Root + Mid; neither mastered → missing=2 → not almost, not eligible.
 
-        var handler = new GetEligibleConceptsHandler(db, new FakeCurrentUser { UserId = UserId });
+        var handler = new GetEligibleConceptsHandler(db, new FakeCurrentUser { UserId = UserId }, new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
         var result = await handler.Handle(new GetEligibleConceptsQuery(), CancellationToken.None);
 
         Assert.True(result.Success);
@@ -268,7 +271,7 @@ public class KnowledgeGraphQueriesTests : IDisposable
         SeedMastery(db, Root, Mastered);
         SeedMastery(db, Mid, Mastered);
 
-        var handler = new GetEligibleConceptsHandler(db, new FakeCurrentUser { UserId = UserId });
+        var handler = new GetEligibleConceptsHandler(db, new FakeCurrentUser { UserId = UserId }, new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
         var result = await handler.Handle(new GetEligibleConceptsQuery(), CancellationToken.None);
 
         Assert.True(result.Success);
@@ -283,7 +286,7 @@ public class KnowledgeGraphQueriesTests : IDisposable
         await using var db = CreateDb();
         SeedGraph(db);
 
-        var handler = new GetEligibleConceptsHandler(db, new FakeCurrentUser { UserId = null });
+        var handler = new GetEligibleConceptsHandler(db, new FakeCurrentUser { UserId = null }, new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             handler.Handle(new GetEligibleConceptsQuery(), CancellationToken.None));
     }
@@ -295,12 +298,34 @@ public class KnowledgeGraphQueriesTests : IDisposable
         SeedGraph(db);
         SeedMastery(db, Root, NotMastered); // below MasteredThreshold
 
-        var handler = new GetEligibleConceptsHandler(db, new FakeCurrentUser { UserId = UserId });
+        var handler = new GetEligibleConceptsHandler(db, new FakeCurrentUser { UserId = UserId }, new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
         var result = await handler.Handle(new GetEligibleConceptsQuery(), CancellationToken.None);
 
         Assert.True(result.Success);
         // Root not mastered → Mid/Side not eligible; Root itself still eligible (vacuous, self not mastered).
         Assert.DoesNotContain(result.Data!.Eligible, c => c.ConceptId == Mid);
         Assert.Contains(result.Data.Eligible, c => c.ConceptId == Root);
+    }
+
+    /// <summary>Verifies a repeated eligibility request returns the cached result instead of re-running the SQL.</summary>
+    [Fact]
+    public async Task Eligible_RepeatedRequest_ReturnsCachedResult()
+    {
+        await using var db = CreateDb();
+        SeedGraph(db);
+        SeedMastery(db, Root, Mastered); // Root mastered → Mid and Side eligible
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+        var handler = new GetEligibleConceptsHandler(db, new FakeCurrentUser { UserId = UserId }, cache);
+
+        var first = await handler.Handle(new GetEligibleConceptsQuery(), CancellationToken.None);
+        Assert.Contains(first.Data!.Eligible, c => c.ConceptId == Mid);
+
+        // Un-master Root: on a fresh read Mid would drop out, but the cache must win.
+        var rootRow = db.StudentMasteries.Single(m => m.UserId == UserId && m.ConceptId == Root);
+        rootRow.MasteryProbability = NotMastered;
+        await db.SaveChangesAsync();
+
+        var second = await handler.Handle(new GetEligibleConceptsQuery(), CancellationToken.None);
+        Assert.Contains(second.Data!.Eligible, c => c.ConceptId == Mid);
     }
 }

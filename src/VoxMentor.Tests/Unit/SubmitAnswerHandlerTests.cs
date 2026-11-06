@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Features.Practice.SubmitAnswer;
 using VoxMentor.Application.Services;
@@ -81,17 +84,19 @@ public class SubmitAnswerHandlerTests
         return submission;
     }
 
-    /// <summary>Builds a handler over the given context with optional user/publisher fakes.</summary>
+    /// <summary>Builds a handler over the given context with optional user/publisher fakes and cache.</summary>
     private static SubmitAnswerHandler CreateHandler(
         Infrastructure.Persistence.ApplicationDbContext db,
         FakeCurrentUserService? user = null,
-        FakeEventPublisher? publisher = null)
+        FakeEventPublisher? publisher = null,
+        IDistributedCache? cache = null)
     {
         return new SubmitAnswerHandler(
             db,
             new BktEngine(),
             user ?? new FakeCurrentUserService(),
-            publisher ?? new FakeEventPublisher());
+            publisher ?? new FakeEventPublisher(),
+            cache ?? new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
     }
 
     [Fact]
@@ -357,7 +362,7 @@ public class SubmitAnswerHandlerTests
         var flaky = new FlakyDbContext(db, saveNumber =>
             saveNumber == 1 ? new DbUpdateConcurrencyException("simulated conflict") : null);
         var publisher = new FakeEventPublisher();
-        var handler = new SubmitAnswerHandler(db: flaky, bktEngine: new BktEngine(), currentUser: new FakeCurrentUserService(), eventPublisher: publisher);
+        var handler = new SubmitAnswerHandler(db: flaky, bktEngine: new BktEngine(), currentUser: new FakeCurrentUserService(), eventPublisher: publisher, cache: new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
 
         var response = await handler.Handle(new SubmitAnswerCommand(question.Id, true), CancellationToken.None);
 
@@ -382,7 +387,7 @@ public class SubmitAnswerHandlerTests
 
         var flaky = new FlakyDbContext(db, saveNumber =>
             saveNumber == 1 ? new DbUpdateException("duplicate key value violates unique constraint") : null);
-        var handler = new SubmitAnswerHandler(db: flaky, bktEngine: new BktEngine(), currentUser: new FakeCurrentUserService(), eventPublisher: new FakeEventPublisher());
+        var handler = new SubmitAnswerHandler(db: flaky, bktEngine: new BktEngine(), currentUser: new FakeCurrentUserService(), eventPublisher: new FakeEventPublisher(), cache: new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
 
         var response = await handler.Handle(new SubmitAnswerCommand(question.Id, false), CancellationToken.None);
 
@@ -418,9 +423,11 @@ public class SubmitAnswerHandlerTests
         // the concurrency retry path instead of overwriting the winner's update.
         var saveBarrier = new AsyncBarrier(participants: 2);
         var handler1 = new SubmitAnswerHandler(
-            new SaveBarrierDbContext(db1, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher1);
+            new SaveBarrierDbContext(db1, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher1,
+            new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
         var handler2 = new SubmitAnswerHandler(
-            new SaveBarrierDbContext(db2, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher2);
+            new SaveBarrierDbContext(db2, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher2,
+            new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
 
         var task1 = handler1.Handle(new SubmitAnswerCommand(questionId, true), CancellationToken.None);
         var task2 = handler2.Handle(new SubmitAnswerCommand(questionId, false), CancellationToken.None);
@@ -468,9 +475,11 @@ public class SubmitAnswerHandlerTests
         // check, then race the mastery write + claim. Exactly one may win.
         var saveBarrier = new AsyncBarrier(participants: 2);
         var handler1 = new SubmitAnswerHandler(
-            new SaveBarrierDbContext(db1, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher1);
+            new SaveBarrierDbContext(db1, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher1,
+            new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
         var handler2 = new SubmitAnswerHandler(
-            new SaveBarrierDbContext(db2, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher2);
+            new SaveBarrierDbContext(db2, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher2,
+            new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
 
         var task1 = handler1.Handle(new SubmitAnswerCommand(questionId, true, submissionId), CancellationToken.None);
         var task2 = handler2.Handle(new SubmitAnswerCommand(questionId, true, submissionId), CancellationToken.None);

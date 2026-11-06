@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Pgvector;
 using VoxMentor.Application.Common.Exceptions;
@@ -50,6 +51,7 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
     private readonly ICodeEvaluator _codeEvaluator;
     private readonly IMasteryEventPublisher _eventPublisher;
     private readonly IPlagiarismDetector _plagiarismDetector;
+    private readonly IDistributedCache _cache;
     private readonly ILogger<SubmitCodeHandler> _logger;
 
     public SubmitCodeHandler(
@@ -61,6 +63,7 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
         ICodeEvaluator codeEvaluator,
         IMasteryEventPublisher eventPublisher,
         IPlagiarismDetector plagiarismDetector,
+        IDistributedCache cache,
         ILogger<SubmitCodeHandler> logger)
     {
         _db = db;
@@ -71,6 +74,7 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
         _codeEvaluator = codeEvaluator;
         _eventPublisher = eventPublisher;
         _plagiarismDetector = plagiarismDetector;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -334,6 +338,11 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
                     _db.CodeSubmissions.Add(submission);
 
                 await _db.SaveChangesAsync(cancellationToken);
+
+                // Mastery changed: invalidate the cached mastery and eligibility profiles.
+                ApplicationCacheService.Remove(_cache, $"mastery:{userId}");
+                ApplicationCacheService.Remove(_cache, $"eligible_concepts:{userId}");
+
                 return new BktResult(previousMastery, newMastery, mastery);
             }
             catch (DbUpdateConcurrencyException) when (attempt < maxAttempts - 1)

@@ -1,8 +1,10 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Features.Practice.GetMastery;
+using VoxMentor.Application.Services;
 
 namespace VoxMentor.Application.Features.KnowledgeGraph.GetEligibleConcepts;
 
@@ -17,12 +19,14 @@ public class GetEligibleConceptsHandler
 {
     private readonly IApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly IDistributedCache _cache;
 
-    /// <summary>Initializes the handler with the context and current-user service.</summary>
-    public GetEligibleConceptsHandler(IApplicationDbContext db, ICurrentUserService currentUser)
+    /// <summary>Initializes the handler with the context, current-user service, and cache.</summary>
+    public GetEligibleConceptsHandler(IApplicationDbContext db, ICurrentUserService currentUser, IDistributedCache cache)
     {
         _db = db;
         _currentUser = currentUser;
+        _cache = cache;
     }
 
     /// <exception cref="UnauthorizedAccessException">No authenticated user.</exception>
@@ -35,6 +39,11 @@ public class GetEligibleConceptsHandler
         {
             throw new UnauthorizedAccessException("User must be authenticated to view eligibility.");
         }
+
+        var cacheKey = $"eligible_concepts:{userId}";
+        var cached = ApplicationCacheService.GetT<EligibleConceptsDto>(_cache, cacheKey);
+        if (cached is not null)
+            return ApiResponse<EligibleConceptsDto>.SuccessResult(cached, "Retrieved from cache.");
 
         var threshold = GetMasteryHandler.MasteredThreshold;
 
@@ -82,6 +91,7 @@ public class GetEligibleConceptsHandler
             .ToListAsync(cancellationToken);
 
         var dto = new EligibleConceptsDto { Eligible = eligible, AlmostEligible = almost };
+        ApplicationCacheService.SetT(_cache, cacheKey, dto);
         return ApiResponse<EligibleConceptsDto>.SuccessResult(dto, "Eligibility retrieved successfully.");
     }
 }

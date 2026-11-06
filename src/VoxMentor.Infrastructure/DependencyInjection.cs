@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Microsoft.IdentityModel.Tokens;
 using Pgvector.EntityFrameworkCore;
 using StackExchange.Redis;
@@ -115,6 +116,10 @@ public static class DependencyInjection
             return ConnectionMultiplexer.Connect(options);
         });
         services.AddSingleton<IRateLimiter, RedisSlidingWindowRateLimiter>();
+        // Distributed cache backing the three read-through handlers, backed by the
+        // same Redis connection configuration as the rate limiter (#127). Falls back
+        // gracefully if Redis is unavailable; reads/writes are failure-tolerant.
+        services.AddStackExchangeRedisCache(options => options.Configuration = redisConnectionString);
 
         services.AddAuthentication(options =>
         {

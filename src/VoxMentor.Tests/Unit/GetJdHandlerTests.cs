@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Features.Jd.GetJd;
@@ -103,9 +106,13 @@ public class GetJdHandlerTests
 
     private static GetJdHandler CreateHandler(
         Infrastructure.Persistence.ApplicationDbContext db,
-        FakeCurrentUserService? user = null)
+        FakeCurrentUserService? user = null,
+        IDistributedCache? cache = null)
     {
-        return new GetJdHandler(db, user ?? new FakeCurrentUserService());
+        return new GetJdHandler(
+            db,
+            user ?? new FakeCurrentUserService(),
+            cache ?? new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
     }
 
     [Fact]
@@ -323,5 +330,25 @@ public class GetJdHandlerTests
         Assert.Equal("DP", gap.Topic);
         Assert.Equal(0.3f, gap.Severity, 3); // 0.6 * (1 - 0.5)
         Assert.False(string.IsNullOrWhiteSpace(gap.Recommendation));
+    }
+
+    /// <summary>Verifies a repeated JD request returns the cached JD data instead of re-reading the database.</summary>
+    [Fact]
+    public async Task Handle_RepeatedRequest_ReturnsCachedJdData()
+    {
+        await using var db = CreateDb();
+        var jd = await SeedJdAsync(db, "user-1", company: "Amazon");
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+        var handler = CreateHandler(db, cache: cache);
+
+        var first = await handler.Handle(new GetJdQuery(jd.Id), CancellationToken.None);
+        Assert.Equal("Amazon", first.Data!.CompanyName);
+
+        // Mutate the JD in the database: a fresh read would return "Google", but the cached JD data must win.
+        jd.CompanyName = "Google";
+        await db.SaveChangesAsync();
+
+        var second = await handler.Handle(new GetJdQuery(jd.Id), CancellationToken.None);
+        Assert.Equal("Amazon", second.Data!.CompanyName);
     }
 }

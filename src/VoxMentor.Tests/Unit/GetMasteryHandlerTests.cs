@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Features.Practice.GetMastery;
 using VoxMentor.Domain.Entities;
@@ -67,12 +70,16 @@ public class GetMasteryHandlerTests
         await db.SaveChangesAsync();
     }
 
-    /// <summary>Builds a handler over the given context with an optional current-user fake.</summary>
+    /// <summary>Builds a handler over the given context with an optional current-user fake and cache.</summary>
     private static GetMasteryHandler CreateHandler(
         Infrastructure.Persistence.ApplicationDbContext db,
-        FakeCurrentUserService? user = null)
+        FakeCurrentUserService? user = null,
+        IDistributedCache? cache = null)
     {
-        return new GetMasteryHandler(db, user ?? new FakeCurrentUserService());
+        return new GetMasteryHandler(
+            db,
+            user ?? new FakeCurrentUserService(),
+            cache ?? new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
     }
 
     /// <summary>Verifies that an unauthenticated request is rejected with UnauthorizedAccessException.</summary>
@@ -230,5 +237,27 @@ public class GetMasteryHandlerTests
 
         var names = response.Data.Concepts.Select(c => c.Name).ToArray();
         Assert.Equal(new[] { "A-First", "D-Easier", "C-Harder", "B-Second" }, names);
+    }
+
+    /// <summary>Verifies a repeated request returns the cached profile instead of re-reading the database.</summary>
+    [Fact]
+    public async Task Handle_RepeatedRequest_ReturnsCachedProfile()
+    {
+        await using var db = CreateDb();
+        var concept = await SeedConceptAsync(db, "Recursion");
+        await SeedMasteryAsync(db, "user-1", concept.Id, masteryProbability: 0.9f);
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+        var handler = CreateHandler(db, cache: cache);
+
+        var first = await handler.Handle(new GetMasteryQuery(), CancellationToken.None);
+        Assert.Equal(0.9f, first.Data!.Concepts.Single().MasteryProbability);
+
+        // Mutate the database: a fresh read would return 0.5, but the cache must win.
+        var row = db.StudentMasteries.Single(m => m.UserId == "user-1" && m.ConceptId == concept.Id);
+        row.MasteryProbability = 0.5f;
+        await db.SaveChangesAsync();
+
+        var second = await handler.Handle(new GetMasteryQuery(), CancellationToken.None);
+        Assert.Equal(0.9f, second.Data!.Concepts.Single().MasteryProbability);
     }
 }
