@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Features.Jd.GetJd;
@@ -105,7 +108,8 @@ public class GetJdHandlerTests
         Infrastructure.Persistence.ApplicationDbContext db,
         FakeCurrentUserService? user = null)
     {
-        return new GetJdHandler(db, user ?? new FakeCurrentUserService());
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+        return new GetJdHandler(db, user ?? new FakeCurrentUserService(), cache);
     }
 
     [Fact]

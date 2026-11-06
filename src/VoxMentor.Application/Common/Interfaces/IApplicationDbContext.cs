@@ -27,6 +27,7 @@ public interface IApplicationDbContext
     DbSet<TextbookJob> TextbookJobs { get; }
     DbSet<TextbookChunk> TextbookChunks { get; }
     DbSet<ResumeAnalysis> ResumeAnalyses { get; }
+    DbSet<QuestionHintUsage> QuestionHintUsages { get; }
     /// <summary>Persists tracked changes and returns the number of affected rows.</summary>
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 
