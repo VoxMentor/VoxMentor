@@ -17,6 +17,16 @@ namespace VoxMentor.Application.Features.Jd.GetJd;
 /// </summary>
 public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultDto>>
 {
+    /// <summary>Cached JD data (the JD row plus its skill weights). Readiness is computed fresh per request.</summary>
+    /// <remarks>
+    /// The snapshot stores primitive DTO fields, not EF Core entities, so the cache
+    /// contract is decoupled from the persistence model (M2).
+    /// Staleness: a deleted/edited JD is served from cache until the 300s TTL expires
+    /// (M3). Invalidation on JD write would be needed to tighten this window.
+    /// </remarks>
+    private sealed record JdData(Guid Id, string CompanyName, string Role, string Difficulty, int EstimatedWeeks, DateTime CreatedAt);
+    private sealed record JdSnapshot(JdData Jd, List<JdSkillWeight> SkillWeights);
+
     private readonly IApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IDistributedCache _cache;
@@ -37,23 +47,36 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
         if (string.IsNullOrEmpty(userId))
             throw new UnauthorizedAccessException("User must be authenticated to view a JD.");
 
-        // Foreign and unknown JDs both surface as null → 404 (no existence oracle).
+        // Cache the raw JD data separately from the derived readiness results so a
+        // mastery change never serves a stale readiness score — readiness is
+        // recomputed from the student's current mastery on every request.
         var cacheKey = $"jd:{userId}:{request.JdId}";
-        var cached = ApplicationCacheService.GetT<GetJdResultDto>(_cache, cacheKey);
-        if (cached is not null)
-            return ApiResponse<GetJdResultDto>.SuccessResult(cached, "Retrieved from cache.");
+        var snapshot = ApplicationCacheService.GetT<JdSnapshot>(_cache, cacheKey);
+        JdData? jd = null;
+        List<JdSkillWeight>? skillWeights = null;
+        if (snapshot is not null)
+        {
+            jd = snapshot.Jd;
+            skillWeights = snapshot.SkillWeights;
+        }
+        else
+        {
+            // Foreign and unknown JDs both surface as null → 404 (no existence oracle).
+            var jdEntity = await _db.JobDescriptions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(j => j.Id == request.JdId, cancellationToken);
 
-        var jd = await _db.JobDescriptions
-            .AsNoTracking()
-            .FirstOrDefaultAsync(j => j.Id == request.JdId, cancellationToken);
+            if (jdEntity is null)
+                throw new NotFoundException("No job description found for the user.");
 
-        if (jd is null)
-            throw new NotFoundException("No job description found for the user.");
+            skillWeights = await _db.JdSkillWeights
+                .AsNoTracking()
+                .Where(sw => sw.JobDescriptionId == jdEntity.Id)
+                .ToListAsync(cancellationToken);
 
-        var skillWeights = await _db.JdSkillWeights
-            .AsNoTracking()
-            .Where(sw => sw.JobDescriptionId == jd.Id)
-            .ToListAsync(cancellationToken);
+            jd = new JdData(jdEntity.Id, jdEntity.CompanyName, jdEntity.Role, jdEntity.Difficulty, jdEntity.EstimatedWeeks, jdEntity.CreatedAt);
+            ApplicationCacheService.SetT(_cache, cacheKey, new JdSnapshot(jd, skillWeights));
+        }
 
         var concepts = await _db.Concepts
             .AsNoTracking()
@@ -85,7 +108,6 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
             CreatedAt = jd.CreatedAt
         };
 
-        ApplicationCacheService.SetT(_cache, cacheKey, dto);
         return ApiResponse<GetJdResultDto>.SuccessResult(dto, "Job description retrieved successfully.");
     }
 }

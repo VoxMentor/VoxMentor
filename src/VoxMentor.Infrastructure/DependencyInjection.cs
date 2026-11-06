@@ -6,11 +6,13 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Pgvector.EntityFrameworkCore;
 using StackExchange.Redis;
-using Microsoft.Extensions.Caching.Memory;
 using VoxMentor.Application.Common.Interfaces;
+using VoxMentor.Application.Services;
 using VoxMentor.Domain.Entities;
 using VoxMentor.Infrastructure.Authentication;
 using VoxMentor.Infrastructure.Persistence;
@@ -91,18 +93,7 @@ public static class DependencyInjection
         {
             client.Timeout = TimeSpan.FromSeconds(30);
         });
-        // Voice Service (#152): 60s cap; voice failures degrade to text-only
-        // interviews in the dialogue layer — never a thrown error or hung stream.
-        services.AddHttpClient<IVoiceClient, VoiceServiceClient>(client =>
-        {
-            client.Timeout = TimeSpan.FromSeconds(60);
-        });
         services.AddScoped<ICurrentTokenService, CurrentTokenService>();
-
-        // #151: PDF text extraction runs in an isolated worker process with
-        // OS-enforced memory/time limits (CodeRabbit finding). The worker exe
-        // is copied to the output dir by the Infrastructure build target.
-        services.AddScoped<ITextExtractor>(sp => new Services.PdfPigTextExtractor());
 
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -126,17 +117,18 @@ public static class DependencyInjection
             options.AbortOnConnectFail = false;
             return ConnectionMultiplexer.Connect(options);
         });
-        // #151: Dedicated rate limiter for resume analysis — 5 analyses per user per minute,
-        // shared across API instances via Redis. Separate from other IRateLimiter consumers.
-        services.AddSingleton<IRateLimiter>(sp =>
-        {
-            var redis = sp.GetRequiredService<IConnectionMultiplexer>();
-            return new RedisSlidingWindowRateLimiter(
-                redis,
-                limit: 5,
-                window: TimeSpan.FromMinutes(1));
-        });
-        services.AddDistributedMemoryCache();
+        services.AddSingleton<IRateLimiter, RedisSlidingWindowRateLimiter>();
+        // Distributed cache backing the three read-through handlers, backed by the
+        // same Redis connection configuration as the rate limiter (#127). Falls back
+        // gracefully if Redis is unavailable; reads/writes are failure-tolerant.
+        services.AddStackExchangeRedisCache(options => options.Configuration = redisConnectionString);
+
+        // Observable cache failures: route silent cache exceptions to the app logger
+        // so Redis outages / serialization errors are visible in logs while reads still
+        // degrade gracefully to cache misses and writes are tolerated.
+        var loggerFactory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
+        ApplicationCacheService.OnFailure = ex =>
+            loggerFactory.CreateLogger("ApplicationCache").LogWarning(ex, "Distributed cache operation failed; degrading gracefully.");
 
         services.AddAuthentication(options =>
         {
@@ -276,4 +268,3 @@ public static class DependencyInjection
         return connectionString;
     }
 }
-
