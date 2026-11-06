@@ -13,6 +13,9 @@ public static class ApplicationCacheService
 {
     private const int CacheTtlSeconds = 300;
 
+    /// <summary>Optional observability hook for cache failures. Configure at startup (e.g. in DI) to log/metric.</summary>
+    public static Action<Exception>? OnFailure { get; set; }
+
     /// <summary>Cache-through read: returns <c>null</c> on a miss or any read failure.</summary>
     public static T? GetT<T>(IDistributedCache? cache, string key) where T : class
     {
@@ -22,9 +25,10 @@ public static class ApplicationCacheService
             var cached = cache.GetString(key);
             return cached is null ? null : JsonSerializer.Deserialize<T>(cached);
         }
-        catch
+        catch (Exception ex)
         {
             // Treat any cache read failure as a miss — fall through to the DB.
+            OnFailure?.Invoke(ex);
             return null;
         }
     }
@@ -38,9 +42,10 @@ public static class ApplicationCacheService
             cache.SetString(key, JsonSerializer.Serialize(value),
                 new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(CacheTtlSeconds) });
         }
-        catch
+        catch (Exception ex)
         {
             // Tolerate cache write failures — the DB result is still returned.
+            OnFailure?.Invoke(ex);
         }
     }
 
@@ -48,6 +53,6 @@ public static class ApplicationCacheService
     public static void Remove(IDistributedCache? cache, string key)
     {
         if (cache is null) return;
-        try { cache.Remove(key); } catch { }
+        try { cache.Remove(key); } catch (Exception ex) { OnFailure?.Invoke(ex); }
     }
 }

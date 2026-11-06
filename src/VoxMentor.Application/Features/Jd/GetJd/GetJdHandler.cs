@@ -18,7 +18,14 @@ namespace VoxMentor.Application.Features.Jd.GetJd;
 public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultDto>>
 {
     /// <summary>Cached JD data (the JD row plus its skill weights). Readiness is computed fresh per request.</summary>
-    private sealed record JdSnapshot(JobDescription Jd, List<JdSkillWeight> SkillWeights);
+    /// <remarks>
+    /// The snapshot stores primitive DTO fields, not EF Core entities, so the cache
+    /// contract is decoupled from the persistence model (M2).
+    /// Staleness: a deleted/edited JD is served from cache until the 300s TTL expires
+    /// (M3). Invalidation on JD write would be needed to tighten this window.
+    /// </remarks>
+    private sealed record JdData(Guid Id, string CompanyName, string Role, string Difficulty, int EstimatedWeeks, DateTime CreatedAt);
+    private sealed record JdSnapshot(JdData Jd, List<JdSkillWeight> SkillWeights);
 
     private readonly IApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
@@ -45,7 +52,7 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
         // recomputed from the student's current mastery on every request.
         var cacheKey = $"jd:{userId}:{request.JdId}";
         var snapshot = ApplicationCacheService.GetT<JdSnapshot>(_cache, cacheKey);
-        JobDescription? jd = null;
+        JdData? jd = null;
         List<JdSkillWeight>? skillWeights = null;
         if (snapshot is not null)
         {
@@ -55,18 +62,19 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
         else
         {
             // Foreign and unknown JDs both surface as null → 404 (no existence oracle).
-            jd = await _db.JobDescriptions
+            var jdEntity = await _db.JobDescriptions
                 .AsNoTracking()
                 .FirstOrDefaultAsync(j => j.Id == request.JdId, cancellationToken);
 
-            if (jd is null)
+            if (jdEntity is null)
                 throw new NotFoundException("No job description found for the user.");
 
             skillWeights = await _db.JdSkillWeights
                 .AsNoTracking()
-                .Where(sw => sw.JobDescriptionId == jd.Id)
+                .Where(sw => sw.JobDescriptionId == jdEntity.Id)
                 .ToListAsync(cancellationToken);
 
+            jd = new JdData(jdEntity.Id, jdEntity.CompanyName, jdEntity.Role, jdEntity.Difficulty, jdEntity.EstimatedWeeks, jdEntity.CreatedAt);
             ApplicationCacheService.SetT(_cache, cacheKey, new JdSnapshot(jd, skillWeights));
         }
 
