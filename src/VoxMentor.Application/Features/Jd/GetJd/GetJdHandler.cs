@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
@@ -18,11 +19,13 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
 {
     private readonly IApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly IDistributedCache _cache;
 
-    public GetJdHandler(IApplicationDbContext db, ICurrentUserService currentUser)
+    public GetJdHandler(IApplicationDbContext db, ICurrentUserService currentUser, IDistributedCache cache)
     {
         _db = db;
         _currentUser = currentUser;
+        _cache = cache;
     }
 
     /// <exception cref="UnauthorizedAccessException">No authenticated user.</exception>
@@ -35,6 +38,11 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
             throw new UnauthorizedAccessException("User must be authenticated to view a JD.");
 
         // Foreign and unknown JDs both surface as null → 404 (no existence oracle).
+        var cacheKey = $"jd:{userId}:{request.JdId}";
+        var cached = ApplicationCacheService.GetT<GetJdResultDto>(_cache, cacheKey);
+        if (cached is not null)
+            return ApiResponse<GetJdResultDto>.SuccessResult(cached, "Retrieved from cache.");
+
         var jd = await _db.JobDescriptions
             .AsNoTracking()
             .FirstOrDefaultAsync(j => j.Id == request.JdId, cancellationToken);
@@ -77,6 +85,7 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
             CreatedAt = jd.CreatedAt
         };
 
+        ApplicationCacheService.SetT(_cache, cacheKey, dto);
         return ApiResponse<GetJdResultDto>.SuccessResult(dto, "Job description retrieved successfully.");
     }
 }

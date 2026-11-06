@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using Pgvector.EntityFrameworkCore;
 using StackExchange.Redis;
+using Microsoft.Extensions.Caching.Memory;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Domain.Entities;
 using VoxMentor.Infrastructure.Authentication;
@@ -115,6 +116,8 @@ public static class DependencyInjection
             return ConnectionMultiplexer.Connect(options);
         });
         services.AddSingleton<IRateLimiter, RedisSlidingWindowRateLimiter>();
+        services.AddDistributedMemoryCache();
+
 
         services.AddAuthentication(options =>
         {
@@ -254,3 +257,4 @@ public static class DependencyInjection
         return connectionString;
     }
 }
+

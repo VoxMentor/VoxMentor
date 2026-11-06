@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Features.Practice.GetMastery;
 using VoxMentor.Domain.Entities;
@@ -72,7 +75,8 @@ public class GetMasteryHandlerTests
         Infrastructure.Persistence.ApplicationDbContext db,
         FakeCurrentUserService? user = null)
     {
-        return new GetMasteryHandler(db, user ?? new FakeCurrentUserService());
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+        return new GetMasteryHandler(db, user ?? new FakeCurrentUserService(), cache);
     }
 
     /// <summary>Verifies that an unauthenticated request is rejected with UnauthorizedAccessException.</summary>

@@ -1,7 +1,9 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
+using VoxMentor.Application.Services;
 
 namespace VoxMentor.Application.Features.Practice.GetMastery;
 
@@ -17,12 +19,14 @@ public class GetMasteryHandler : IRequestHandler<GetMasteryQuery, ApiResponse<Ma
 
     private readonly IApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly IDistributedCache _cache;
 
     /// <summary>Initializes the handler with the read-only context and current-user service.</summary>
-    public GetMasteryHandler(IApplicationDbContext db, ICurrentUserService currentUser)
+    public GetMasteryHandler(IApplicationDbContext db, ICurrentUserService currentUser, IDistributedCache cache)
     {
         _db = db;
         _currentUser = currentUser;
+        _cache = cache;
     }
 
     /// <exception cref="UnauthorizedAccessException">No authenticated user.</exception>
@@ -33,6 +37,11 @@ public class GetMasteryHandler : IRequestHandler<GetMasteryQuery, ApiResponse<Ma
         {
             throw new UnauthorizedAccessException("User must be authenticated to view mastery.");
         }
+
+        var cacheKey = $"mastery:{userId}";
+        var cached = ApplicationCacheService.GetT<MasteryProfileDto>(_cache, cacheKey);
+        if (cached is not null)
+            return ApiResponse<MasteryProfileDto>.SuccessResult(cached, "Retrieved from cache.");
 
         var concepts = await _db.Concepts
             .AsNoTracking()
@@ -76,6 +85,7 @@ public class GetMasteryHandler : IRequestHandler<GetMasteryQuery, ApiResponse<Ma
             ? 0f
             : profile.Concepts.Sum(c => c.MasteryProbability ?? 0f) / profile.TotalConcepts;
 
+        ApplicationCacheService.SetT(_cache, cacheKey, profile);
         return ApiResponse<MasteryProfileDto>.SuccessResult(profile, "Mastery profile retrieved successfully.");
     }
 }
