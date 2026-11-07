@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Caching.Distributed;
+using System;
 using System.Text.Json;
+using System.Threading;
 
 namespace VoxMentor.Application.Services;
 
@@ -14,7 +16,13 @@ public static class ApplicationCacheService
     private const int CacheTtlSeconds = 300;
 
     /// <summary>Optional observability hook for cache failures. Configure at startup (e.g. in DI) to log/metric.</summary>
-    public static Action<Exception>? OnFailure { get; set; }
+    public static Action<Exception>? OnFailure
+    {
+        get => _onFailure;
+        set => Interlocked.Exchange(ref _onFailure, value);
+    }
+
+    private static Action<Exception>? _onFailure;
 
     /// <summary>Cache-through read: returns <c>null</c> on a miss or any read failure.</summary>
     public static T? GetT<T>(IDistributedCache? cache, string key) where T : class
@@ -139,6 +147,7 @@ public static class ApplicationCacheService
     /// keys for that scope only — other scopes keep their cache hits.</summary>
     public static string VersionedKey(IDistributedCache? cache, string userId, string scope, string key)
     {
+        ValidateCacheKeyInput(userId, scope);
         var version = GetVersion(cache, scope, userId);
         return $"{key}:{userId}:{scope}:{version}";
     }
@@ -150,8 +159,17 @@ public static class ApplicationCacheService
     /// keys for that scope only — other scopes keep their cache hits.</summary>
     public static async Task<string> VersionedKeyAsync(IDistributedCache? cache, string userId, string scope, string key, CancellationToken cancellationToken = default)
     {
+        ValidateCacheKeyInput(userId, scope);
         var version = await GetVersionAsync(cache, scope, userId, cancellationToken);
         return $"{key}:{userId}:{scope}:{version}";
+    }
+
+    /// <summary>Validates userId and scope before embedding them in cache keys,
+    /// preventing key injection via unexpected characters.</summary>
+    private static void ValidateCacheKeyInput(string userId, string scope)
+    {
+        if (string.IsNullOrWhiteSpace(userId) || userId.Contains(':') || scope.Contains(':'))
+            throw new ArgumentException("Cache key input contains disallowed characters.", userId.Contains(':') ? nameof(userId) : nameof(scope));
     }
 
     /// <summary>Invalidates all versioned cache entries for a user within the

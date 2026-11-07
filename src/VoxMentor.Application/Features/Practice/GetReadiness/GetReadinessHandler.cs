@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
@@ -10,16 +11,19 @@ namespace VoxMentor.Application.Features.Practice.GetReadiness;
 /// <summary>
 /// Computes the JD-weighted readiness score by joining skill weights with
 /// the student's BKT mastery per concept. Read-only — no tracking.
+/// Cached per user/JD so a repeated readiness score isn't recomputed each load.
 /// </summary>
 public class GetReadinessHandler : IRequestHandler<GetReadinessQuery, ApiResponse<ReadinessDto>>
 {
     private readonly IApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly IDistributedCache? _cache;
 
-    public GetReadinessHandler(IApplicationDbContext db, ICurrentUserService currentUser)
+    public GetReadinessHandler(IApplicationDbContext db, ICurrentUserService currentUser, IDistributedCache? cache = null)
     {
         _db = db;
         _currentUser = currentUser;
+        _cache = cache;
     }
 
     /// <exception cref="UnauthorizedAccessException">No authenticated user.</exception>
@@ -30,6 +34,14 @@ public class GetReadinessHandler : IRequestHandler<GetReadinessQuery, ApiRespons
         var userId = _currentUser.UserId;
         if (string.IsNullOrEmpty(userId))
             throw new UnauthorizedAccessException("User must be authenticated to view readiness.");
+
+        // Cache-through: compute readiness keyed by JD+user so repeated loads hit cache.
+        // Versioned key prevents a stale write from an in-flight read from
+        // repopulating after invalidation bumps the version.
+        var cacheKey = await ApplicationCacheService.VersionedKeyAsync(_cache, userId, "readiness", request.JdId?.ToString() ?? "current", cancellationToken);
+        var cached = await ApplicationCacheService.GetTAsync<ReadinessDto>(_cache, cacheKey, cancellationToken);
+        if (cached is not null)
+            return ApiResponse<ReadinessDto>.SuccessResult(cached, "Retrieved from cache.");
 
         var jd = await LoadJobDescriptionAsync(userId, request.JdId, cancellationToken);
 
@@ -51,6 +63,7 @@ public class GetReadinessHandler : IRequestHandler<GetReadinessQuery, ApiRespons
         var dto = ReadinessCalculator.Compute(
             skillWeights, concepts, masteries, jd.EstimatedWeeks);
 
+        await ApplicationCacheService.SetTAsync(_cache, cacheKey, dto, cancellationToken);
         return ApiResponse<ReadinessDto>.SuccessResult(dto, "Readiness score retrieved successfully.");
     }
 

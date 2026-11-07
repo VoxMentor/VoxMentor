@@ -103,9 +103,13 @@ public class GetReadinessHandlerTests
 
     private static GetReadinessHandler CreateHandler(
         Infrastructure.Persistence.ApplicationDbContext db,
-        FakeCurrentUserService? user = null)
+        FakeCurrentUserService? user = null,
+        Microsoft.Extensions.Caching.Distributed.IDistributedCache? cache = null)
     {
-        return new GetReadinessHandler(db, user ?? new FakeCurrentUserService());
+        return new GetReadinessHandler(db, user ?? new FakeCurrentUserService(),
+            cache ?? new Microsoft.Extensions.Caching.Distributed.MemoryDistributedCache(
+                Microsoft.Extensions.Options.Options.Create(
+                    new Microsoft.Extensions.Caching.Memory.MemoryDistributedCacheOptions())));
     }
 
     [Fact]

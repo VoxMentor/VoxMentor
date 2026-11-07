@@ -347,6 +347,7 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
                 // untouched.
                 await ApplicationCacheService.InvalidateAsync(_cache, userId, "mastery", cancellationToken, "mastery");
                 await ApplicationCacheService.InvalidateAsync(_cache, userId, "eligible_concepts", cancellationToken, "eligible_concepts");
+                await ApplicationCacheService.InvalidateAsync(_cache, userId, "readiness", cancellationToken, "readiness");
 
                 return new BktResult(previousMastery, newMastery, mastery);
             }

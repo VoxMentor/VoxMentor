@@ -213,6 +213,7 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
         // later requests. Other scopes (e.g. JD snapshots) are untouched.
         await ApplicationCacheService.InvalidateAsync(_cache, userId, "mastery", cancellationToken, "mastery");
         await ApplicationCacheService.InvalidateAsync(_cache, userId, "eligible_concepts", cancellationToken, "eligible_concepts");
+        await ApplicationCacheService.InvalidateAsync(_cache, userId, "readiness", cancellationToken, "readiness");
 
         var result = new SubmitAnswerResultDto(
             request.QuestionId,
