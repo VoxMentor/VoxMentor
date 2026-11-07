@@ -218,22 +218,27 @@ export interface SubmitCodeRequest {
   language: string;
 }
 
+export interface CodeTestCaseResult {
+  testCaseIndex: number;
+  stdin: string;
+  expected: string;
+  actual: string;
+  passed: boolean;
+}
+
 export interface SubmitCodeResult {
-  submissionId?: string;
-  status: "Accepted" | "WrongAnswer" | "Timeout" | "RuntimeError" | "Pending" | "error";
-  isCorrect?: boolean;
-  message?: string;
-  executionTimeMs?: number;
-  memoryUsageKb?: number;
-  testResults?: Array<{
-    testCaseIndex: number;
-    expected: string;
-    actual: string;
-    passed: boolean;
-  }>;
-  previousMastery?: number;
-  newMastery?: number;
-  masteryDelta?: number;
+  submissionId: string;
+  status: string;
+  isCorrect: boolean | null;
+  testCasesPassed: number;
+  testCasesTotal: number;
+  executionTimeMs: number | null;
+  memoryUsageKb: number | null;
+  aiEvaluation: unknown;
+  testCaseResults: CodeTestCaseResult[];
+  previousMastery: number;
+  newMastery: number;
+  masteryDelta: number;
 }
 
 export interface AdminUser {
@@ -353,10 +358,11 @@ export const api = {
 
   question: (id: string) => request<QuestionDetail>(`/v1/questions/${encodeURIComponent(id)}`),
 
-  submitCode: (data: SubmitCodeRequest) =>
+  // --- Code submission (#33): POST /v1/student/submit-code ---
+  submitCode: (input: SubmitCodeRequest) =>
     request<SubmitCodeResult>("/v1/student/submit-code", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify(input),
     }),
 
   // --- admin (#105): SuperAdmin-only via ManageRoles policy; 401/403 enforced server-side ---

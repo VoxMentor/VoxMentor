@@ -9,7 +9,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using Pgvector.EntityFrameworkCore;
 using StackExchange.Redis;
+using Microsoft.Extensions.Caching.Memory;
 using VoxMentor.Application.Common.Interfaces;
+using VoxMentor.Application.Services;
 using VoxMentor.Domain.Entities;
 using VoxMentor.Infrastructure.Authentication;
 using VoxMentor.Infrastructure.Persistence;
@@ -128,7 +130,6 @@ public static class DependencyInjection
             options.AbortOnConnectFail = false;
             return ConnectionMultiplexer.Connect(options);
         });
-
         // #151: Dedicated rate limiter for resume analysis — 5 analyses per user per minute,
         // shared across API instances via Redis. Separate from other IRateLimiter consumers.
         services.AddSingleton<IRateLimiter>(sp =>
@@ -139,6 +140,11 @@ public static class DependencyInjection
                 limit: 5,
                 window: TimeSpan.FromMinutes(1));
         });
+
+        // #128: Difficulty calibration scorer — pure logic, registered as
+        // singleton; question bank reads attempt data from the DbContext.
+        services.AddSingleton<IDifficultyCalibrator, DifficultyCalibrator>();
+        services.AddScoped<IQuestionBank, QuestionBank>();
 
         services.AddAuthentication(options =>
         {
@@ -278,3 +284,4 @@ public static class DependencyInjection
         return connectionString;
     }
 }
+
