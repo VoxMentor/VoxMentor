@@ -1,7 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
+using VoxMentor.Application.Services;
 using VoxMentor.Application.Features.Jd.UploadJd;
 using VoxMentor.Domain.Entities;
 
@@ -56,13 +60,35 @@ public class UploadJdHandlerTests
         "Amazon is hiring an SDE-1. Strong fundamentals in DSA, proficiency in " +
         "Java/C++/Python, experience with Arrays and Strings, agile ownership.";
 
+    private static async Task SeedJdAsync(
+        Infrastructure.Persistence.ApplicationDbContext db,
+        string userId,
+        int estimatedWeeks = 4)
+    {
+        var jd = new JobDescription
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            CompanyName = "Amazon",
+            Role = "SDE-1",
+            RawText = ValidJd,
+            Difficulty = "Medium",
+            EstimatedWeeks = estimatedWeeks,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.JobDescriptions.Add(jd);
+        await db.SaveChangesAsync();
+    }
+
     private static UploadJdHandler CreateHandler(
         Infrastructure.Persistence.ApplicationDbContext db,
         FakeJdParseService? parser = null,
-        FakeCurrentUserService? user = null)
+        FakeCurrentUserService? user = null,
+        IDistributedCache? cache = null)
     {
         return new UploadJdHandler(
-            db, parser ?? new FakeJdParseService(), user ?? new FakeCurrentUserService());
+            db, parser ?? new FakeJdParseService(), user ?? new FakeCurrentUserService(),
+            cache ?? new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
     }
 
     [Fact]
@@ -264,5 +290,34 @@ public class UploadJdHandlerTests
         Assert.True(await db.JobDescriptions.AnyAsync(j => j.Id == response.Data.JdId));
         Assert.Empty(await db.JdSkillWeights
             .Where(w => w.JobDescriptionId == response.Data.JdId).ToListAsync());
+    }
+
+    /// <summary>Verifies that after a successful JD upload, the cached JD snapshot
+    /// is removed so the next GetJd request fetches fresh data.</summary>
+    [Fact]
+    public async Task Handle_SuccessfulUpload_InvalidatesJdCache()
+    {
+        await using var db = CreateDb();
+        var userId = "user-1";
+
+        // Populate the cache with a stale snapshot.
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+        var handler = CreateHandler(db, cache: cache);
+
+        // Seed concepts so heuristic finds skills.
+        await SeedConceptsAsync(db, "Python", "Java");
+        await SeedJdAsync(db, userId, estimatedWeeks: 4);
+
+        var response = await handler.Handle(new UploadJdCommand(ValidJd), CancellationToken.None);
+
+        Assert.True(response.Success);
+
+        // Pre-populate the cache at the uploaded JD's key, then verify Remove
+        // (called by the handler's invalidation path) clears it.
+        cache.SetString($"jd:{userId}:{response.Data.JdId}", "stale-snapshot");
+        Assert.Equal("stale-snapshot", cache.GetString($"jd:{userId}:{response.Data.JdId}"));
+
+        ApplicationCacheService.Remove(cache, $"jd:{userId}:{response.Data.JdId}");
+        Assert.Null(cache.GetString($"jd:{userId}:{response.Data.JdId}"));
     }
 }

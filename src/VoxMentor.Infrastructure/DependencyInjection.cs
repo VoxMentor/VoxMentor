@@ -155,7 +155,20 @@ public static class DependencyInjection
         // Distributed cache backing the three read-through handlers, backed by the
         // same Redis connection configuration as the rate limiter (#127). Falls back
         // gracefully if Redis is unavailable; reads/writes are failure-tolerant.
-        services.AddStackExchangeRedisCache(options => options.Configuration = redisConnectionString);
+        services.AddStackExchangeRedisCache(options =>
+        {
+            options.Configuration = redisConnectionString;
+            // Bound outage-path latency so cache reads/writes cannot hold up
+            // database fallback when Redis is down. ConnectTimeout limits the
+            // initial connection attempt; SyncTimeout caps synchronous command
+            // waits; ResponseTimeout caps async command waits. AbortOnConnectFail
+            // stays false so a down Redis never blocks startup.
+            var cacheOptions = ConfigurationOptions.Parse(redisConnectionString);
+            cacheOptions.ConnectTimeout = 2000;
+            cacheOptions.SyncTimeout = 1000;
+            cacheOptions.ResponseTimeout = 1000;
+            options.ConfigurationOptions = cacheOptions;
+        });
 
         services.AddAuthentication(options =>
         {

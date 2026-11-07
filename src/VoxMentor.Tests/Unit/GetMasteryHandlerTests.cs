@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
+using System.Linq;
+using System.Threading;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Features.Practice.GetMastery;
 using VoxMentor.Domain.Entities;
@@ -234,5 +236,34 @@ public class GetMasteryHandlerTests
 
         var names = response.Data.Concepts.Select(c => c.Name).ToArray();
         Assert.Equal(new[] { "A-First", "D-Easier", "C-Harder", "B-Second" }, names);
+    }
+
+    /// <summary>Verifies a second call for the same user returns the cached profile
+    /// without hitting the database again.</summary>
+    [Fact]
+    public async Task Handle_RepeatedRequest_ReturnsCachedProfileWithoutDbQuery()
+    {
+        await using var db = CreateDb();
+        var concept = await SeedConceptAsync(db, "Recursion");
+        await SeedMasteryAsync(db, "user-1", concept.Id, masteryProbability: 0.9f);
+
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+        var handler = new GetMasteryHandler(db, new FakeCurrentUserService(), cache);
+
+        // First call populates the cache.
+        var first = await handler.Handle(new GetMasteryQuery(), CancellationToken.None);
+        Assert.True(first.Success);
+        Assert.Equal(1, first.Data!.MasteredCount);
+
+        // Change the database so a non-cached second call would return different data.
+        var updated = await db.StudentMasteries.FirstAsync();
+        updated.MasteryProbability = 0.1f;
+        await db.SaveChangesAsync();
+
+        // Second call must return the cached (stale) profile, not the updated DB data.
+        var second = await handler.Handle(new GetMasteryQuery(), CancellationToken.None);
+        Assert.True(second.Success);
+        Assert.Equal(1, second.Data.MasteredCount);
+        Assert.Equal(0.9f, second.Data.Concepts.Single().MasteryProbability);
     }
 }
