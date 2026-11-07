@@ -10,6 +10,7 @@ using VoxMentor.Api.Services;
 using VoxMentor.Application;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
+using VoxMentor.Application.Services;
 using VoxMentor.Infrastructure;
 using VoxMentor.Infrastructure.Jobs;
 using VoxMentor.Infrastructure.Persistence.Seeders;
@@ -103,6 +104,14 @@ builder.Services.AddAuthorization(options =>
 });
 
 var app = builder.Build();
+
+// Observable cache failures: route silent cache exceptions to the app logger
+// so Redis outages / serialization errors are visible in logs while reads still
+// degrade gracefully to cache misses and writes are tolerated.
+ApplicationCacheService.OnFailure = ex =>
+    app.Services.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("ApplicationCache")
+        .LogWarning(ex, "Distributed cache operation failed; degrading gracefully.");
 
 // Without this the two nightly jobs silently never exist: the AddOrUpdate block
 // further down is skipped and nothing in the log says so (#57).

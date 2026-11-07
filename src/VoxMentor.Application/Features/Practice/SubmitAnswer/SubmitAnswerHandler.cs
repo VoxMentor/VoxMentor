@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
@@ -23,17 +24,20 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
     private readonly IBktEngine _bktEngine;
     private readonly ICurrentUserService _currentUser;
     private readonly IMasteryEventPublisher _eventPublisher;
+    private readonly IDistributedCache _cache;
 
     public SubmitAnswerHandler(
         IApplicationDbContext db,
         IBktEngine bktEngine,
         ICurrentUserService currentUser,
-        IMasteryEventPublisher eventPublisher)
+        IMasteryEventPublisher eventPublisher,
+        IDistributedCache cache)
     {
         _db = db;
         _bktEngine = bktEngine;
         _currentUser = currentUser;
         _eventPublisher = eventPublisher;
+        _cache = cache;
     }
 
     /// <summary>
@@ -201,6 +205,11 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
 
         await _db.SaveChangesAsync(cancellationToken);
         await _eventPublisher.PublishMasteryUpdatedAsync(mastery, previousMastery, cancellationToken);
+
+        // Invalidate mastery + eligibility caches so the next read-through
+        // request recomputes from the updated mastery instead of serving stale data.
+        ApplicationCacheService.Remove(_cache, $"mastery:{userId}");
+        ApplicationCacheService.Remove(_cache, $"eligible_concepts:{userId}");
 
         var result = new SubmitAnswerResultDto(
             request.QuestionId,

@@ -1,5 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Features.Practice.SubmitCode;
@@ -96,7 +99,8 @@ public class SubmitCodeHandlerTests
         FakeCodeExecService? exec = null,
         FakeCodeEvaluator? evaluator = null,
         FakeEventPublisher? publisher = null,
-        IPlagiarismDetector? plagiarism = null)
+        IPlagiarismDetector? plagiarism = null,
+        IDistributedCache? cache = null)
         => new(
             db,
             new BktEngine(),
@@ -106,7 +110,8 @@ public class SubmitCodeHandlerTests
             evaluator ?? new FakeCodeEvaluator(),
             publisher ?? new FakeEventPublisher(),
             plagiarism ?? new FakePlagiarismDetector(),
-            NullLogger<SubmitCodeHandler>.Instance);
+            NullLogger<SubmitCodeHandler>.Instance,
+            cache ?? new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
 
     private static CodeExecutionCaseResult Case(bool passed, string expected = "ok", string actual = "ok",
         bool timedOut = false, string status = "Finished", string stderr = "",
@@ -439,7 +444,8 @@ public class SubmitCodeHandlerTests
         // SubmitCode must replay, not apply BKT a second time.
         var answerPublisher = new FakeEventPublisher();
         var answerHandler = new Application.Features.Practice.SubmitAnswer.SubmitAnswerHandler(
-            db, new BktEngine(), new FakeCurrentUserService(), answerPublisher);
+            db, new BktEngine(), new FakeCurrentUserService(), answerPublisher,
+            new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
         var replay = await answerHandler.Handle(
             new Application.Features.Practice.SubmitAnswer.SubmitAnswerCommand(
                 question.Id, IsCorrect: false, CodeSubmissionId: submissionId),

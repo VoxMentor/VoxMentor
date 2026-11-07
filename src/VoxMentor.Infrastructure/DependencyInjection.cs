@@ -157,13 +157,6 @@ public static class DependencyInjection
         // gracefully if Redis is unavailable; reads/writes are failure-tolerant.
         services.AddStackExchangeRedisCache(options => options.Configuration = redisConnectionString);
 
-        // Observable cache failures: route silent cache exceptions to the app logger
-        // so Redis outages / serialization errors are visible in logs while reads still
-        // degrade gracefully to cache misses and writes are tolerated.
-        var loggerFactory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
-        ApplicationCacheService.OnFailure = ex =>
-            loggerFactory.CreateLogger("ApplicationCache").LogWarning(ex, "Distributed cache operation failed; degrading gracefully.");
-
         services.AddAuthentication(options =>
         {
             options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;

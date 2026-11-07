@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Pgvector;
 using VoxMentor.Application.Common.Exceptions;
@@ -51,6 +52,7 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
     private readonly IMasteryEventPublisher _eventPublisher;
     private readonly IPlagiarismDetector _plagiarismDetector;
     private readonly ILogger<SubmitCodeHandler> _logger;
+    private readonly IDistributedCache _cache;
 
     public SubmitCodeHandler(
         IApplicationDbContext db,
@@ -61,7 +63,8 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
         ICodeEvaluator codeEvaluator,
         IMasteryEventPublisher eventPublisher,
         IPlagiarismDetector plagiarismDetector,
-        ILogger<SubmitCodeHandler> logger)
+        ILogger<SubmitCodeHandler> logger,
+        IDistributedCache cache)
     {
         _db = db;
         _bktEngine = bktEngine;
@@ -72,6 +75,7 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
         _eventPublisher = eventPublisher;
         _plagiarismDetector = plagiarismDetector;
         _logger = logger;
+        _cache = cache;
     }
 
     /// <exception cref="UnauthorizedAccessException">No authenticated user.</exception>
@@ -334,6 +338,12 @@ public class SubmitCodeHandler : IRequestHandler<SubmitCodeCommand, ApiResponse<
                     _db.CodeSubmissions.Add(submission);
 
                 await _db.SaveChangesAsync(cancellationToken);
+
+                // Invalidate mastery + eligibility caches so the next read-through
+                // request recomputes from the updated mastery instead of serving stale data.
+                ApplicationCacheService.Remove(_cache, $"mastery:{userId}");
+                ApplicationCacheService.Remove(_cache, $"eligible_concepts:{userId}");
+
                 return new BktResult(previousMastery, newMastery, mastery);
             }
             catch (DbUpdateConcurrencyException) when (attempt < maxAttempts - 1)
