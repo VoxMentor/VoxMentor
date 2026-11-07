@@ -133,9 +133,9 @@ public class UploadJdHandler : IRequestHandler<UploadJdCommand, ApiResponse<Uplo
 
         // Invalidate the cached JD snapshot so the next GetJd request fetches
         // the newly uploaded JD instead of serving stale data.
-        // Bumping the per-user version guarantees a stale write from an in-flight
-        // read lands under the old version and is never served.
-        await ApplicationCacheService.InvalidateAsync(_cache, userId, cancellationToken, $"jd:{jd.Id}");
+        // Bumping the per-user, per-scope version guarantees a stale write from
+        // an in-flight read lands under the old version and is never served.
+        await ApplicationCacheService.InvalidateAsync(_cache, userId, "jd", cancellationToken, jd.Id.ToString());
 
         var dto = new UploadJdResultDto
         {

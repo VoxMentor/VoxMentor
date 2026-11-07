@@ -318,8 +318,8 @@ public class UploadJdHandlerTests
         Assert.True(response.Success);
 
         // The handler's invalidation path must call Remove on the uploaded JD's
-        // cache key (format: jd:{JdId}:{userId}:{version}).
-        Assert.Contains($"jd:{response.Data.JdId}:{userId}:0", removedKeys);
+        // cache key (format: {JdId}:{userId}:jd:{version}).
+        Assert.Contains($"{response.Data.JdId}:{userId}:jd:0", removedKeys);
     }
 
     /// <summary>Distributed cache wrapper that records removed keys.</summary>

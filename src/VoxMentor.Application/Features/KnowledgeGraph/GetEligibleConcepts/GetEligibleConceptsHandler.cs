@@ -40,7 +40,7 @@ public class GetEligibleConceptsHandler
             throw new UnauthorizedAccessException("User must be authenticated to view eligibility.");
         }
 
-        var cacheKey = await ApplicationCacheService.VersionedKeyAsync(_cache, userId, "eligible_concepts", cancellationToken);
+        var cacheKey = await ApplicationCacheService.VersionedKeyAsync(_cache, userId, "eligible_concepts", "eligible_concepts", cancellationToken);
         var cached = await ApplicationCacheService.GetTAsync<EligibleConceptsDto>(_cache, cacheKey, cancellationToken);
         if (cached is not null)
             return ApiResponse<EligibleConceptsDto>.SuccessResult(cached, "Retrieved from cache.");

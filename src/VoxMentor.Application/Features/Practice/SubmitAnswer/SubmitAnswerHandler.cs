@@ -208,9 +208,11 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
 
         // Invalidate mastery + eligibility caches so the next read-through
         // request recomputes from the updated mastery instead of serving stale data.
-        // Bumping the per-user version guarantees a stale write from an in-flight
-        // read lands under the old version and is never served to later requests.
-        await ApplicationCacheService.InvalidateAsync(_cache, userId, cancellationToken, "mastery", "eligible_concepts");
+        // Bumping the per-user, per-scope version guarantees a stale write from
+        // an in-flight read lands under the old version and is never served to
+        // later requests. Other scopes (e.g. JD snapshots) are untouched.
+        await ApplicationCacheService.InvalidateAsync(_cache, userId, "mastery", cancellationToken, "mastery");
+        await ApplicationCacheService.InvalidateAsync(_cache, userId, "eligible_concepts", cancellationToken, "eligible_concepts");
 
         var result = new SubmitAnswerResultDto(
             request.QuestionId,

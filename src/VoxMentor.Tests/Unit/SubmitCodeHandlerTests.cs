@@ -163,11 +163,12 @@ public class SubmitCodeHandlerTests
             Respond = _ => [Case(false, expected: "10", actual: "20")]
         };
 
-        // Populate a single cache with both per-user entries at version 0.
+        // Populate cache entries at version 0, scoped by cache type (mastery, eligible_concepts).
         var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
-        cache.SetString("cache_version:user-1", "0");
-        cache.SetString("mastery:user-1:0", "stale-mastery");
-        cache.SetString("eligible_concepts:user-1:0", "stale-eligibility");
+        cache.SetString("cache_version:mastery:user-1", "0");
+        cache.SetString("cache_version:eligible_concepts:user-1", "0");
+        cache.SetString("mastery:user-1:mastery:0", "stale-mastery");
+        cache.SetString("eligible_concepts:user-1:eligible_concepts:0", "stale-eligibility");
 
         var handler = CreateHandler(db, exec: exec, publisher: publisher, cache: cache);
 
@@ -177,11 +178,12 @@ public class SubmitCodeHandlerTests
         Assert.False(response.Data!.IsCorrect);
 
         // Both entries must be absent after invalidation (version bumped + old keys removed).
-        Assert.Null(cache.GetString("mastery:user-1:0"));
-        Assert.Null(cache.GetString("eligible_concepts:user-1:0"));
+        Assert.Null(cache.GetString("mastery:user-1:mastery:0"));
+        Assert.Null(cache.GetString("eligible_concepts:user-1:eligible_concepts:0"));
 
-        // Version must advance from 0 to 1.
-        Assert.Equal("1", cache.GetString("cache_version:user-1"));
+        // Version keys must advance from 0 to 1 for both scopes.
+        Assert.Equal("1", cache.GetString("cache_version:mastery:user-1"));
+        Assert.Equal("1", cache.GetString("cache_version:eligible_concepts:user-1"));
 
         var submission = await db.CodeSubmissions.SingleAsync();
         Assert.Equal(SubmissionStatus.WrongAnswer, submission.Status);

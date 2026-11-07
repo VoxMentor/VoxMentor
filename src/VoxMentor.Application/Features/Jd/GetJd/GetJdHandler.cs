@@ -52,7 +52,7 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
         // recomputed from the student's current mastery on every request.
         // Versioned key prevents a stale write from an in-flight read from
         // repopulating the cache after invalidation bumps the version.
-        var cacheKey = await ApplicationCacheService.VersionedKeyAsync(_cache, userId, $"jd:{request.JdId}", cancellationToken);
+        var cacheKey = await ApplicationCacheService.VersionedKeyAsync(_cache, userId, "jd", request.JdId.ToString(), cancellationToken);
         var snapshot = await ApplicationCacheService.GetTAsync<JdSnapshot>(_cache, cacheKey, cancellationToken);
         JdData? jd = null;
         List<SkillWeightData>? skillWeights = null;
