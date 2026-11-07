@@ -179,9 +179,28 @@ public static class ApplicationCacheService
     public static void Invalidate(IDistributedCache? cache, string userId, string scope, params string[] keys)
     {
         if (cache is null) return;
+        ValidateCacheKeyInput(userId, scope);
         try
         {
-            var version = GetVersion(cache, scope, userId);
+            int version = 0;
+            bool readOk = false;
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    var cached = cache.GetString($"cache_version:{scope}:{userId}");
+                    version = cached is null ? 0 : (int.TryParse(cached, out var v) ? v : 0);
+                    readOk = true;
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    OnFailure?.Invoke(ex);
+                    if (attempt == 2) throw;
+                }
+            }
+            if (!readOk) return;
+
             foreach (var key in keys)
             {
                 cache.Remove($"{key}:{userId}:{scope}:{version}");
@@ -201,9 +220,28 @@ public static class ApplicationCacheService
     public static async Task InvalidateAsync(IDistributedCache? cache, string userId, string scope, CancellationToken cancellationToken = default, params string[] keys)
     {
         if (cache is null) return;
+        ValidateCacheKeyInput(userId, scope);
         try
         {
-            var version = await GetVersionAsync(cache, scope, userId, cancellationToken);
+            int version = 0;
+            bool readOk = false;
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    var cached = await cache.GetStringAsync($"cache_version:{scope}:{userId}", cancellationToken);
+                    version = cached is null ? 0 : (int.TryParse(cached, out var v) ? v : 0);
+                    readOk = true;
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    OnFailure?.Invoke(ex);
+                    if (attempt == 2) throw;
+                }
+            }
+            if (!readOk) return;
+
             foreach (var key in keys)
             {
                 await cache.RemoveAsync($"{key}:{userId}:{scope}:{version}", cancellationToken);
