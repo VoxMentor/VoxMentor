@@ -107,11 +107,23 @@ var app = builder.Build();
 
 // Observable cache failures: route silent cache exceptions to the app logger
 // so Redis outages / serialization errors are visible in logs while reads still
-// degrade gracefully to cache misses and writes are tolerated.
+// degrade gracefully to cache misses and writes are tolerated. The lambda is
+// defensive: logging failures must never propagate and turn a cache miss into
+// a 500, especially since OnFailure is a static property shared across the
+// process.
 ApplicationCacheService.OnFailure = ex =>
-    app.Services.GetRequiredService<ILoggerFactory>()
-        .CreateLogger("ApplicationCache")
-        .LogWarning(ex, "Distributed cache operation failed; degrading gracefully.");
+{
+    try
+    {
+        app.Services.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("ApplicationCache")
+            .LogWarning(ex, "Distributed cache operation failed; degrading gracefully.");
+    }
+    catch
+    {
+        // Swallow logging failures — a cache miss must never become a 500.
+    }
+};
 
 // Without this the two nightly jobs silently never exist: the AddOrUpdate block
 // further down is skipped and nothing in the log says so (#57).

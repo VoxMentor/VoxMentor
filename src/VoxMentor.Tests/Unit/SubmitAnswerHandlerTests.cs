@@ -124,6 +124,33 @@ public class SubmitAnswerHandlerTests
     }
 
     [Fact]
+    public async Task Handle_CorrectAnswer_InvalidatesMasteryAndEligibilityCaches()
+    {
+        using var db = CreateDb();
+        var question = await SeedQuestionAsync(db);
+        var publisher = new FakeEventPublisher();
+
+        // Populate a single cache with both per-user entries.
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+        cache.SetString("mastery:user-1", "stale-mastery");
+        cache.SetString("eligible_concepts:user-1", "stale-eligibility");
+
+        var handler = CreateHandler(db, publisher: publisher, cache: cache);
+
+        var response = await handler.Handle(new SubmitAnswerCommand(question.Id, true), CancellationToken.None);
+
+        Assert.True(response.Success);
+
+        // Both entries must be absent after invalidation.
+        Assert.Null(cache.GetString("mastery:user-1"));
+        Assert.Null(cache.GetString("eligible_concepts:user-1"));
+
+        var stored = await db.StudentMasteries.FirstAsync();
+        Assert.Equal("user-1", stored.UserId);
+        Assert.Equal(question.ConceptId, stored.ConceptId);
+    }
+
+    [Fact]
     public async Task Handle_IncorrectAnswer_DecreasesExistingMastery()
     {
         using var db = CreateDb();

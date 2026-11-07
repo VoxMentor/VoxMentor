@@ -153,6 +153,38 @@ public class SubmitCodeHandlerTests
     }
 
     [Fact]
+    public async Task Handle_GradedSubmission_InvalidatesMasteryAndEligibilityCaches()
+    {
+        await using var db = CreateDb();
+        var question = await SeedQuestionAsync(db, ["|10"]);
+        var publisher = new FakeEventPublisher();
+        var exec = new FakeCodeExecService
+        {
+            Respond = _ => [Case(false, expected: "10", actual: "20")]
+        };
+
+        // Populate a single cache with both per-user entries.
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+        cache.SetString("mastery:user-1", "stale-mastery");
+        cache.SetString("eligible_concepts:user-1", "stale-eligibility");
+
+        var handler = CreateHandler(db, exec: exec, publisher: publisher, cache: cache);
+
+        var response = await handler.Handle(
+            new SubmitCodeCommand(question.Id, "print(20)", "python"), CancellationToken.None);
+
+        Assert.False(response.Data!.IsCorrect);
+
+        // Both entries must be absent after invalidation.
+        Assert.Null(cache.GetString("mastery:user-1"));
+        Assert.Null(cache.GetString("eligible_concepts:user-1"));
+
+        var mastery = await db.StudentMasteries.SingleAsync();
+        var submission = await db.CodeSubmissions.SingleAsync();
+        Assert.Equal(SubmissionStatus.WrongAnswer, submission.Status);
+    }
+
+    [Fact]
     public async Task Handle_WrongAnswer_PersistsWrongAnswerAndLowersMastery()
     {
         await using var db = CreateDb();
