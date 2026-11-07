@@ -232,6 +232,29 @@ public class KnowledgeGraphQueriesTests : IDisposable
     }
 
     [Fact]
+    public async Task Eligible_RepeatedRequest_ReturnsCachedResultWithoutDbQuery()
+    {
+        await using var db = CreateDb();
+        SeedGraph(db);
+
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+        var handler = new GetEligibleConceptsHandler(db, new FakeCurrentUser { UserId = UserId }, cache);
+
+        // First call populates the cache.
+        var first = await handler.Handle(new GetEligibleConceptsQuery(), CancellationToken.None);
+        Assert.True(first.Success);
+        Assert.Contains(first.Data!.Eligible, c => c.ConceptId == Root);
+
+        // Change the database - add mastery for Root so it's no longer eligible.
+        SeedMastery(db, Root, Mastered);
+
+        // Second call must return cached result (Root still eligible from cache).
+        var second = await handler.Handle(new GetEligibleConceptsQuery(), CancellationToken.None);
+        Assert.True(second.Success);
+        Assert.Contains(second.Data!.Eligible, c => c.ConceptId == Root);
+    }
+
+    [Fact]
     public async Task AlmostEligible_OnePrereqMissing_IsAlmost()
     {
         await using var db = CreateDb();

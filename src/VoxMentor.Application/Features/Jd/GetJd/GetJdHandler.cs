@@ -25,7 +25,7 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
     /// (M3). Invalidation on JD write would be needed to tighten this window.
     /// </remarks>
     private sealed record JdData(Guid Id, string CompanyName, string Role, string Difficulty, int EstimatedWeeks, DateTime CreatedAt);
-    private sealed record JdSnapshot(JdData Jd, List<JdSkillWeight> SkillWeights);
+    private sealed record JdSnapshot(JdData Jd, List<SkillWeightData> SkillWeights);
 
     private readonly IApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
@@ -55,7 +55,7 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
         var cacheKey = ApplicationCacheService.VersionedKey(_cache, userId, $"jd:{request.JdId}");
         var snapshot = ApplicationCacheService.GetT<JdSnapshot>(_cache, cacheKey);
         JdData? jd = null;
-        List<JdSkillWeight>? skillWeights = null;
+        List<SkillWeightData>? skillWeights = null;
         if (snapshot is not null)
         {
             jd = snapshot.Jd;
@@ -74,6 +74,7 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
             skillWeights = await _db.JdSkillWeights
                 .AsNoTracking()
                 .Where(sw => sw.JobDescriptionId == jdEntity.Id)
+                .Select(sw => new SkillWeightData(sw.SkillName, sw.Weight, sw.IsTechnical))
                 .ToListAsync(cancellationToken);
 
             jd = new JdData(jdEntity.Id, jdEntity.CompanyName, jdEntity.Role, jdEntity.Difficulty, jdEntity.EstimatedWeeks, jdEntity.CreatedAt);

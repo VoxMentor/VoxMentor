@@ -36,6 +36,7 @@ public class GetReadinessHandler : IRequestHandler<GetReadinessQuery, ApiRespons
         var skillWeights = await _db.JdSkillWeights
             .AsNoTracking()
             .Where(sw => sw.JobDescriptionId == jd.Id)
+            .Select(sw => new SkillWeightData(sw.SkillName, sw.Weight, sw.IsTechnical))
             .ToListAsync(cancellationToken);
 
         var concepts = await _db.Concepts
