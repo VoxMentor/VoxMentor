@@ -38,7 +38,7 @@ public class GetMasteryHandler : IRequestHandler<GetMasteryQuery, ApiResponse<Ma
             throw new UnauthorizedAccessException("User must be authenticated to view mastery.");
         }
 
-        var cacheKey = $"mastery:{userId}";
+        var cacheKey = ApplicationCacheService.VersionedKey(_cache, userId, "mastery");
         var cached = ApplicationCacheService.GetT<MasteryProfileDto>(_cache, cacheKey);
         if (cached is not null)
             return ApiResponse<MasteryProfileDto>.SuccessResult(cached, "Retrieved from cache.");

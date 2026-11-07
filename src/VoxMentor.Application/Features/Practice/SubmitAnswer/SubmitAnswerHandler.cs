@@ -208,8 +208,9 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
 
         // Invalidate mastery + eligibility caches so the next read-through
         // request recomputes from the updated mastery instead of serving stale data.
-        ApplicationCacheService.Remove(_cache, $"mastery:{userId}");
-        ApplicationCacheService.Remove(_cache, $"eligible_concepts:{userId}");
+        // Bumping the per-user version guarantees a stale write from an in-flight
+        // read lands under the old version and is never served to later requests.
+        ApplicationCacheService.Invalidate(_cache, userId, "mastery", "eligible_concepts");
 
         var result = new SubmitAnswerResultDto(
             request.QuestionId,

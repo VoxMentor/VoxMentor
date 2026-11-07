@@ -50,7 +50,9 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
         // Cache the raw JD data separately from the derived readiness results so a
         // mastery change never serves a stale readiness score — readiness is
         // recomputed from the student's current mastery on every request.
-        var cacheKey = $"jd:{userId}:{request.JdId}";
+        // Versioned key prevents a stale write from an in-flight read from
+        // repopulating the cache after invalidation bumps the version.
+        var cacheKey = ApplicationCacheService.VersionedKey(_cache, userId, $"jd:{request.JdId}");
         var snapshot = ApplicationCacheService.GetT<JdSnapshot>(_cache, cacheKey);
         JdData? jd = null;
         List<JdSkillWeight>? skillWeights = null;

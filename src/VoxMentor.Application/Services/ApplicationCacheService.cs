@@ -55,4 +55,51 @@ public static class ApplicationCacheService
         if (cache is null) return;
         try { cache.Remove(key); } catch (Exception ex) { OnFailure?.Invoke(ex); }
     }
+
+    /// <summary>Gets the per-user cache version. Returns 0 when unset or on failure.</summary>
+    public static int GetVersion(IDistributedCache? cache, string userId)
+    {
+        if (cache is null) return 0;
+        try
+        {
+            var cached = cache.GetString($"cache_version:{userId}");
+            return cached is null ? 0 : int.Parse(cached);
+        }
+        catch
+        {
+            // Treat any failure as version 0 — degrades to unversioned keys.
+            return 0;
+        }
+    }
+
+    /// <summary>Builds a per-user versioned cache key so an in-flight read from
+    /// before a mastery update cannot repopulate the current key after the
+    //  version has been bumped. Writes land under the version current at write
+    //  time; invalidation bumps the version, orphaning all old-version keys.</summary>
+    public static string VersionedKey(IDistributedCache? cache, string userId, string key)
+    {
+        var version = GetVersion(cache, userId);
+        return $"{key}:{userId}:{version}";
+    }
+
+    /// <summary>Invalidates all versioned cache entries for a user by removing
+    //  the keys at the current version and bumping the version. Stale writes
+    //  from in-flight reads land under the old version and are never read again.</summary>
+    public static void Invalidate(IDistributedCache? cache, string userId, params string[] keys)
+    {
+        if (cache is null) return;
+        try
+        {
+            var version = GetVersion(cache, userId);
+            foreach (var key in keys)
+            {
+                cache.Remove($"{key}:{userId}:{version}");
+            }
+            cache.SetString($"cache_version:{userId}", (version + 1).ToString());
+        }
+        catch (Exception ex)
+        {
+            OnFailure?.Invoke(ex);
+        }
+    }
 }

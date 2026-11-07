@@ -163,10 +163,11 @@ public class SubmitCodeHandlerTests
             Respond = _ => [Case(false, expected: "10", actual: "20")]
         };
 
-        // Populate a single cache with both per-user entries.
+        // Populate a single cache with both per-user entries at version 0.
         var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
-        cache.SetString("mastery:user-1", "stale-mastery");
-        cache.SetString("eligible_concepts:user-1", "stale-eligibility");
+        cache.SetString("cache_version:user-1", "0");
+        cache.SetString("mastery:user-1:0", "stale-mastery");
+        cache.SetString("eligible_concepts:user-1:0", "stale-eligibility");
 
         var handler = CreateHandler(db, exec: exec, publisher: publisher, cache: cache);
 
@@ -175,9 +176,9 @@ public class SubmitCodeHandlerTests
 
         Assert.False(response.Data!.IsCorrect);
 
-        // Both entries must be absent after invalidation.
-        Assert.Null(cache.GetString("mastery:user-1"));
-        Assert.Null(cache.GetString("eligible_concepts:user-1"));
+        // Both entries must be absent after invalidation (version bumped + old keys removed).
+        Assert.Null(cache.GetString("mastery:user-1:0"));
+        Assert.Null(cache.GetString("eligible_concepts:user-1:0"));
 
         var mastery = await db.StudentMasteries.SingleAsync();
         var submission = await db.CodeSubmissions.SingleAsync();
