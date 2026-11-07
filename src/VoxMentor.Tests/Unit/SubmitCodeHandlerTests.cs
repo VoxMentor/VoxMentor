@@ -180,7 +180,6 @@ public class SubmitCodeHandlerTests
         Assert.Null(cache.GetString("mastery:user-1:0"));
         Assert.Null(cache.GetString("eligible_concepts:user-1:0"));
 
-        var mastery = await db.StudentMasteries.SingleAsync();
         var submission = await db.CodeSubmissions.SingleAsync();
         Assert.Equal(SubmissionStatus.WrongAnswer, submission.Status);
     }

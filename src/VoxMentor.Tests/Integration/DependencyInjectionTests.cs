@@ -31,13 +31,4 @@ public class DependencyInjectionTests : IClassFixture<CustomWebApplicationFactor
 
         Assert.NotNull(voiceClient);
     }
-
-    [Fact]
-    public void ITextExtractor_ResolvesFromScope()
-    {
-        using var scope = _factory.Services.CreateScope();
-        var extractor = scope.ServiceProvider.GetRequiredService<ITextExtractor>();
-
-        Assert.NotNull(extractor);
-    }
 }

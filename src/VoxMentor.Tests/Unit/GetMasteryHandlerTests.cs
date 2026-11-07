@@ -4,7 +4,9 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using System.Linq;
 using System.Threading;
+using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
+using VoxMentor.Application.Features.Jd.GetJd;
 using VoxMentor.Application.Features.Practice.GetMastery;
 using VoxMentor.Domain.Entities;
 
@@ -70,6 +72,28 @@ public class GetMasteryHandlerTests
             LastPracticedAt = DateTime.UtcNow
         });
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>Seeds a JD for the given user.</summary>
+    private static async Task<JobDescription> SeedJdAsync(
+        Infrastructure.Persistence.ApplicationDbContext db,
+        string userId,
+        int estimatedWeeks = 4)
+    {
+        var jd = new JobDescription
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            CompanyName = "Amazon",
+            Role = "SDE-1",
+            RawText = "Amazon is hiring...",
+            Difficulty = "Medium",
+            EstimatedWeeks = estimatedWeeks,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.JobDescriptions.Add(jd);
+        await db.SaveChangesAsync();
+        return jd;
     }
 
     /// <summary>Builds a handler over the given context with an optional current-user fake.</summary>
@@ -265,5 +289,63 @@ public class GetMasteryHandlerTests
         Assert.True(second.Success);
         Assert.Equal(1, second.Data.MasteredCount);
         Assert.Equal(0.9f, second.Data.Concepts.Single().MasteryProbability);
+    }
+
+    /// <summary>Cache that throws on every Get and Set, simulating Redis unavailable.</summary>
+    private sealed class FailingCache : IDistributedCache
+    {
+        public byte[]? Get(string key) => throw new InvalidOperationException("Redis down");
+
+        public Task<byte[]?> GetAsync(string key, CancellationToken token = default) =>
+            throw new InvalidOperationException("Redis down");
+
+        public void Refresh(string key) => throw new InvalidOperationException("Redis down");
+
+        public Task RefreshAsync(string key, CancellationToken token = default) =>
+            throw new InvalidOperationException("Redis down");
+
+        public void Remove(string key) => throw new InvalidOperationException("Redis down");
+
+        public Task RemoveAsync(string key, CancellationToken token = default) =>
+            throw new InvalidOperationException("Redis down");
+
+        public void Set(string key, byte[] value, DistributedCacheEntryOptions options) =>
+            throw new InvalidOperationException("Redis down");
+
+        public Task SetAsync(string key, byte[] value, DistributedCacheEntryOptions options, CancellationToken token = default) =>
+            throw new InvalidOperationException("Redis down");
+    }
+
+    /// <summary>Verifies GetMasteryHandler returns results from the database
+    /// when the cache throws on both Get and Set (Redis unavailable fallback).</summary>
+    [Fact]
+    public async Task Handle_CacheUnavailable_ReturnsDatabaseResultWithoutThrowing()
+    {
+        await using var db = CreateDb();
+        var concept = await SeedConceptAsync(db, "Recursion");
+        await SeedMasteryAsync(db, "user-1", concept.Id, masteryProbability: 0.9f);
+
+        var handler = new GetMasteryHandler(db, new FakeCurrentUserService(), new FailingCache());
+
+        var response = await handler.Handle(new GetMasteryQuery(), CancellationToken.None);
+
+        Assert.True(response.Success);
+        Assert.Equal(1, response.Data!.MasteredCount);
+        Assert.Equal(0.9f, response.Data.Concepts.Single().MasteryProbability);
+    }
+
+    /// <summary>Verifies GetJdHandler returns results from the database
+    /// when the cache throws on both Get and Set (Redis unavailable fallback).</summary>
+    [Fact]
+    public async Task GetJdHandler_CacheUnavailable_ReturnsDatabaseResultWithoutThrowing()
+    {
+        await using var db = CreateDb();
+        var jd = await SeedJdAsync(db, "user-1");
+        var handler = new GetJdHandler(db, new FakeCurrentUserService(), new FailingCache());
+
+        var response = await handler.Handle(new GetJdQuery(jd.Id), CancellationToken.None);
+
+        Assert.True(response.Success);
+        Assert.Equal(jd.Id, response.Data!.JdId);
     }
 }

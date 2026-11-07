@@ -103,24 +103,7 @@ public static class DependencyInjection
         // #151: PDF text extraction runs in an isolated worker process with
         // OS-enforced memory/time limits (CodeRabbit finding). The worker exe
         // is copied to the output dir by the Infrastructure build target.
-        // If the worker is unavailable (e.g. not copied in a given deploy),
-        // fall back to a resilient extractor so DI resolution never throws:
-        // .txt still extracts in-process, .pdf throws a ValidationException
-        // that AnalyzeResumeHandler converts to a 400 instead of a 500.
-        services.AddScoped<ITextExtractor>(sp =>
-        {
-            try
-            {
-                return new Services.PdfPigTextExtractor();
-            }
-            catch (InvalidOperationException)
-            {
-                // Worker missing is the ctor's only failure mode — fall back so
-                // DI resolution never throws. Any other construction error
-                // propagates instead of being masked behind the fallback.
-                return new PdfPigTextExtractor.FallbackTextExtractor();
-            }
-        });
+        services.AddScoped<ITextExtractor, PdfPigTextExtractor>();
 
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -160,13 +143,13 @@ public static class DependencyInjection
             options.Configuration = redisConnectionString;
             // Bound outage-path latency so cache reads/writes cannot hold up
             // database fallback when Redis is down. ConnectTimeout limits the
-            // initial connection attempt; SyncTimeout caps synchronous command
-            // waits; ResponseTimeout caps async command waits. AbortOnConnectFail
-            // stays false so a down Redis never blocks startup.
+            // initial connection attempt; SyncTimeout caps command waits (sync and
+            // async via the default AsyncTimeout). AbortOnConnectFail stays false
+            // so a down Redis never blocks startup.
             var cacheOptions = ConfigurationOptions.Parse(redisConnectionString);
+            cacheOptions.AbortOnConnectFail = false;
             cacheOptions.ConnectTimeout = 2000;
             cacheOptions.SyncTimeout = 1000;
-            cacheOptions.ResponseTimeout = 1000;
             options.ConfigurationOptions = cacheOptions;
         });
 

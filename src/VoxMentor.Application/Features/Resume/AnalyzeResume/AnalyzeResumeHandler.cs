@@ -82,11 +82,6 @@ public class AnalyzeResumeHandler : IRequestHandler<AnalyzeResumeCommand, ApiRes
         {
             throw;
         }
-        catch (ServiceUnavailableException)
-        {
-            // Worker unavailable — surface as HTTP 503, not an invalid-upload 400.
-            throw;
-        }
         catch (Exception ex)
         {
             // Corrupt / scanned / otherwise unreadable PDF → 400, never 500.

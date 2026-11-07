@@ -2,10 +2,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
+using System.Collections.Generic;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
-using VoxMentor.Application.Services;
 using VoxMentor.Application.Features.Jd.UploadJd;
 using VoxMentor.Domain.Entities;
 
@@ -300,8 +300,13 @@ public class UploadJdHandlerTests
         await using var db = CreateDb();
         var userId = "user-1";
 
-        // Populate the cache with a stale snapshot.
-        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+        // Recording cache that logs Remove calls so we can verify the handler
+        // invalidates the correct key.
+        var removedKeys = new List<string>();
+        var innerCache = new MemoryDistributedCache(
+            Options.Create(new MemoryDistributedCacheOptions()));
+        var cache = new RecordingDistributedCache(innerCache, removedKeys);
+
         var handler = CreateHandler(db, cache: cache);
 
         // Seed concepts so heuristic finds skills.
@@ -312,12 +317,43 @@ public class UploadJdHandlerTests
 
         Assert.True(response.Success);
 
-        // Pre-populate the cache at the uploaded JD's key, then verify Remove
-        // (called by the handler's invalidation path) clears it.
-        cache.SetString($"jd:{userId}:{response.Data.JdId}", "stale-snapshot");
-        Assert.Equal("stale-snapshot", cache.GetString($"jd:{userId}:{response.Data.JdId}"));
+        // The handler's invalidation path must call Remove on the uploaded JD's
+        // cache key (format: jd:{JdId}:{userId}:{version}).
+        Assert.Contains($"jd:{response.Data.JdId}:{userId}:0", removedKeys);
+    }
 
-        ApplicationCacheService.Remove(cache, $"jd:{userId}:{response.Data.JdId}");
-        Assert.Null(cache.GetString($"jd:{userId}:{response.Data.JdId}"));
+    /// <summary>Distributed cache wrapper that records removed keys.</summary>
+    private sealed class RecordingDistributedCache : IDistributedCache
+    {
+        private readonly IDistributedCache _inner;
+        private readonly List<string> _removedKeys;
+
+        public RecordingDistributedCache(IDistributedCache inner, List<string> removedKeys)
+        {
+            _inner = inner;
+            _removedKeys = removedKeys;
+        }
+
+        public byte[]? Get(string key) => _inner.Get(key);
+        public Task<byte[]?> GetAsync(string key, CancellationToken token = default) =>
+            _inner.GetAsync(key, token);
+        public void Refresh(string key) => _inner.Refresh(key);
+        public Task RefreshAsync(string key, CancellationToken token = default) =>
+            _inner.RefreshAsync(key, token);
+        public void Remove(string key)
+        {
+            _removedKeys.Add(key);
+            _inner.Remove(key);
+        }
+        public Task RemoveAsync(string key, CancellationToken token = default)
+        {
+            _removedKeys.Add(key);
+            return _inner.RemoveAsync(key, token);
+        }
+        public void Set(string key, byte[] value, DistributedCacheEntryOptions options) =>
+            _inner.Set(key, value, options);
+        public Task SetAsync(string key, byte[] value, DistributedCacheEntryOptions options,
+            CancellationToken token = default) =>
+            _inner.SetAsync(key, value, options, token);
     }
 }

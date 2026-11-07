@@ -139,24 +139,4 @@ public class PdfPigTextExtractor : ITextExtractor
             try { if (File.Exists(tempInput)) File.Delete(tempInput); } catch { }
         }
     }
-
-    /// <summary>
-    /// Fallback <see cref="ITextExtractor"/> used when the PDF worker cannot be
-    /// constructed (worker exe missing). TXT files still extract in-process;
-    /// PDFs throw a <see cref="ServiceUnavailableException"/> that
-    /// <see cref="AnalyzeResumeHandler"/> lets surface as HTTP 503 instead of an
-    /// unhandled DI-resolution 500 or an invalid-upload 400.
-    /// </summary>
-    internal sealed class FallbackTextExtractor : ITextExtractor
-    {
-        public Task<string> ExtractAsync(Stream stream, string extension, CancellationToken cancellationToken = default)
-        {
-            if (extension.Equals(".txt", StringComparison.OrdinalIgnoreCase))
-            {
-                return PdfPigTextExtractor.ExtractTxt(stream, cancellationToken);
-            }
-
-            throw new ServiceUnavailableException("PDF extraction worker is unavailable — .pdf resumes cannot be processed.");
-        }
-    }
 }
