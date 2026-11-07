@@ -6,10 +6,13 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Pgvector.EntityFrameworkCore;
 using StackExchange.Redis;
 using VoxMentor.Application.Common.Interfaces;
+using VoxMentor.Application.Services;
 using VoxMentor.Domain.Entities;
 using VoxMentor.Infrastructure.Authentication;
 using VoxMentor.Infrastructure.Persistence;
@@ -97,11 +100,10 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(60);
         });
         services.AddScoped<ICurrentTokenService, CurrentTokenService>();
-
         // #151: PDF text extraction runs in an isolated worker process with
         // OS-enforced memory/time limits (CodeRabbit finding). The worker exe
         // is copied to the output dir by the Infrastructure build target.
-        services.AddScoped<ITextExtractor>(sp => new Services.PdfPigTextExtractor());
+        services.AddScoped<ITextExtractor, PdfPigTextExtractor>();
 
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -125,9 +127,6 @@ public static class DependencyInjection
             options.AbortOnConnectFail = false;
             return ConnectionMultiplexer.Connect(options);
         });
-
-        // #151: Dedicated rate limiter for resume analysis — 5 analyses per user per minute,
-        // shared across API instances via Redis. Separate from other IRateLimiter consumers.
         services.AddSingleton<IRateLimiter>(sp =>
         {
             var redis = sp.GetRequiredService<IConnectionMultiplexer>();
@@ -135,6 +134,23 @@ public static class DependencyInjection
                 redis,
                 limit: 5,
                 window: TimeSpan.FromMinutes(1));
+        });
+        // Distributed cache backing the three read-through handlers, backed by the
+        // same Redis connection configuration as the rate limiter (#127). Falls back
+        // gracefully if Redis is unavailable; reads/writes are failure-tolerant.
+        services.AddStackExchangeRedisCache(options =>
+        {
+            options.Configuration = redisConnectionString;
+            // Bound outage-path latency so cache reads/writes cannot hold up
+            // database fallback when Redis is down. ConnectTimeout limits the
+            // initial connection attempt; SyncTimeout caps command waits (sync and
+            // async via the default AsyncTimeout). AbortOnConnectFail stays false
+            // so a down Redis never blocks startup.
+            var cacheOptions = ConfigurationOptions.Parse(redisConnectionString);
+            cacheOptions.AbortOnConnectFail = false;
+            cacheOptions.ConnectTimeout = 2000;
+            cacheOptions.SyncTimeout = 1000;
+            options.ConfigurationOptions = cacheOptions;
         });
 
         services.AddAuthentication(options =>

@@ -1,3 +1,4 @@
+using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Services;
 using VoxMentor.Domain.Entities;
 
@@ -19,14 +20,8 @@ public class ReadinessCalculatorTests
         Category = "Data Structures"
     };
 
-    private static JdSkillWeight MakeWeight(string skillName, float weight) => new()
-    {
-        Id = Guid.NewGuid(),
-        JobDescriptionId = Guid.NewGuid(),
-        SkillName = skillName,
-        Weight = weight,
-        IsTechnical = true
-    };
+    private static SkillWeightData MakeWeight(string skillName, float weight) => new(
+        skillName, weight, IsTechnical: true);
 
     private static StudentMastery MakeMastery(Guid conceptId, float probability) => new()
     {
@@ -43,7 +38,7 @@ public class ReadinessCalculatorTests
     public void Compute_NoSkillWeights_ReturnsZeroScoreAndEmptyLists()
     {
         var result = ReadinessCalculator.Compute(
-            Array.Empty<JdSkillWeight>(),
+            Array.Empty<SkillWeightData>(),
             new[] { MakeConcept("DP") },
             new Dictionary<Guid, StudentMastery>(),
             estimatedWeeks: 4);

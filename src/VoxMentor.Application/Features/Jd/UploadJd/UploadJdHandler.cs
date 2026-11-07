@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
@@ -26,12 +27,14 @@ public class UploadJdHandler : IRequestHandler<UploadJdCommand, ApiResponse<Uplo
     private readonly IApplicationDbContext _db;
     private readonly IJdParseService _jdParser;
     private readonly ICurrentUserService _currentUser;
+    private readonly IDistributedCache _cache;
 
-    public UploadJdHandler(IApplicationDbContext db, IJdParseService jdParser, ICurrentUserService currentUser)
+    public UploadJdHandler(IApplicationDbContext db, IJdParseService jdParser, ICurrentUserService currentUser, IDistributedCache cache)
     {
         _db = db;
         _jdParser = jdParser;
         _currentUser = currentUser;
+        _cache = cache;
     }
 
     /// <exception cref="UnauthorizedAccessException">No authenticated user.</exception>
@@ -127,6 +130,13 @@ public class UploadJdHandler : IRequestHandler<UploadJdCommand, ApiResponse<Uplo
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        // Invalidate the cached JD snapshot so the next GetJd request fetches
+        // the newly uploaded JD instead of serving stale data.
+        // Bumping the per-user, per-scope version guarantees a stale write from
+        // an in-flight read lands under the old version and is never served.
+        await ApplicationCacheService.InvalidateAsync(_cache, userId, "jd", CancellationToken.None, jd.Id.ToString());
+        await ApplicationCacheService.InvalidateAsync(_cache, userId, "readiness", CancellationToken.None, "current");
 
         var dto = new UploadJdResultDto
         {

@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Features.Practice.SubmitAnswer;
 using VoxMentor.Application.Services;
@@ -85,13 +88,15 @@ public class SubmitAnswerHandlerTests
     private static SubmitAnswerHandler CreateHandler(
         Infrastructure.Persistence.ApplicationDbContext db,
         FakeCurrentUserService? user = null,
-        FakeEventPublisher? publisher = null)
+        FakeEventPublisher? publisher = null,
+        IDistributedCache? cache = null)
     {
         return new SubmitAnswerHandler(
             db,
             new BktEngine(),
             user ?? new FakeCurrentUserService(),
-            publisher ?? new FakeEventPublisher());
+            publisher ?? new FakeEventPublisher(),
+            cache ?? new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
     }
 
     [Fact]
@@ -116,6 +121,39 @@ public class SubmitAnswerHandlerTests
         Assert.Equal("user-1", stored.UserId);
         Assert.Equal(question.ConceptId, stored.ConceptId);
         Assert.NotNull(stored.LastPracticedAt);
+    }
+
+    [Fact]
+    public async Task Handle_CorrectAnswer_InvalidatesMasteryAndEligibilityCaches()
+    {
+        using var db = CreateDb();
+        var question = await SeedQuestionAsync(db);
+        var publisher = new FakeEventPublisher();
+
+        // Populate cache entries at version 0, scoped by cache type (mastery, eligible_concepts).
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+        cache.SetString("cache_version:mastery:user-1", "0");
+        cache.SetString("cache_version:eligible_concepts:user-1", "0");
+        cache.SetString("mastery:user-1:mastery:0", "stale-mastery");
+        cache.SetString("eligible_concepts:user-1:eligible_concepts:0", "stale-eligibility");
+
+        var handler = CreateHandler(db, publisher: publisher, cache: cache);
+
+        var response = await handler.Handle(new SubmitAnswerCommand(question.Id, true), CancellationToken.None);
+
+        Assert.True(response.Success);
+
+        // Both entries must be absent after invalidation (version bumped + old keys removed).
+        Assert.Null(cache.GetString("mastery:user-1:mastery:0"));
+        Assert.Null(cache.GetString("eligible_concepts:user-1:eligible_concepts:0"));
+
+        // Version keys must advance from 0 to 1 for both scopes.
+        Assert.Equal("1", cache.GetString("cache_version:mastery:user-1"));
+        Assert.Equal("1", cache.GetString("cache_version:eligible_concepts:user-1"));
+
+        var stored = await db.StudentMasteries.FirstAsync();
+        Assert.Equal("user-1", stored.UserId);
+        Assert.Equal(question.ConceptId, stored.ConceptId);
     }
 
     [Fact]
@@ -358,7 +396,7 @@ public class SubmitAnswerHandlerTests
         var flaky = new FlakyDbContext(db, saveNumber =>
             saveNumber == 1 ? new DbUpdateConcurrencyException("simulated conflict") : null);
         var publisher = new FakeEventPublisher();
-        var handler = new SubmitAnswerHandler(db: flaky, bktEngine: new BktEngine(), currentUser: new FakeCurrentUserService(), eventPublisher: publisher);
+        var handler = new SubmitAnswerHandler(db: flaky, bktEngine: new BktEngine(), currentUser: new FakeCurrentUserService(), eventPublisher: publisher, cache: new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
 
         var response = await handler.Handle(new SubmitAnswerCommand(question.Id, true), CancellationToken.None);
 
@@ -383,7 +421,7 @@ public class SubmitAnswerHandlerTests
 
         var flaky = new FlakyDbContext(db, saveNumber =>
             saveNumber == 1 ? new DbUpdateException("duplicate key value violates unique constraint") : null);
-        var handler = new SubmitAnswerHandler(db: flaky, bktEngine: new BktEngine(), currentUser: new FakeCurrentUserService(), eventPublisher: new FakeEventPublisher());
+        var handler = new SubmitAnswerHandler(db: flaky, bktEngine: new BktEngine(), currentUser: new FakeCurrentUserService(), eventPublisher: new FakeEventPublisher(), cache: new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
 
         var response = await handler.Handle(new SubmitAnswerCommand(question.Id, false), CancellationToken.None);
 
@@ -419,9 +457,11 @@ public class SubmitAnswerHandlerTests
         // the concurrency retry path instead of overwriting the winner's update.
         var saveBarrier = new AsyncBarrier(participants: 2);
         var handler1 = new SubmitAnswerHandler(
-            new SaveBarrierDbContext(db1, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher1);
+            new SaveBarrierDbContext(db1, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher1,
+            new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
         var handler2 = new SubmitAnswerHandler(
-            new SaveBarrierDbContext(db2, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher2);
+            new SaveBarrierDbContext(db2, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher2,
+            new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
 
         var task1 = handler1.Handle(new SubmitAnswerCommand(questionId, true), CancellationToken.None);
         var task2 = handler2.Handle(new SubmitAnswerCommand(questionId, false), CancellationToken.None);
@@ -469,9 +509,11 @@ public class SubmitAnswerHandlerTests
         // check, then race the mastery write + claim. Exactly one may win.
         var saveBarrier = new AsyncBarrier(participants: 2);
         var handler1 = new SubmitAnswerHandler(
-            new SaveBarrierDbContext(db1, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher1);
+            new SaveBarrierDbContext(db1, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher1,
+            new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
         var handler2 = new SubmitAnswerHandler(
-            new SaveBarrierDbContext(db2, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher2);
+            new SaveBarrierDbContext(db2, saveBarrier), new BktEngine(), new FakeCurrentUserService(), publisher2,
+            new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
 
         var task1 = handler1.Handle(new SubmitAnswerCommand(questionId, true, submissionId), CancellationToken.None);
         var task2 = handler2.Handle(new SubmitAnswerCommand(questionId, true, submissionId), CancellationToken.None);

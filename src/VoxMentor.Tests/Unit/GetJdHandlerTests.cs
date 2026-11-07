@@ -1,4 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
+using System.Linq;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Features.Jd.GetJd;
@@ -103,9 +107,13 @@ public class GetJdHandlerTests
 
     private static GetJdHandler CreateHandler(
         Infrastructure.Persistence.ApplicationDbContext db,
-        FakeCurrentUserService? user = null)
+        FakeCurrentUserService? user = null,
+        IDistributedCache? cache = null)
     {
-        return new GetJdHandler(db, user ?? new FakeCurrentUserService());
+        return new GetJdHandler(
+            db,
+            user ?? new FakeCurrentUserService(),
+            cache ?? new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
     }
 
     [Fact]
@@ -323,5 +331,37 @@ public class GetJdHandlerTests
         Assert.Equal("DP", gap.Topic);
         Assert.Equal(0.3f, gap.Severity, 3); // 0.6 * (1 - 0.5)
         Assert.False(string.IsNullOrWhiteSpace(gap.Recommendation));
+    }
+
+    /// <summary>Verifies that a second request for the same JD returns cached JD data
+    /// without rereading JD data or skill weights from the database.</summary>
+    [Fact]
+    public async Task Handle_RepeatedRequest_ReturnsCachedJdWithoutRereadingDb()
+    {
+        await using var db = CreateDb();
+        var jd = await SeedJdAsync(db, "user-1");
+        await SeedSkillWeightAsync(db, jd.Id, "Python", 0.7f);
+
+        // Same cache instance for both requests.
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+        var handler = CreateHandler(db, cache: cache);
+
+        // First call populates the cache.
+        var first = await handler.Handle(new GetJdQuery(jd.Id), CancellationToken.None);
+        Assert.True(first.Success);
+        Assert.Equal("Amazon", first.Data!.CompanyName);
+        Assert.Equal(0.7f, first.Data.TechnicalSkills["Python"]);
+
+        // Change the JD in the database. The cached response should not change.
+        var stored = await db.JobDescriptions.FirstAsync(j => j.Id == jd.Id);
+        stored.CompanyName = "Changed Company";
+        await db.SaveChangesAsync();
+
+        // Second call with the same cache must return the cached JD fields.
+        var second = await handler.Handle(new GetJdQuery(jd.Id), CancellationToken.None);
+        Assert.True(second.Success);
+        Assert.Equal("Amazon", second.Data.CompanyName); // From cache, not DB
+        Assert.Equal("SDE-1", second.Data.Role);
+        Assert.Equal(0.7f, second.Data.TechnicalSkills["Python"]);
     }
 }

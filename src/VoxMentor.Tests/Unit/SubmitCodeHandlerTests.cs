@@ -1,5 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Features.Practice.SubmitCode;
@@ -96,7 +99,8 @@ public class SubmitCodeHandlerTests
         FakeCodeExecService? exec = null,
         FakeCodeEvaluator? evaluator = null,
         FakeEventPublisher? publisher = null,
-        IPlagiarismDetector? plagiarism = null)
+        IPlagiarismDetector? plagiarism = null,
+        IDistributedCache? cache = null)
         => new(
             db,
             new BktEngine(),
@@ -106,7 +110,8 @@ public class SubmitCodeHandlerTests
             evaluator ?? new FakeCodeEvaluator(),
             publisher ?? new FakeEventPublisher(),
             plagiarism ?? new FakePlagiarismDetector(),
-            NullLogger<SubmitCodeHandler>.Instance);
+            NullLogger<SubmitCodeHandler>.Instance,
+            cache ?? new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
 
     private static CodeExecutionCaseResult Case(bool passed, string expected = "ok", string actual = "ok",
         bool timedOut = false, string status = "Finished", string stderr = "",
@@ -145,6 +150,43 @@ public class SubmitCodeHandlerTests
         Assert.Equal(1, mastery.CorrectAttempts);
         Assert.Equal(1, publisher.PublishedCount);
         Assert.True(response.Data.NewMastery > response.Data.PreviousMastery);
+    }
+
+    [Fact]
+    public async Task Handle_GradedSubmission_InvalidatesMasteryAndEligibilityCaches()
+    {
+        await using var db = CreateDb();
+        var question = await SeedQuestionAsync(db, ["|10"]);
+        var publisher = new FakeEventPublisher();
+        var exec = new FakeCodeExecService
+        {
+            Respond = _ => [Case(false, expected: "10", actual: "20")]
+        };
+
+        // Populate cache entries at version 0, scoped by cache type (mastery, eligible_concepts).
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+        cache.SetString("cache_version:mastery:user-1", "0");
+        cache.SetString("cache_version:eligible_concepts:user-1", "0");
+        cache.SetString("mastery:user-1:mastery:0", "stale-mastery");
+        cache.SetString("eligible_concepts:user-1:eligible_concepts:0", "stale-eligibility");
+
+        var handler = CreateHandler(db, exec: exec, publisher: publisher, cache: cache);
+
+        var response = await handler.Handle(
+            new SubmitCodeCommand(question.Id, "print(20)", "python"), CancellationToken.None);
+
+        Assert.False(response.Data!.IsCorrect);
+
+        // Both entries must be absent after invalidation (version bumped + old keys removed).
+        Assert.Null(cache.GetString("mastery:user-1:mastery:0"));
+        Assert.Null(cache.GetString("eligible_concepts:user-1:eligible_concepts:0"));
+
+        // Version keys must advance from 0 to 1 for both scopes.
+        Assert.Equal("1", cache.GetString("cache_version:mastery:user-1"));
+        Assert.Equal("1", cache.GetString("cache_version:eligible_concepts:user-1"));
+
+        var submission = await db.CodeSubmissions.SingleAsync();
+        Assert.Equal(SubmissionStatus.WrongAnswer, submission.Status);
     }
 
     [Fact]
@@ -439,7 +481,8 @@ public class SubmitCodeHandlerTests
         // SubmitCode must replay, not apply BKT a second time.
         var answerPublisher = new FakeEventPublisher();
         var answerHandler = new Application.Features.Practice.SubmitAnswer.SubmitAnswerHandler(
-            db, new BktEngine(), new FakeCurrentUserService(), answerPublisher);
+            db, new BktEngine(), new FakeCurrentUserService(), answerPublisher,
+            new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
         var replay = await answerHandler.Handle(
             new Application.Features.Practice.SubmitAnswer.SubmitAnswerCommand(
                 question.Id, IsCorrect: false, CodeSubmissionId: submissionId),
