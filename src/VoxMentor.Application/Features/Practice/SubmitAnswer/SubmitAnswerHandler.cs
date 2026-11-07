@@ -211,9 +211,9 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
         // Bumping the per-user, per-scope version guarantees a stale write from
         // an in-flight read lands under the old version and is never served to
         // later requests. Other scopes (e.g. JD snapshots) are untouched.
-        await ApplicationCacheService.InvalidateAsync(_cache, userId, "mastery", cancellationToken, "mastery");
-        await ApplicationCacheService.InvalidateAsync(_cache, userId, "eligible_concepts", cancellationToken, "eligible_concepts");
-        await ApplicationCacheService.InvalidateAsync(_cache, userId, "readiness", cancellationToken, "readiness");
+        await ApplicationCacheService.InvalidateAsync(_cache, userId, "mastery", CancellationToken.None, "mastery");
+        await ApplicationCacheService.InvalidateAsync(_cache, userId, "eligible_concepts", CancellationToken.None, "eligible_concepts");
+        await ApplicationCacheService.InvalidateAsync(_cache, userId, "readiness", CancellationToken.None, "readiness");
 
         var result = new SubmitAnswerResultDto(
             request.QuestionId,
