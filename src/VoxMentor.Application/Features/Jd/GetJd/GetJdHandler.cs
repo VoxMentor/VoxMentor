@@ -17,6 +17,16 @@ namespace VoxMentor.Application.Features.Jd.GetJd;
 /// </summary>
 public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultDto>>
 {
+    /// <summary>Cached JD data (the JD row plus its skill weights). Readiness is computed fresh per request.</summary>
+    /// <remarks>
+    /// The snapshot stores primitive DTO fields, not EF Core entities, so the cache
+    /// contract is decoupled from the persistence model (M2).
+    /// Staleness: a deleted/edited JD is served from cache until the 300s TTL expires
+    /// (M3). Invalidation on JD write would be needed to tighten this window.
+    /// </remarks>
+    private sealed record JdData(Guid Id, string CompanyName, string Role, string Difficulty, int EstimatedWeeks, DateTime CreatedAt);
+    private sealed record JdSnapshot(JdData Jd, List<SkillWeightData> SkillWeights);
+
     private readonly IApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IDistributedCache _cache;
@@ -42,8 +52,11 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
             .AsNoTracking()
             .FirstOrDefaultAsync(j => j.Id == request.JdId, cancellationToken);
 
-        if (jd is null)
-            throw new NotFoundException("No job description found for the user.");
+            skillWeights = await _db.JdSkillWeights
+                .AsNoTracking()
+                .Where(sw => sw.JobDescriptionId == jdEntity.Id)
+                .Select(sw => new SkillWeightData(sw.SkillName, sw.Weight, sw.IsTechnical))
+                .ToListAsync(cancellationToken);
 
         var cacheKey = $"jd:{userId}:{request.JdId}";
         var cachedStatic = ApplicationCacheService.GetT<GetJdStaticDataDto>(_cache, cacheKey);

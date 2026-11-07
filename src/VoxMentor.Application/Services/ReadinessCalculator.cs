@@ -1,3 +1,4 @@
+using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Features.Practice.GetReadiness;
 using VoxMentor.Domain.Entities;
 
@@ -16,12 +17,12 @@ public static class ReadinessCalculator
     /// Weighted readiness score (0–100), per-skill breakdown, and gap list
     /// ordered by severity descending.
     /// </summary>
-    /// <param name="skillWeights">JD skill rows (typically AsNoTracking).</param>
+    /// <param name="skillWeights">JD skill weights (from cache or DB).</param>
     /// <param name="concepts">All concepts; matched to weights by name (first wins).</param>
     /// <param name="masteries">User's mastery rows keyed by concept id.</param>
     /// <param name="estimatedWeeks">The JD's own estimate, passed through untouched.</param>
     public static ReadinessDto Compute(
-        IReadOnlyList<JdSkillWeight> skillWeights,
+        IReadOnlyList<SkillWeightData> skillWeights,
         IReadOnlyList<Concept> concepts,
         IReadOnlyDictionary<Guid, StudentMastery> masteries,
         int estimatedWeeks)
