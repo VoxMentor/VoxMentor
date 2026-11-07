@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState, useRef, type FormEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   api,
@@ -8,6 +8,7 @@ import {
   type MasteryConcept,
   type QuestionDetail,
   type StudentQuestion,
+  type SubmitCodeResult,
 } from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Navbar from "@/components/Navbar";
@@ -15,6 +16,7 @@ import FetchError from "@/components/FetchError";
 import QuestionCard from "@/components/QuestionCard";
 import CodeEditor from "@/components/CodeEditor";
 import QuestionList from "@/components/QuestionList";
+import LanguageSelector from "@/components/LanguageSelector";
 
 /**
  * Rendered while question data is loading. Mirrors the 60% question / 40%
@@ -54,6 +56,83 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
   const [detailReload, setDetailReload] = useState(0);
   const [listReload, setListReload] = useState(0);
   const [concepts, setConcepts] = useState<MasteryConcept[]>([]);
+
+  // --- Code editor / submission state, scoped to the selected question ---
+  const [language, setLanguage] = useState("javascript");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitResult, setSubmitResult] = useState<SubmitCodeResult | null>(null);
+  const hasUserEdited = useRef(false);
+  const currentQuestionIdRef = useRef<string | undefined>(undefined);
+
+  // Separate drafts per language so changing language doesn't lose your work.
+  const [codeDrafts, setCodeDrafts] = useState<Record<string, string>>({});
+
+  // Pre-filled starter template per language.
+  const LANGUAGE_TEMPLATES: Record<string, string> = {
+    python: "def solve():\n    pass\n\nsolve()",
+    java: "class Solution {\n    public static void main(String[] args) {\n        // your code here\n    }\n}",
+    cpp: "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    // your code here\n    return 0;\n}",
+    javascript: "function solve() {\n    // your code here\n}\n\nsolve();",
+    csharp: "using System;\n\nclass Solution {\n    public static void Main(string[] args) {\n        // your code here\n    }\n}",
+    c: "#include <stdio.h>\n\nint main() {\n    // your code here\n    return 0;\n}",
+  };
+
+  // Current code value for the selected language + question.
+  const code = codeDrafts[language] ?? LANGUAGE_TEMPLATES[language] ?? "";
+
+  // Reset all editor state when the question changes (scoped to question).
+  useEffect(() => {
+    if (currentQuestionIdRef.current === selectedId) return;
+    currentQuestionIdRef.current = selectedId;
+    setLanguage("javascript");
+    setCodeDrafts({});
+    setSubmitResult(null);
+    setSubmitting(false);
+    hasUserEdited.current = false;
+  }, [selectedId]);
+
+  // Update code draft for the current language when the editor changes.
+  const updateCodeDraft = (newValue: string) => {
+    hasUserEdited.current = true;
+    setCodeDrafts((prev) => ({ ...prev, [language]: newValue }));
+  };
+
+  const handleLanguageChange = (newLanguage: string) => {
+    setLanguage(newLanguage);
+    // Keep current draft: don't overwrite it. The draft per language persists,
+    // so switching back restores your previous code for that language.
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!detail?.id || submitting) return;
+
+    const codeToSubmit = codeDrafts[language] ?? LANGUAGE_TEMPLATES[language] ?? "";
+    setSubmitting(true);
+    setSubmitResult(null);
+
+    try {
+      const result = await api.submitCode({
+        questionId: detail.id,
+        code: codeToSubmit,
+        language,
+      });
+      setSubmitting(false);
+      // Show the actual grading result: Status + IsCorrect (PascalCase from C# API)
+      setSubmitResult({
+        status: result.status,
+        isCorrect: result.isCorrect ?? false,
+        message: result.message ?? (result.status === "Accepted" ? "All test cases passed!" : "Submission received."),
+      });
+    } catch (err) {
+      setSubmitting(false);
+      setSubmitResult({
+        status: "error",
+        isCorrect: false,
+        message: err instanceof ApiError ? err.message : "Failed to submit code.",
+      });
+    }
+  };
 
   // --- Question detail state ---
   const detailKey = `${selectedId ?? ""}|${detailReload}`;
@@ -302,7 +381,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
         )}
       </section>
 
-      {/* Right: code editor placeholder (40%) */}
+      {/* Right: code editor + language selector + submit (40%) */}
       <section className="flex flex-col gap-4 min-w-0">
         {detailLoading && !detail ? (
           <div className="card h-full flex flex-col">
@@ -324,7 +403,78 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
         ) : detailError ? (
           <FetchError message={detailError} onRetry={retryDetail} />
         ) : detail ? (
-          <CodeEditor language="javascript" />
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3 h-full min-w-0">
+            <div className="card flex flex-col min-w-0 h-full">
+              <div className="p-4 bg-bg-light border-b border-border">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label
+                      htmlFor="language-selector"
+                      className="text-xs font-medium text-text-muted"
+                    >
+                      Language
+                    </label>
+                    <LanguageSelector value={language} onChange={handleLanguageChange} />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={submitting || !detail?.id}
+                    className="btn-primary text-sm px-4 py-2"
+                  >
+                    {submitting ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <svg
+                          className="animate-spin h-4 w-4"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                          />
+                        </svg>
+                        Submitting...
+                      </span>
+                    ) : (
+                      "Submit Code"
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 p-0 min-h-0">
+                <CodeEditor
+                  language={language}
+                  value={code}
+                  onChange={updateCodeDraft}
+                  height="100%"
+                />
+              </div>
+            </div>
+
+            {submitResult && (
+              <div
+                className={`p-3 rounded-[12px] text-sm ${
+                  submitResult.isCorrect
+                    ? "bg-green-50 border border-green-200 text-green-800"
+                    : submitResult.status === "error"
+                      ? "bg-red-50 border border-red-200 text-red-800"
+                      : "bg-amber-50 border border-amber-200 text-amber-800"
+                }`}
+              >
+                {submitResult.message}
+              </div>
+            )}
+          </form>
         ) : (
           <div className="card h-full flex flex-col items-center justify-center text-text-muted">
             <p className="text-sm">Select a question to open the editor.</p>

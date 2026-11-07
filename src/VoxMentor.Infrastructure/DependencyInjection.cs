@@ -111,6 +111,9 @@ public static class DependencyInjection
         services.AddHttpClient<CodeEmbeddingService>();
         services.AddScoped<IPlagiarismDetector, PlagiarismDetector>();
 
+        // Distributed cache (MemoryDistributedCache for dev/tests; Redis in prod if configured)
+        services.AddDistributedMemoryCache();
+
         // ponytail: Redis sliding window — shared across API instances, keys expire via PEXPIRE.
         // Fail-closed: Redis down → error, not silent bypass. InMemory impl stays for unit tests only.
         var redisConnectionString = configuration.GetConnectionString("Redis");

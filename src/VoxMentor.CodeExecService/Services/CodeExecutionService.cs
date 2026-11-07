@@ -14,7 +14,8 @@ public class CodeExecutionService
         62,  // Java
         54,  // C++
         63,  // JavaScript
-        51   // C#
+        51,  // C#
+        50   // C
     };
 
     /// <summary>Initializes the service with the Judge0 execution client.</summary>

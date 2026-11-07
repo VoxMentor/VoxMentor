@@ -210,6 +210,32 @@ export interface QuestionDetail {
   hiddenTestCaseCount: number;
 }
 
+// --- Code submission (#33): POST /v1/student/submit-code ---
+
+export interface SubmitCodeRequest {
+  questionId: string;
+  code: string;
+  language: string;
+}
+
+export interface SubmitCodeResult {
+  submissionId?: string;
+  status: "Accepted" | "WrongAnswer" | "Timeout" | "RuntimeError" | "Pending" | "error";
+  isCorrect?: boolean;
+  message?: string;
+  executionTimeMs?: number;
+  memoryUsageKb?: number;
+  testResults?: Array<{
+    testCaseIndex: number;
+    expected: string;
+    actual: string;
+    passed: boolean;
+  }>;
+  previousMastery?: number;
+  newMastery?: number;
+  masteryDelta?: number;
+}
+
 export interface AdminUser {
   id: string;
   email: string | null;
@@ -326,6 +352,12 @@ export const api = {
   },
 
   question: (id: string) => request<QuestionDetail>(`/v1/questions/${encodeURIComponent(id)}`),
+
+  submitCode: (data: SubmitCodeRequest) =>
+    request<SubmitCodeResult>("/v1/student/submit-code", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 
   // --- admin (#105): SuperAdmin-only via ManageRoles policy; 401/403 enforced server-side ---
   adminUsers: (page = 1, pageSize = 50) =>
