@@ -210,7 +210,7 @@ public class SubmitAnswerHandler : IRequestHandler<SubmitAnswerCommand, ApiRespo
         // request recomputes from the updated mastery instead of serving stale data.
         // Bumping the per-user version guarantees a stale write from an in-flight
         // read lands under the old version and is never served to later requests.
-        ApplicationCacheService.Invalidate(_cache, userId, "mastery", "eligible_concepts");
+        await ApplicationCacheService.InvalidateAsync(_cache, userId, cancellationToken, "mastery", "eligible_concepts");
 
         var result = new SubmitAnswerResultDto(
             request.QuestionId,

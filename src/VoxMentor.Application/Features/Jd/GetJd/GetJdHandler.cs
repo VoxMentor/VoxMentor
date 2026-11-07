@@ -52,8 +52,8 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
         // recomputed from the student's current mastery on every request.
         // Versioned key prevents a stale write from an in-flight read from
         // repopulating the cache after invalidation bumps the version.
-        var cacheKey = ApplicationCacheService.VersionedKey(_cache, userId, $"jd:{request.JdId}");
-        var snapshot = ApplicationCacheService.GetT<JdSnapshot>(_cache, cacheKey);
+        var cacheKey = await ApplicationCacheService.VersionedKeyAsync(_cache, userId, $"jd:{request.JdId}", cancellationToken);
+        var snapshot = await ApplicationCacheService.GetTAsync<JdSnapshot>(_cache, cacheKey, cancellationToken);
         JdData? jd = null;
         List<SkillWeightData>? skillWeights = null;
         if (snapshot is not null)
@@ -78,7 +78,7 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
                 .ToListAsync(cancellationToken);
 
             jd = new JdData(jdEntity.Id, jdEntity.CompanyName, jdEntity.Role, jdEntity.Difficulty, jdEntity.EstimatedWeeks, jdEntity.CreatedAt);
-            ApplicationCacheService.SetT(_cache, cacheKey, new JdSnapshot(jd, skillWeights));
+            await ApplicationCacheService.SetTAsync(_cache, cacheKey, new JdSnapshot(jd, skillWeights), cancellationToken);
         }
 
         var concepts = await _db.Concepts

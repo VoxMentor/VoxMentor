@@ -40,8 +40,8 @@ public class GetEligibleConceptsHandler
             throw new UnauthorizedAccessException("User must be authenticated to view eligibility.");
         }
 
-        var cacheKey = ApplicationCacheService.VersionedKey(_cache, userId, "eligible_concepts");
-        var cached = ApplicationCacheService.GetT<EligibleConceptsDto>(_cache, cacheKey);
+        var cacheKey = await ApplicationCacheService.VersionedKeyAsync(_cache, userId, "eligible_concepts", cancellationToken);
+        var cached = await ApplicationCacheService.GetTAsync<EligibleConceptsDto>(_cache, cacheKey, cancellationToken);
         if (cached is not null)
             return ApiResponse<EligibleConceptsDto>.SuccessResult(cached, "Retrieved from cache.");
 
@@ -91,7 +91,7 @@ public class GetEligibleConceptsHandler
             .ToListAsync(cancellationToken);
 
         var dto = new EligibleConceptsDto { Eligible = eligible, AlmostEligible = almost };
-        ApplicationCacheService.SetT(_cache, cacheKey, dto);
+        await ApplicationCacheService.SetTAsync(_cache, cacheKey, dto, cancellationToken);
         return ApiResponse<EligibleConceptsDto>.SuccessResult(dto, "Eligibility retrieved successfully.");
     }
 }

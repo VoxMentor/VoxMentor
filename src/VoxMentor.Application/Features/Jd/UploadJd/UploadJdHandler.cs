@@ -135,7 +135,7 @@ public class UploadJdHandler : IRequestHandler<UploadJdCommand, ApiResponse<Uplo
         // the newly uploaded JD instead of serving stale data.
         // Bumping the per-user version guarantees a stale write from an in-flight
         // read lands under the old version and is never served.
-        ApplicationCacheService.Invalidate(_cache, userId, $"jd:{jd.Id}");
+        await ApplicationCacheService.InvalidateAsync(_cache, userId, cancellationToken, $"jd:{jd.Id}");
 
         var dto = new UploadJdResultDto
         {

@@ -33,6 +33,23 @@ public static class ApplicationCacheService
         }
     }
 
+    /// <summary>Cache-through read: returns <c>null</c> on a miss or any read failure.</summary>
+    public static async Task<T?> GetTAsync<T>(IDistributedCache? cache, string key, CancellationToken cancellationToken = default) where T : class
+    {
+        if (cache is null) return null;
+        try
+        {
+            var cached = await cache.GetStringAsync(key, cancellationToken);
+            return cached is null ? null : JsonSerializer.Deserialize<T>(cached);
+        }
+        catch (Exception ex)
+        {
+            // Treat any cache read failure as a miss — fall through to the DB.
+            OnFailure?.Invoke(ex);
+            return null;
+        }
+    }
+
     /// <summary>Cache-through write: tolerates failures without blocking the caller.</summary>
     public static void SetT<T>(IDistributedCache? cache, string key, T value) where T : class
     {
@@ -49,11 +66,34 @@ public static class ApplicationCacheService
         }
     }
 
+    /// <summary>Cache-through write: tolerates failures without blocking the caller.</summary>
+    public static async Task SetTAsync<T>(IDistributedCache? cache, string key, T value, CancellationToken cancellationToken = default) where T : class
+    {
+        if (cache is null) return;
+        try
+        {
+            await cache.SetStringAsync(key, JsonSerializer.Serialize(value),
+                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(CacheTtlSeconds) }, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // Tolerate cache write failures — the DB result is still returned.
+            OnFailure?.Invoke(ex);
+        }
+    }
+
     /// <summary>Invalidates a cache entry (tolerates failures).</summary>
     public static void Remove(IDistributedCache? cache, string key)
     {
         if (cache is null) return;
         try { cache.Remove(key); } catch (Exception ex) { OnFailure?.Invoke(ex); }
+    }
+
+    /// <summary>Invalidates a cache entry (tolerates failures).</summary>
+    public static async Task RemoveAsync(IDistributedCache? cache, string key, CancellationToken cancellationToken = default)
+    {
+        if (cache is null) return;
+        try { await cache.RemoveAsync(key, cancellationToken); } catch (Exception ex) { OnFailure?.Invoke(ex); }
     }
 
     /// <summary>Gets the per-user cache version. Returns 0 when unset or on failure.</summary>
@@ -63,6 +103,22 @@ public static class ApplicationCacheService
         try
         {
             var cached = cache.GetString($"cache_version:{userId}");
+            return cached is null ? 0 : int.Parse(cached);
+        }
+        catch
+        {
+            // Treat any failure as version 0 — degrades to unversioned keys.
+            return 0;
+        }
+    }
+
+    /// <summary>Gets the per-user cache version. Returns 0 when unset or on failure.</summary>
+    public static async Task<int> GetVersionAsync(IDistributedCache? cache, string userId, CancellationToken cancellationToken = default)
+    {
+        if (cache is null) return 0;
+        try
+        {
+            var cached = await cache.GetStringAsync($"cache_version:{userId}", cancellationToken);
             return cached is null ? 0 : int.Parse(cached);
         }
         catch
@@ -82,6 +138,16 @@ public static class ApplicationCacheService
         return $"{key}:{userId}:{version}";
     }
 
+    /// <summary>Builds a per-user versioned cache key so an in-flight read from
+    /// before a mastery update cannot repopulate the current key after the
+    //  version has been bumped. Writes land under the version current at write
+    //  time; invalidation bumps the version, orphaning all old-version keys.</summary>
+    public static async Task<string> VersionedKeyAsync(IDistributedCache? cache, string userId, string key, CancellationToken cancellationToken = default)
+    {
+        var version = await GetVersionAsync(cache, userId, cancellationToken);
+        return $"{key}:{userId}:{version}";
+    }
+
     /// <summary>Invalidates all versioned cache entries for a user by removing
     //  the keys at the current version and bumping the version. Stale writes
     //  from in-flight reads land under the old version and are never read again.</summary>
@@ -96,6 +162,27 @@ public static class ApplicationCacheService
                 cache.Remove($"{key}:{userId}:{version}");
             }
             cache.SetString($"cache_version:{userId}", (version + 1).ToString());
+        }
+        catch (Exception ex)
+        {
+            OnFailure?.Invoke(ex);
+        }
+    }
+
+    /// <summary>Invalidates all versioned cache entries for a user by removing
+    //  the keys at the current version and bumping the version. Stale writes
+    //  from in-flight reads land under the old version and are never read again.</summary>
+    public static async Task InvalidateAsync(IDistributedCache? cache, string userId, CancellationToken cancellationToken = default, params string[] keys)
+    {
+        if (cache is null) return;
+        try
+        {
+            var version = await GetVersionAsync(cache, userId, cancellationToken);
+            foreach (var key in keys)
+            {
+                await cache.RemoveAsync($"{key}:{userId}:{version}", cancellationToken);
+            }
+            await cache.SetStringAsync($"cache_version:{userId}", (version + 1).ToString(), cancellationToken);
         }
         catch (Exception ex)
         {
