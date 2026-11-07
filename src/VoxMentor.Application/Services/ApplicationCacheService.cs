@@ -105,7 +105,7 @@ public static class ApplicationCacheService
     }
 
     /// <summary>Gets the per-user, per-scope cache version. Returns 0 when unset or on failure.</summary>
-    public static int GetVersion(IDistributedCache? cache, string scope, string userId)
+    public static int? GetVersion(IDistributedCache? cache, string scope, string userId)
     {
         if (cache is null) return 0;
         try
@@ -118,12 +118,12 @@ public static class ApplicationCacheService
         {
             // Treat any failure as version 0 — degrades to unversioned keys.
             OnFailure?.Invoke(ex);
-            return 0;
+            return null;
         }
     }
 
     /// <summary>Gets the per-user, per-scope cache version. Returns 0 when unset or on failure.</summary>
-    public static async Task<int> GetVersionAsync(IDistributedCache? cache, string scope, string userId, CancellationToken cancellationToken = default)
+    public static async Task<int?> GetVersionAsync(IDistributedCache? cache, string scope, string userId, CancellationToken cancellationToken = default)
     {
         if (cache is null) return 0;
         try
@@ -136,7 +136,7 @@ public static class ApplicationCacheService
         {
             // Treat any failure as version 0 — degrades to unversioned keys.
             OnFailure?.Invoke(ex);
-            return 0;
+            return null;
         }
     }
 
@@ -148,7 +148,7 @@ public static class ApplicationCacheService
     public static string VersionedKey(IDistributedCache? cache, string userId, string scope, string key)
     {
         ValidateCacheKeyInput(userId, scope);
-        var version = GetVersion(cache, scope, userId);
+        var version = GetVersion(cache, scope, userId) ?? 0;
         return $"{key}:{userId}:{scope}:{version}";
     }
 
@@ -160,7 +160,7 @@ public static class ApplicationCacheService
     public static async Task<string> VersionedKeyAsync(IDistributedCache? cache, string userId, string scope, string key, CancellationToken cancellationToken = default)
     {
         ValidateCacheKeyInput(userId, scope);
-        var version = await GetVersionAsync(cache, scope, userId, cancellationToken);
+        var version = await GetVersionAsync(cache, scope, userId, cancellationToken) ?? 0;
         return $"{key}:{userId}:{scope}:{version}";
     }
 
@@ -179,27 +179,16 @@ public static class ApplicationCacheService
     public static void Invalidate(IDistributedCache? cache, string userId, string scope, params string[] keys)
     {
         if (cache is null) return;
-        ValidateCacheKeyInput(userId, scope);
         try
         {
-            int version = 0;
-            bool readOk = false;
-            for (int attempt = 0; attempt < 3; attempt++)
+            ValidateCacheKeyInput(userId, scope);
+            var versionResult = GetVersion(cache, scope, userId);
+            if (versionResult is null)
             {
-                try
-                {
-                    var cached = cache.GetString($"cache_version:{scope}:{userId}");
-                    version = cached is null ? 0 : (int.TryParse(cached, out var v) ? v : 0);
-                    readOk = true;
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    OnFailure?.Invoke(ex);
-                    if (attempt == 2) throw;
-                }
+                OnFailure?.Invoke(new Exception("Version read failed during invalidation"));
+                return;
             }
-            if (!readOk) return;
+            var version = versionResult.Value;
 
             foreach (var key in keys)
             {
@@ -220,27 +209,16 @@ public static class ApplicationCacheService
     public static async Task InvalidateAsync(IDistributedCache? cache, string userId, string scope, CancellationToken cancellationToken = default, params string[] keys)
     {
         if (cache is null) return;
-        ValidateCacheKeyInput(userId, scope);
         try
         {
-            int version = 0;
-            bool readOk = false;
-            for (int attempt = 0; attempt < 3; attempt++)
+            ValidateCacheKeyInput(userId, scope);
+            var versionResult = await GetVersionAsync(cache, scope, userId, cancellationToken);
+            if (versionResult is null)
             {
-                try
-                {
-                    var cached = await cache.GetStringAsync($"cache_version:{scope}:{userId}", cancellationToken);
-                    version = cached is null ? 0 : (int.TryParse(cached, out var v) ? v : 0);
-                    readOk = true;
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    OnFailure?.Invoke(ex);
-                    if (attempt == 2) throw;
-                }
+                OnFailure?.Invoke(new Exception("Version read failed during invalidation"));
+                return;
             }
-            if (!readOk) return;
+            var version = versionResult.Value;
 
             foreach (var key in keys)
             {
