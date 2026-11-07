@@ -153,6 +153,11 @@ public static class DependencyInjection
             options.ConfigurationOptions = cacheOptions;
         });
 
+        // #128: Difficulty calibration scorer — pure logic, registered as
+        // singleton; question bank reads attempt data from the DbContext.
+        services.AddSingleton<IDifficultyCalibrator, DifficultyCalibrator>();
+        services.AddScoped<IQuestionBank, QuestionBank>();
+
         services.AddAuthentication(options =>
         {
             options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
