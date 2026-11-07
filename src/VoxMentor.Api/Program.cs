@@ -115,9 +115,12 @@ ApplicationCacheService.OnFailure = ex =>
 {
     try
     {
-        app.Services.GetRequiredService<ILoggerFactory>()
-            .CreateLogger("ApplicationCache")
-            .LogWarning(ex, "Distributed cache operation failed; degrading gracefully.");
+        var logger = app.Services.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("ApplicationCache");
+        // Log only the type name and message — avoid dumping the full exception
+        // (including potential stack trace or connection details) into logs.
+        logger.LogWarning("Distributed cache operation failed ({ExceptionType}): {Message}; degrading gracefully.",
+            ex.GetType().Name, ex.Message);
     }
     catch
     {
