@@ -180,6 +180,9 @@ public class SubmitCodeHandlerTests
         Assert.Null(cache.GetString("mastery:user-1:0"));
         Assert.Null(cache.GetString("eligible_concepts:user-1:0"));
 
+        // Version must advance from 0 to 1.
+        Assert.Equal("1", cache.GetString("cache_version:user-1"));
+
         var submission = await db.CodeSubmissions.SingleAsync();
         Assert.Equal(SubmissionStatus.WrongAnswer, submission.Status);
     }

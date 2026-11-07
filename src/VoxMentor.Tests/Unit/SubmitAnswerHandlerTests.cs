@@ -146,6 +146,9 @@ public class SubmitAnswerHandlerTests
         Assert.Null(cache.GetString("mastery:user-1:0"));
         Assert.Null(cache.GetString("eligible_concepts:user-1:0"));
 
+        // Version must advance from 0 to 1.
+        Assert.Equal("1", cache.GetString("cache_version:user-1"));
+
         var stored = await db.StudentMasteries.FirstAsync();
         Assert.Equal("user-1", stored.UserId);
         Assert.Equal(question.ConceptId, stored.ConceptId);
