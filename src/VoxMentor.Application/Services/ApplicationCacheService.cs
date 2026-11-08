@@ -147,16 +147,23 @@ public static class ApplicationCacheService
     public static async Task InvalidateAsync(IDistributedCache? cache, string userId, string scope, CancellationToken cancellationToken = default, params string[] keys)
     {
         if (cache is null) return;
-        if (userId.Contains(':') || scope.Contains(':'))
-            throw new ArgumentException("userId and scope must not contain ':' delimiter");
 
         try
         {
+            if (userId.Contains(':') || scope.Contains(':'))
+                throw new ArgumentException("userId and scope must not contain ':' delimiter");
+
             var currentVersion = await GetVersionAsync(cache, userId, scope, cancellationToken);
             if (currentVersion is null)
             {
-                // Read failed — GetVersionAsync already invoked OnFailure; preserve
-                // existing version, don't reset the counter.
+                // Read failed — GetVersionAsync already invoked OnFailure. Preserve
+                // the existing version (don't reset the counter), but still attempt
+                // a best-effort removal of keys at version 0 so at least the
+                // initial-generation cached entries are cleaned up.
+                foreach (var key in keys)
+                {
+                    await RemoveAsync(cache, $"{key}:{userId}:{scope}:0", cancellationToken);
+                }
                 return;
             }
 

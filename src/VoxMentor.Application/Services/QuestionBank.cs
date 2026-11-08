@@ -54,11 +54,17 @@ public class QuestionBank : IQuestionBank
         // Hint usage rate across attempts: a hint on one of ten attempts is 0.1,
         // not 1.0. Count distinct attempts (CodeSubmissions) as the denominator
         // so a single true record can't inflate the difficulty proposal.
+        // Only count hint records associated with a submitted attempt, and count
+        // each submitted attempt at most once.
+        var submissionIds = submissions.Select(s => s.Id).ToHashSet();
         var hintUsages = await _db.QuestionHintUsages
             .IgnoreQueryFilters()
             .Where(h => h.QuestionId == questionId)
             .ToListAsync(cancellationToken);
-        var usedHintCount = hintUsages.Count(h => h.UsedHint);
+        var usedHintCount = hintUsages
+            .Where(h => submissionIds.Contains(h.AttemptId))
+            .GroupBy(h => h.AttemptId)
+            .Count(g => g.Any(h => h.UsedHint));
         var hintUsageRate = attemptCount > 0 ? usedHintCount / (float)attemptCount : 0f;
 
         // AI evaluation quality: average Correctness.Score / 10 across submissions with AiEvaluation.
