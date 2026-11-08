@@ -113,9 +113,6 @@ public static class DependencyInjection
         services.AddHttpClient<CodeEmbeddingService>();
         services.AddScoped<IPlagiarismDetector, PlagiarismDetector>();
 
-        // Distributed cache (MemoryDistributedCache for dev/tests; Redis in prod if configured)
-        services.AddDistributedMemoryCache();
-
         // ponytail: Redis sliding window — shared across API instances, keys expire via PEXPIRE.
         // Fail-closed: Redis down → error, not silent bypass. InMemory impl stays for unit tests only.
         var redisConnectionString = configuration.GetConnectionString("Redis");
@@ -123,6 +120,24 @@ public static class DependencyInjection
         {
             redisConnectionString = "localhost:6379";
         }
+
+        // Distributed cache backing the three read-through handlers, backed by the
+        // same Redis connection configuration as the rate limiter (#127). Falls back
+        // gracefully if Redis is unavailable; reads/writes are failure-tolerant.
+        services.AddStackExchangeRedisCache(options =>
+        {
+            options.Configuration = redisConnectionString;
+            // Bound outage-path latency so cache reads/writes cannot hold up
+            // database fallback when Redis is down. ConnectTimeout limits the
+            // initial connection attempt; SyncTimeout caps command waits (sync and
+            // async via the default AsyncTimeout). AbortOnConnectFail stays false
+            // so a down Redis never blocks startup.
+            var cacheOptions = ConfigurationOptions.Parse(redisConnectionString);
+            cacheOptions.AbortOnConnectFail = false;
+            cacheOptions.ConnectTimeout = 2000;
+            cacheOptions.SyncTimeout = 1000;
+            options.ConfigurationOptions = cacheOptions;
+        });
 
         services.AddSingleton<IConnectionMultiplexer>(_ =>
         {

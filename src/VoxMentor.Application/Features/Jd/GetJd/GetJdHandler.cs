@@ -64,7 +64,6 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
         int estimatedWeeks;
         DateTime createdAt;
         List<SkillWeightData> skillWeights;
-        List<Concept> concepts;
 
         if (cachedStatic is not null)
         {
@@ -74,7 +73,6 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
             estimatedWeeks = cachedStatic.EstimatedWeeks;
             createdAt = cachedStatic.CreatedAt;
             skillWeights = cachedStatic.SkillWeights;
-            concepts = cachedStatic.Concepts;
         }
         else
         {
@@ -90,15 +88,16 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
                 .Select(sw => new SkillWeightData(sw.SkillName, sw.Weight, sw.IsTechnical))
                 .ToListAsync(cancellationToken);
 
-            concepts = await _db.Concepts
-                .AsNoTracking()
-                .ToListAsync(cancellationToken);
-
-            // Cache only static JD data (JD fields, skill weights, concepts) — best-effort
+            // Cache only static JD data (JD fields, skill weights) — best-effort
             ApplicationCacheService.SetT(_cache, cacheKey, new GetJdStaticDataDto(
                 jd.Id, jd.CompanyName, jd.Role, jd.Difficulty, jd.EstimatedWeeks, jd.CreatedAt,
-                skillWeights, concepts));
+                skillWeights));
         }
+
+        // Always load concepts fresh from DB for readiness and roadmap calculation
+        var concepts = await _db.Concepts
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
 
         // Always load fresh masteries and recompute readiness — never stale
         var masteries = await _db.StudentMasteries
@@ -139,5 +138,4 @@ public record GetJdStaticDataDto(
     string Difficulty,
     int EstimatedWeeks,
     DateTime CreatedAt,
-    List<SkillWeightData> SkillWeights,
-    List<Concept> Concepts);
+    List<SkillWeightData> SkillWeights);

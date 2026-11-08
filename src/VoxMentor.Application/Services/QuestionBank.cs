@@ -51,14 +51,15 @@ public class QuestionBank : IQuestionBank
             .ToList();
         var medianTimeMs = times.Count > 0 ? times[times.Count / 2] : (int?)null;
 
-        // Hint usage rate across all hint-usage rows for this question.
+        // Hint usage rate across attempts: a hint on one of ten attempts is 0.1,
+        // not 1.0. Count distinct attempts (CodeSubmissions) as the denominator
+        // so a single true record can't inflate the difficulty proposal.
         var hintUsages = await _db.QuestionHintUsages
             .IgnoreQueryFilters()
             .Where(h => h.QuestionId == questionId)
             .ToListAsync(cancellationToken);
-        var totalHintUsages = hintUsages.Count;
         var usedHintCount = hintUsages.Count(h => h.UsedHint);
-        var hintUsageRate = totalHintUsages > 0 ? usedHintCount / (float)totalHintUsages : 0f;
+        var hintUsageRate = attemptCount > 0 ? usedHintCount / (float)attemptCount : 0f;
 
         // AI evaluation quality: average Correctness.Score / 10 across submissions with AiEvaluation.
         var aiQuality = ComputeAiEvaluationQuality(submissions);

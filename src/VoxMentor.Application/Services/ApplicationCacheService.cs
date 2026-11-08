@@ -9,7 +9,7 @@ namespace VoxMentor.Application.Services;
 /// fall through to the database; write failures are tolerated so the database
 /// result is still returned.
 /// </summary>
-public class ApplicationCacheService
+public static class ApplicationCacheService
 {
     private const int CacheTTLSeconds = 300;
 
@@ -21,13 +21,6 @@ public class ApplicationCacheService
     }
 
     private static Action<Exception>? _onFailure;
-
-    private readonly IDistributedCache? _cache;
-
-    public ApplicationCacheService(IDistributedCache? cache)
-    {
-        _cache = cache;
-    }
 
     /// <summary>Cache-through read: returns <c>null</c> on a miss or any read failure.</summary>
     public static T? GetT<T>(IDistributedCache? cache, string key) where T : class
@@ -116,7 +109,7 @@ public class ApplicationCacheService
     /// Gets the current version for a user/scope, creating it if missing.
     /// Version is stored at "cache_version:{scope}:{userId}".
     /// </summary>
-    public static async Task<int> GetVersionAsync(IDistributedCache? cache, string userId, string scope, CancellationToken cancellationToken = default)
+    public static async Task<int?> GetVersionAsync(IDistributedCache? cache, string userId, string scope, CancellationToken cancellationToken = default)
     {
         if (cache is null) return 0;
         try
@@ -130,7 +123,7 @@ public class ApplicationCacheService
         catch (Exception ex)
         {
             OnFailure?.Invoke(ex);
-            return 0;
+            return null; // Distinguish failed read from missing version
         }
     }
 
@@ -139,8 +132,10 @@ public class ApplicationCacheService
     /// </summary>
     public static async Task<string> VersionedKeyAsync(IDistributedCache? cache, string userId, string scope, string key, CancellationToken cancellationToken = default)
     {
+        if (userId.Contains(':') || scope.Contains(':'))
+            throw new ArgumentException("userId and scope must not contain ':' delimiter");
         var version = await GetVersionAsync(cache, userId, scope, cancellationToken);
-        return $"{key}:{userId}:{scope}:{version}";
+        return $"{key}:{userId}:{scope}:{version ?? 0}";
     }
 
     /// <summary>
@@ -152,18 +147,28 @@ public class ApplicationCacheService
     public static async Task InvalidateAsync(IDistributedCache? cache, string userId, string scope, CancellationToken cancellationToken = default, params string[] keys)
     {
         if (cache is null) return;
+        if (userId.Contains(':') || scope.Contains(':'))
+            throw new ArgumentException("userId and scope must not contain ':' delimiter");
+
         try
         {
+            var currentVersion = await GetVersionAsync(cache, userId, scope, cancellationToken);
+            if (currentVersion is null)
+            {
+                // Read failed — GetVersionAsync already invoked OnFailure; preserve
+                // existing version, don't reset the counter.
+                return;
+            }
+
             // Remove the named keys at the current version so stale reads
             // can't serve them before the version bump takes effect.
-            var currentVersion = await GetVersionAsync(cache, userId, scope, cancellationToken);
             foreach (var key in keys)
             {
-                await RemoveAsync(cache, $"{key}:{userId}:{scope}:{currentVersion}", cancellationToken);
+                await RemoveAsync(cache, $"{key}:{userId}:{scope}:{currentVersion.Value}", cancellationToken);
             }
 
             // Bump the version so future reads build keys under the new version.
-            var newVersion = currentVersion + 1;
+            var newVersion = currentVersion.Value + 1;
             await cache.SetStringAsync($"cache_version:{scope}:{userId}", newVersion.ToString(), cancellationToken);
         }
         catch (Exception ex)
