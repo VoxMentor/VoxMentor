@@ -1,4 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
+using System.Collections.Generic;
 using VoxMentor.Application.Common.Exceptions;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
@@ -56,13 +60,35 @@ public class UploadJdHandlerTests
         "Amazon is hiring an SDE-1. Strong fundamentals in DSA, proficiency in " +
         "Java/C++/Python, experience with Arrays and Strings, agile ownership.";
 
+    private static async Task SeedJdAsync(
+        Infrastructure.Persistence.ApplicationDbContext db,
+        string userId,
+        int estimatedWeeks = 4)
+    {
+        var jd = new JobDescription
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            CompanyName = "Amazon",
+            Role = "SDE-1",
+            RawText = ValidJd,
+            Difficulty = "Medium",
+            EstimatedWeeks = estimatedWeeks,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.JobDescriptions.Add(jd);
+        await db.SaveChangesAsync();
+    }
+
     private static UploadJdHandler CreateHandler(
         Infrastructure.Persistence.ApplicationDbContext db,
         FakeJdParseService? parser = null,
-        FakeCurrentUserService? user = null)
+        FakeCurrentUserService? user = null,
+        IDistributedCache? cache = null)
     {
         return new UploadJdHandler(
-            db, parser ?? new FakeJdParseService(), user ?? new FakeCurrentUserService());
+            db, parser ?? new FakeJdParseService(), user ?? new FakeCurrentUserService(),
+            cache ?? new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
     }
 
     [Fact]
@@ -264,5 +290,70 @@ public class UploadJdHandlerTests
         Assert.True(await db.JobDescriptions.AnyAsync(j => j.Id == response.Data.JdId));
         Assert.Empty(await db.JdSkillWeights
             .Where(w => w.JobDescriptionId == response.Data.JdId).ToListAsync());
+    }
+
+    /// <summary>Verifies that after a successful JD upload, the cached JD snapshot
+    /// is removed so the next GetJd request fetches fresh data.</summary>
+    [Fact]
+    public async Task Handle_SuccessfulUpload_InvalidatesJdCache()
+    {
+        await using var db = CreateDb();
+        var userId = "user-1";
+
+        // Recording cache that logs Remove calls so we can verify the handler
+        // invalidates the correct key.
+        var removedKeys = new List<string>();
+        var innerCache = new MemoryDistributedCache(
+            Options.Create(new MemoryDistributedCacheOptions()));
+        var cache = new RecordingDistributedCache(innerCache, removedKeys);
+
+        var handler = CreateHandler(db, cache: cache);
+
+        // Seed concepts so heuristic finds skills.
+        await SeedConceptsAsync(db, "Python", "Java");
+        await SeedJdAsync(db, userId, estimatedWeeks: 4);
+
+        var response = await handler.Handle(new UploadJdCommand(ValidJd), CancellationToken.None);
+
+        Assert.True(response.Success);
+
+        // The handler's invalidation path must call Remove on the uploaded JD's
+        // cache key (format: {JdId}:{userId}:jd:{version}).
+        Assert.Contains($"{response.Data.JdId}:{userId}:jd:0", removedKeys);
+    }
+
+    /// <summary>Distributed cache wrapper that records removed keys.</summary>
+    private sealed class RecordingDistributedCache : IDistributedCache
+    {
+        private readonly IDistributedCache _inner;
+        private readonly List<string> _removedKeys;
+
+        public RecordingDistributedCache(IDistributedCache inner, List<string> removedKeys)
+        {
+            _inner = inner;
+            _removedKeys = removedKeys;
+        }
+
+        public byte[]? Get(string key) => _inner.Get(key);
+        public Task<byte[]?> GetAsync(string key, CancellationToken token = default) =>
+            _inner.GetAsync(key, token);
+        public void Refresh(string key) => _inner.Refresh(key);
+        public Task RefreshAsync(string key, CancellationToken token = default) =>
+            _inner.RefreshAsync(key, token);
+        public void Remove(string key)
+        {
+            _removedKeys.Add(key);
+            _inner.Remove(key);
+        }
+        public Task RemoveAsync(string key, CancellationToken token = default)
+        {
+            _removedKeys.Add(key);
+            return _inner.RemoveAsync(key, token);
+        }
+        public void Set(string key, byte[] value, DistributedCacheEntryOptions options) =>
+            _inner.Set(key, value, options);
+        public Task SetAsync(string key, byte[] value, DistributedCacheEntryOptions options,
+            CancellationToken token = default) =>
+            _inner.SetAsync(key, value, options, token);
     }
 }

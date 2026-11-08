@@ -10,6 +10,7 @@ using VoxMentor.Api.Services;
 using VoxMentor.Application;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Common.Models;
+using VoxMentor.Application.Services;
 using VoxMentor.Infrastructure;
 using VoxMentor.Infrastructure.Jobs;
 using VoxMentor.Infrastructure.Persistence.Seeders;
@@ -103,6 +104,29 @@ builder.Services.AddAuthorization(options =>
 });
 
 var app = builder.Build();
+
+// Observable cache failures: route silent cache exceptions to the app logger
+// so Redis outages / serialization errors are visible in logs while reads still
+// degrade gracefully to cache misses and writes are tolerated. The lambda is
+// defensive: logging failures must never propagate and turn a cache miss into
+// a 500, especially since OnFailure is a static property shared across the
+// process.
+ApplicationCacheService.OnFailure = ex =>
+{
+    try
+    {
+        var logger = app.Services.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("ApplicationCache");
+        // Log only the type name and message — avoid dumping the full exception
+        // (including potential stack trace or connection details) into logs.
+        logger.LogWarning("Distributed cache operation failed ({ExceptionType}): {Message}; degrading gracefully.",
+            ex.GetType().Name, ex.Message);
+    }
+    catch
+    {
+        // Swallow logging failures — a cache miss must never become a 500.
+    }
+};
 
 // Without this the two nightly jobs silently never exist: the AddOrUpdate block
 // further down is skipped and nothing in the log says so (#57).

@@ -6,10 +6,11 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Pgvector.EntityFrameworkCore;
 using StackExchange.Redis;
-using Microsoft.Extensions.Caching.Memory;
 using VoxMentor.Application.Common.Interfaces;
 using VoxMentor.Application.Services;
 using VoxMentor.Domain.Entities;
@@ -99,11 +100,10 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(60);
         });
         services.AddScoped<ICurrentTokenService, CurrentTokenService>();
-
         // #151: PDF text extraction runs in an isolated worker process with
         // OS-enforced memory/time limits (CodeRabbit finding). The worker exe
         // is copied to the output dir by the Infrastructure build target.
-        services.AddScoped<ITextExtractor>(sp => new Services.PdfPigTextExtractor());
+        services.AddScoped<ITextExtractor, PdfPigTextExtractor>();
 
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -130,8 +130,6 @@ public static class DependencyInjection
             options.AbortOnConnectFail = false;
             return ConnectionMultiplexer.Connect(options);
         });
-        // #151: Dedicated rate limiter for resume analysis — 5 analyses per user per minute,
-        // shared across API instances via Redis. Separate from other IRateLimiter consumers.
         services.AddSingleton<IRateLimiter>(sp =>
         {
             var redis = sp.GetRequiredService<IConnectionMultiplexer>();
@@ -284,4 +282,3 @@ public static class DependencyInjection
         return connectionString;
     }
 }
-
