@@ -38,6 +38,7 @@ internal class TextbookDedupSqliteDbContext : DbContext, IApplicationDbContext
     public DbSet<TutorSession> TutorSessions => null!;
     public DbSet<TextbookChunk> TextbookChunks => null!;
     public DbSet<ResumeAnalysis> ResumeAnalyses => null!;
+    public DbSet<QuestionHintUsage> QuestionHintUsages => null!;
 
     public TextbookDedupSqliteDbContext(DbContextOptions<TextbookDedupSqliteDbContext> options)
         : base(options)

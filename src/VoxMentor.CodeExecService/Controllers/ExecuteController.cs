@@ -35,7 +35,7 @@ public class ExecuteController : ControllerBase
         CancellationToken cancellationToken)
     {
         if (!_executionService.IsLanguageSupported(request.LanguageId))
-            return BadRequest(new { error = $"Language ID {request.LanguageId} is not supported. Supported: 51 (C#), 54 (C++), 62 (Java), 63 (JavaScript), 71 (Python)" });
+            return BadRequest(new { error = $"Language ID {request.LanguageId} is not supported. Supported: 50 (C), 51 (C#), 54 (C++), 62 (Java), 63 (JavaScript), 71 (Python)" });
 
         try
         {

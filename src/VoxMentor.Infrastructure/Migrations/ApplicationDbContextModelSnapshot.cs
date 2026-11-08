@@ -633,6 +633,36 @@ namespace VoxMentor.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("VoxMentor.Domain.Entities.QuestionHintUsage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AttemptId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("QuestionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("UsedHint")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "QuestionId", "AttemptId")
+                        .IsUnique();
+
+                    b.ToTable("QuestionHintUsages");
+                });
+
             modelBuilder.Entity("VoxMentor.Domain.Entities.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")

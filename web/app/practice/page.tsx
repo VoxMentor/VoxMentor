@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   api,
@@ -14,6 +14,7 @@ import Navbar from "@/components/Navbar";
 import FetchError from "@/components/FetchError";
 import QuestionCard from "@/components/QuestionCard";
 import CodeEditor from "@/components/CodeEditor";
+import LanguageSelector from "@/components/LanguageSelector";
 import QuestionList from "@/components/QuestionList";
 
 /**
@@ -72,6 +73,84 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     detailState?.key === detailKey && detailState.status === "error"
       ? (detailState.message ?? "Failed to load question.")
       : null;
+
+  const LANGUAGE_TEMPLATES: Record<string, string> = {
+    python: "def solve():\n    # Write your solution here\n    pass\n",
+    java: "public class Solution {\n    public static void main(String[] args) {\n        // Write your solution here\n    }\n}",
+    cpp: '#include <iostream>\nusing namespace std;\n\nint main() {\n    // Write your solution here\n    return 0;\n}',
+    javascript: "function solve() {\n    // Write your solution here\n}\n",
+    csharp: "using System;\n\nclass Solution {\n    static void Main() {\n        // Write your solution here\n    }\n}",
+    c: "#include <stdio.h>\n\nint main() {\n    // Write your solution here\n    return 0;\n}",
+  };
+
+  interface SubmissionResult {
+    status: string;
+    isCorrect: boolean | null;
+    message: string;
+  }
+
+  // --- Editor state, scoped to the selected question ---
+  const currentQuestionIdRef = useRef<string | undefined>(undefined);
+  const [language, setLanguage] = useState<string>("javascript");
+  const [codeDrafts, setCodeDrafts] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitResult, setSubmitResult] = useState<SubmissionResult | null>(null);
+
+  // Current code value for the selected language + question.
+  const code = codeDrafts[language] ?? LANGUAGE_TEMPLATES[language] ?? "";
+
+  // Reset all editor state when the question changes (scoped to question).
+  useEffect(() => {
+    if (currentQuestionIdRef.current === selectedId) return;
+    currentQuestionIdRef.current = selectedId;
+    setLanguage("javascript");
+    setCodeDrafts({});
+    setSubmitResult(null);
+    setSubmitting(false);
+  }, [selectedId]);
+
+  // Update code draft for the current language when the editor changes.
+  const updateCodeDraft = (newValue: string) => {
+    setCodeDrafts((prev) => ({ ...prev, [language]: newValue }));
+  };
+
+  const handleLanguageChange = (newLanguage: string) => {
+    setLanguage(newLanguage);
+    // Keep current draft: separate drafts per language persist, so switching
+    // back restores your previous code for that language (CodeRabbit fix).
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!detail?.id || submitting) return;
+
+    const codeToSubmit = codeDrafts[language] ?? LANGUAGE_TEMPLATES[language] ?? "";
+    setSubmitting(true);
+    setSubmitResult(null);
+    try {
+      const result = await api.submitCode({
+        questionId: detail.id,
+        code: codeToSubmit,
+        language,
+      });
+      setSubmitting(false);
+      // Show the actual grading result: Status + IsCorrect (CodeRabbit fix)
+      setSubmitResult({
+        status: result.status,
+        isCorrect: result.isCorrect ?? false,
+        message: result.status === "Accepted"
+          ? "All test cases passed!"
+          : "Submission received.",
+      });
+    } catch {
+      setSubmitting(false);
+      setSubmitResult({
+        status: "error",
+        isCorrect: false,
+        message: "Failed to submit code.",
+      });
+    }
+  };
 
   const updateParams = useCallback(
     (updates: Record<string, string | undefined>, replace = false) => {
@@ -302,8 +381,8 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
         )}
       </section>
 
-      {/* Right: code editor placeholder (40%) */}
-      <section className="flex flex-col gap-4 min-w-0">
+      {/* Right: code editor + language selector + submit (40%) */}
+      <section className="flex flex-col gap-4 min-w-0 h-full">
         {detailLoading && !detail ? (
           <div className="card h-full flex flex-col">
             <div className="h-10 w-32 bg-border rounded animate-pulse mb-4" />
@@ -324,7 +403,53 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
         ) : detailError ? (
           <FetchError message={detailError} onRetry={retryDetail} />
         ) : detail ? (
-          <CodeEditor language="javascript" />
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3 h-full">
+            <div>
+              <label
+                htmlFor="language-selector"
+                className="block text-xs font-medium text-text-muted mb-1"
+              >
+                Language
+              </label>
+              <LanguageSelector value={language} onChange={handleLanguageChange} />
+            </div>
+            <CodeEditor
+              language={language}
+              value={code}
+              onChange={(newValue) => updateCodeDraft(newValue ?? "")}
+              height="100%"
+            />
+            {submitResult && (
+              <div
+                className={`p-3 rounded-[12px] text-sm ${
+                  submitResult.isCorrect
+                    ? "bg-green-50 border border-green-200 text-green-800"
+                    : submitResult.status === "error"
+                      ? "bg-red-50 border border-red-200 text-red-800"
+                      : "bg-amber-50 border border-amber-200 text-amber-800"
+                }`}
+              >
+                {submitResult.message}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={submitting || !detail?.id}
+              className="btn-primary"
+            >
+              {submitting ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Submitting...
+                </span>
+              ) : (
+                "Submit Code"
+              )}
+            </button>
+          </form>
         ) : (
           <div className="card h-full flex flex-col items-center justify-center text-text-muted">
             <p className="text-sm">Select a question to open the editor.</p>

@@ -121,20 +121,6 @@ public static class DependencyInjection
             redisConnectionString = "localhost:6379";
         }
 
-        services.AddSingleton<IConnectionMultiplexer>(_ =>
-        {
-            var options = ConfigurationOptions.Parse(redisConnectionString);
-            options.AbortOnConnectFail = false;
-            return ConnectionMultiplexer.Connect(options);
-        });
-        services.AddSingleton<IRateLimiter>(sp =>
-        {
-            var redis = sp.GetRequiredService<IConnectionMultiplexer>();
-            return new RedisSlidingWindowRateLimiter(
-                redis,
-                limit: 5,
-                window: TimeSpan.FromMinutes(1));
-        });
         // Distributed cache backing the three read-through handlers, backed by the
         // same Redis connection configuration as the rate limiter (#127). Falls back
         // gracefully if Redis is unavailable; reads/writes are failure-tolerant.
@@ -152,6 +138,26 @@ public static class DependencyInjection
             cacheOptions.SyncTimeout = 1000;
             options.ConfigurationOptions = cacheOptions;
         });
+
+        services.AddSingleton<IConnectionMultiplexer>(_ =>
+        {
+            var options = ConfigurationOptions.Parse(redisConnectionString);
+            options.AbortOnConnectFail = false;
+            return ConnectionMultiplexer.Connect(options);
+        });
+        services.AddSingleton<IRateLimiter>(sp =>
+        {
+            var redis = sp.GetRequiredService<IConnectionMultiplexer>();
+            return new RedisSlidingWindowRateLimiter(
+                redis,
+                limit: 5,
+                window: TimeSpan.FromMinutes(1));
+        });
+
+        // #128: Difficulty calibration scorer — pure logic, registered as
+        // singleton; question bank reads attempt data from the DbContext.
+        services.AddSingleton<IDifficultyCalibrator, DifficultyCalibrator>();
+        services.AddScoped<IQuestionBank, QuestionBank>();
 
         services.AddAuthentication(options =>
         {
