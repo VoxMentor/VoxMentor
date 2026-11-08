@@ -52,36 +52,52 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
             .AsNoTracking()
             .FirstOrDefaultAsync(j => j.Id == request.JdId, cancellationToken);
 
-            skillWeights = await _db.JdSkillWeights
-                .AsNoTracking()
-                .Where(sw => sw.JobDescriptionId == jdEntity.Id)
-                .Select(sw => new SkillWeightData(sw.SkillName, sw.Weight, sw.IsTechnical))
-                .ToListAsync(cancellationToken);
+        if (jd is null)
+            throw new NotFoundException("No job description found for the user.");
 
         var cacheKey = $"jd:{userId}:{request.JdId}";
         var cachedStatic = ApplicationCacheService.GetT<GetJdStaticDataDto>(_cache, cacheKey);
 
-        List<JdSkillWeight> skillWeights;
+        string companyName;
+        string role;
+        string difficulty;
+        int estimatedWeeks;
+        DateTime createdAt;
+        List<SkillWeightData> skillWeights;
         List<Concept> concepts;
 
         if (cachedStatic is not null)
         {
+            companyName = cachedStatic.CompanyName;
+            role = cachedStatic.Role;
+            difficulty = cachedStatic.Difficulty;
+            estimatedWeeks = cachedStatic.EstimatedWeeks;
+            createdAt = cachedStatic.CreatedAt;
             skillWeights = cachedStatic.SkillWeights;
             concepts = cachedStatic.Concepts;
         }
         else
         {
+            companyName = jd.CompanyName;
+            role = jd.Role;
+            difficulty = jd.Difficulty;
+            estimatedWeeks = jd.EstimatedWeeks;
+            createdAt = jd.CreatedAt;
+
             skillWeights = await _db.JdSkillWeights
                 .AsNoTracking()
                 .Where(sw => sw.JobDescriptionId == jd.Id)
+                .Select(sw => new SkillWeightData(sw.SkillName, sw.Weight, sw.IsTechnical))
                 .ToListAsync(cancellationToken);
 
             concepts = await _db.Concepts
                 .AsNoTracking()
                 .ToListAsync(cancellationToken);
 
-            // Cache only static JD data (skill weights, concepts) — best-effort
-            ApplicationCacheService.SetT(_cache, cacheKey, new GetJdStaticDataDto(skillWeights, concepts));
+            // Cache only static JD data (JD fields, skill weights, concepts) — best-effort
+            ApplicationCacheService.SetT(_cache, cacheKey, new GetJdStaticDataDto(
+                jd.Id, jd.CompanyName, jd.Role, jd.Difficulty, jd.EstimatedWeeks, jd.CreatedAt,
+                skillWeights, concepts));
         }
 
         // Always load fresh masteries and recompute readiness — never stale
@@ -90,25 +106,25 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
             .ToDictionaryAsync(m => m.ConceptId, cancellationToken);
 
         var readiness = ReadinessCalculator.Compute(
-            skillWeights, concepts, masteries, jd.EstimatedWeeks);
+            skillWeights, concepts, masteries, estimatedWeeks);
 
         var dto = new GetJdResultDto
         {
             JdId = jd.Id,
-            CompanyName = jd.CompanyName,
-            Role = jd.Role,
+            CompanyName = companyName,
+            Role = role,
             TechnicalSkills = skillWeights
                 .Where(sw => sw.IsTechnical)
                 .ToDictionary(sw => sw.SkillName, sw => sw.Weight, StringComparer.Ordinal),
             HrSkills = skillWeights
                 .Where(sw => !sw.IsTechnical)
                 .ToDictionary(sw => sw.SkillName, sw => sw.Weight, StringComparer.Ordinal),
-            Difficulty = jd.Difficulty,
+            Difficulty = difficulty,
             ReadinessScore = readiness.Score,
             Gaps = readiness.Gaps,
-            EstimatedWeeks = jd.EstimatedWeeks,
-            Roadmap = RoadmapBuilder.Build(readiness.Gaps, concepts, jd.EstimatedWeeks),
-            CreatedAt = jd.CreatedAt
+            EstimatedWeeks = estimatedWeeks,
+            Roadmap = RoadmapBuilder.Build(readiness.Gaps, concepts, estimatedWeeks),
+            CreatedAt = createdAt
         };
 
         return ApiResponse<GetJdResultDto>.SuccessResult(dto, "Job description retrieved successfully.");
@@ -117,5 +133,11 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
 
 // Helper DTO for caching only static JD components (not readiness-derived data).
 public record GetJdStaticDataDto(
-    List<JdSkillWeight> SkillWeights,
+    Guid Id,
+    string CompanyName,
+    string Role,
+    string Difficulty,
+    int EstimatedWeeks,
+    DateTime CreatedAt,
+    List<SkillWeightData> SkillWeights,
     List<Concept> Concepts);
