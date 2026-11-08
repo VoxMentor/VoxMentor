@@ -8,8 +8,6 @@ import {
   type MasteryConcept,
   type QuestionDetail,
   type StudentQuestion,
-  type SubmitCodeRequest,
-  type SubmitCodeResult,
 } from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Navbar from "@/components/Navbar";
@@ -85,12 +83,18 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     c: "#include <stdio.h>\n\nint main() {\n    // Write your solution here\n    return 0;\n}",
   };
 
+  interface SubmissionResult {
+    status: string;
+    isCorrect: boolean | null;
+    message: string;
+  }
+
   // --- Editor state, scoped to the selected question ---
   const currentQuestionIdRef = useRef<string | undefined>(undefined);
   const [language, setLanguage] = useState<string>("javascript");
   const [codeDrafts, setCodeDrafts] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
-  const [submitResult, setSubmitResult] = useState<SubmitCodeResult | null>(null);
+  const [submitResult, setSubmitResult] = useState<SubmissionResult | null>(null);
 
   // Current code value for the selected language + question.
   const code = codeDrafts[language] ?? LANGUAGE_TEMPLATES[language] ?? "";
@@ -134,14 +138,16 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
       setSubmitResult({
         status: result.status,
         isCorrect: result.isCorrect ?? false,
-        message: result.message ?? (result.status === "Accepted" ? "All test cases passed!" : "Submission received."),
+        message: result.status === "Accepted"
+          ? "All test cases passed!"
+          : "Submission received.",
       });
-    } catch (err) {
+    } catch {
       setSubmitting(false);
       setSubmitResult({
         status: "error",
         isCorrect: false,
-        message: err instanceof ApiError ? err.message : "Failed to submit code.",
+        message: "Failed to submit code.",
       });
     }
   };
