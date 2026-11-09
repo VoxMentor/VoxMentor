@@ -1,36 +1,64 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { type SubmitCodeResult } from "@/lib/api";
 
 interface ResultPanelProps {
   result: SubmitCodeResult;
 }
 
+function statusLabel(result: SubmitCodeResult, isCorrect: boolean | null): string {
+  if (isCorrect !== null) {
+    return isCorrect ? "Correct" : "Incorrect";
+  }
+  return result.status ?? "Ungraded";
+}
+
+function borderColor(isCorrect: boolean | null): string {
+  if (isCorrect === true) return "border-success";
+  if (isCorrect === false) return "border-danger";
+  return "border-border";
+}
+
+function badgeColor(isCorrect: boolean | null): string {
+  if (isCorrect === true) {
+    return "bg-success/10 border border-success/20 text-success";
+  }
+  if (isCorrect === false) {
+    return "bg-danger/10 border border-danger/20 text-danger";
+  }
+  return "bg-border/10 border border-border text-text-muted";
+}
+
+function masteryColor(masteryDelta: number): string {
+  if (masteryDelta > 0) return "var(--success, #10B981)";
+  if (masteryDelta < 0) return "var(--danger, #EF4444)";
+  return "var(--muted, #6B7280)";
+}
+
+function optimalLabel(isOptimal: boolean): string {
+  if (isOptimal === true) return "· optimal";
+  if (isOptimal === false) return "· not optimal";
+  return "· unavailable";
+}
+
+/**
+ * Displays a single code-submission result: pass/fail badge, test cases,
+ * execution time, memory usage, mastery change, and optional AI evaluation.
+ * Renders a neutral ungraded state when `isCorrect` is null and an
+ * unavailable indicator for missing timing/memory measurements.
+ */
 export default function ResultPanel({ result }: ResultPanelProps) {
-  const isCorrect = result.isCorrect ?? false;
+  const isCorrect = result.isCorrect;
   const masteryDelta = result.masteryDelta;
-  const isMasteryImproved = masteryDelta > 0;
 
   return (
     <div className="card animate-fade-in flex flex-col gap-3 border-l-4">
-      <div
-        className={`border-l-3 px-2.5 py-2 ${
-          isCorrect
-            ? "border-success bg-success/5"
-            : "border-danger bg-danger/5"
-        }`}
-      >
+      <div className={`border-l-3 px-2.5 py-2 ${borderColor(isCorrect)}`}>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-text-heading">Submission result</h3>
-          <span
-            className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-              isCorrect
-                ? "bg-success/10 border border-success/20 text-success"
-                : "bg-danger/10 border border-danger/20 text-danger"
-            }`}
-          >
-            {isCorrect ? "Correct" : "Incorrect"}
+          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${badgeColor(isCorrect)}`}>
+            {statusLabel(result, isCorrect)}
           </span>
         </div>
       </div>
@@ -49,7 +77,10 @@ export default function ResultPanel({ result }: ResultPanelProps) {
             Execution time
           </span>
           <span className="text-sm font-medium text-text-body">
-            {result.executionTimeMs ?? 0} ms
+            {result.executionTimeMs === null ||
+            result.executionTimeMs === undefined
+              ? "—"
+              : `${result.executionTimeMs} ms`}
           </span>
         </div>
         <div className="flex flex-col gap-1">
@@ -57,7 +88,10 @@ export default function ResultPanel({ result }: ResultPanelProps) {
             Memory usage
           </span>
           <span className="text-sm font-medium text-text-body">
-            {result.memoryUsageKb ?? 0} MB
+            {result.memoryUsageKb === null ||
+            result.memoryUsageKb === undefined
+              ? "—"
+              : `${result.memoryUsageKb} KB`}
           </span>
         </div>
         <div className="flex flex-col gap-1">
@@ -69,11 +103,9 @@ export default function ResultPanel({ result }: ResultPanelProps) {
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
-            style={{
-              color: isMasteryImproved ? "var(--success, #10B981)" : "var(--danger, #EF4444)",
-            }}
+            style={{ color: masteryColor(masteryDelta) }}
           >
-            {masteryDelta >= 0 ? "+" : ""}{masteryDelta.toFixed(2)}
+            {masteryDelta === 0 ? "0.00" : `${masteryDelta >= 0 ? "+" : ""}${masteryDelta.toFixed(2)}`}
           </motion.span>
         </div>
       </div>
@@ -107,7 +139,8 @@ export default function ResultPanel({ result }: ResultPanelProps) {
                 Time complexity
               </span>
               <span className="text-sm font-medium text-text-body">
-                {result.aiEvaluation.timeComplexity.bigO}
+                {result.aiEvaluation.timeComplexity.bigO}{" "}
+                {optimalLabel(result.aiEvaluation.timeComplexity.isOptimal)}
               </span>
             </div>
             <div className="flex flex-col gap-1">
@@ -115,7 +148,8 @@ export default function ResultPanel({ result }: ResultPanelProps) {
                 Space complexity
               </span>
               <span className="text-sm font-medium text-text-body">
-                {result.aiEvaluation.spaceComplexity.bigO}
+                {result.aiEvaluation.spaceComplexity.bigO}{" "}
+                {optimalLabel(result.aiEvaluation.spaceComplexity.isOptimal)}
               </span>
             </div>
           </div>

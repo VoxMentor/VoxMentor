@@ -92,8 +92,21 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
   const hasUserEdited = useRef(false);
 
   const [submitting, setSubmitting] = useState(false);
-  const [submitResult, setSubmitResult] = useState<SubmitCodeResult | null>(null);
+  const [submitResult, setSubmitResult] = useState<{
+    questionId: string;
+    result: SubmitCodeResult;
+  } | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Identity of the in-flight submission (question + language + code). A result
+  // is only applied if this identity is still current when the request finishes,
+  // so edits or language switches while a request is pending don't surface stale
+  // results for a different submission.
+  const submitIdentity = useRef<{
+    questionId: string;
+    language: string;
+    code: string;
+  } | null>(null);
 
   const handleLanguageChange = (newLanguage: string) => {
     setLanguage(newLanguage);
@@ -102,6 +115,9 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     }
     setSubmitResult(null);
     setSubmitError(null);
+    // Invalidate any in-flight submission: a language change makes its
+    // identity stale, so its result must not surface later.
+    submitIdentity.current = null;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -109,6 +125,8 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     if (!detail?.id || submitting) return;
 
     const codeToSubmit = code;
+    const identity = { questionId: detail.id, language, code: codeToSubmit };
+    submitIdentity.current = identity;
     setSubmitting(true);
     setSubmitResult(null);
     setSubmitError(null);
@@ -118,12 +136,18 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
         code: codeToSubmit,
         language,
       });
-      setSubmitResult(result);
+      // Only surface the result if the submission identity is still current.
+      if (submitIdentity.current === identity) {
+        setSubmitResult({ questionId: detail.id, result });
+      }
     } catch (err) {
-      if (err instanceof ApiError) {
-        setSubmitError(err.message);
-      } else {
-        setSubmitError("Something went wrong. Please try again.");
+      // Only surface the error if the submission identity is still current.
+      if (submitIdentity.current === identity) {
+        if (err instanceof ApiError) {
+          setSubmitError(err.message);
+        } else {
+          setSubmitError("Something went wrong. Please try again.");
+        }
       }
     } finally {
       setSubmitting(false);
@@ -399,10 +423,16 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
                 setCode(newValue ?? "");
                 setSubmitResult(null);
                 setSubmitError(null);
+                // Invalidate any in-flight submission: an edit makes its
+                // identity stale, so its result must not surface later.
+                submitIdentity.current = null;
               }}
               height="100%"
             />
-            {submitResult && <ResultPanel result={submitResult} />}
+            {detail?.id &&
+              submitResult?.questionId === detail.id && (
+                <ResultPanel result={submitResult.result} />
+              )}
             {submitError && (
               <div
                 className="p-3 rounded-[12px] text-sm bg-red-50 border border-red-200 text-red-800"
