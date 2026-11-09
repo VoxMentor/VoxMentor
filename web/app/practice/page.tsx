@@ -8,7 +8,6 @@ import {
   type MasteryConcept,
   type QuestionDetail,
   type StudentQuestion,
-  type SubmitCodeRequest,
   type SubmitCodeResult,
 } from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -107,17 +106,18 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!detail?.id) return;
+    if (!detail?.id || submitting) return;
+
+    const codeToSubmit = code;
     setSubmitting(true);
     setSubmitResult(null);
     setSubmitError(null);
     try {
-      const input: SubmitCodeRequest = {
+      const result = await api.submitCode({
         questionId: detail.id,
-        code,
+        code: codeToSubmit,
         language,
-      };
-      const result = await api.submitCode(input);
+      });
       setSubmitResult(result);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -481,3 +481,4 @@ export default function PracticePage() {
     </Suspense>
   );
 }
+

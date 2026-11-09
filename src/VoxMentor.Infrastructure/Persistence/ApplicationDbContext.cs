@@ -329,7 +329,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         builder.Entity<QuestionHintUsage>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.HasIndex(e => new { e.UserId, e.QuestionId }).IsUnique();
+            entity.HasIndex(e => new { e.UserId, e.QuestionId, e.AttemptId }).IsUnique();
             entity.HasQueryFilter(e => e.UserId == CurrentUserId);
         });
     }

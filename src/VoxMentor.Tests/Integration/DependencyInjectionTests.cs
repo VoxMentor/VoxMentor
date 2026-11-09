@@ -22,4 +22,13 @@ public class DependencyInjectionTests : IClassFixture<CustomWebApplicationFactor
 
         Assert.NotNull(tutorService);
     }
+
+    [Fact]
+    public void IVoiceClient_ResolvesFromScope()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var voiceClient = scope.ServiceProvider.GetRequiredService<IVoiceClient>();
+
+        Assert.NotNull(voiceClient);
+    }
 }

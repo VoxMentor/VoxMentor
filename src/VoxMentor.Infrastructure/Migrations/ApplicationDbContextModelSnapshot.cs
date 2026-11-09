@@ -639,6 +639,9 @@ namespace VoxMentor.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid>("AttemptId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -654,7 +657,7 @@ namespace VoxMentor.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId", "QuestionId")
+                    b.HasIndex("UserId", "QuestionId", "AttemptId")
                         .IsUnique();
 
                     b.ToTable("QuestionHintUsages");

@@ -17,6 +17,16 @@ namespace VoxMentor.Application.Features.Jd.GetJd;
 /// </summary>
 public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultDto>>
 {
+    /// <summary>Cached JD data (the JD row plus its skill weights). Readiness is computed fresh per request.</summary>
+    /// <remarks>
+    /// The snapshot stores primitive DTO fields, not EF Core entities, so the cache
+    /// contract is decoupled from the persistence model (M2).
+    /// Staleness: a deleted/edited JD is served from cache until the 300s TTL expires
+    /// (M3). Invalidation on JD write would be needed to tighten this window.
+    /// </remarks>
+    private sealed record JdData(Guid Id, string CompanyName, string Role, string Difficulty, int EstimatedWeeks, DateTime CreatedAt);
+    private sealed record JdSnapshot(JdData Jd, List<SkillWeightData> SkillWeights);
+
     private readonly IApplicationDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IDistributedCache _cache;
@@ -38,11 +48,6 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
             throw new UnauthorizedAccessException("User must be authenticated to view a JD.");
 
         // Foreign and unknown JDs both surface as null → 404 (no existence oracle).
-        var cacheKey = $"jd:{userId}:{request.JdId}";
-        var cached = ApplicationCacheService.GetT<GetJdResultDto>(_cache, cacheKey);
-        if (cached is not null)
-            return ApiResponse<GetJdResultDto>.SuccessResult(cached, "Retrieved from cache.");
-
         var jd = await _db.JobDescriptions
             .AsNoTracking()
             .FirstOrDefaultAsync(j => j.Id == request.JdId, cancellationToken);
@@ -50,42 +55,87 @@ public class GetJdHandler : IRequestHandler<GetJdQuery, ApiResponse<GetJdResultD
         if (jd is null)
             throw new NotFoundException("No job description found for the user.");
 
-        var skillWeights = await _db.JdSkillWeights
-            .AsNoTracking()
-            .Where(sw => sw.JobDescriptionId == jd.Id)
-            .ToListAsync(cancellationToken);
+        var cacheKey = $"jd:{userId}:{request.JdId}";
+        var cachedStatic = ApplicationCacheService.GetT<GetJdStaticDataDto>(_cache, cacheKey);
 
+        string companyName;
+        string role;
+        string difficulty;
+        int estimatedWeeks;
+        DateTime createdAt;
+        List<SkillWeightData> skillWeights;
+
+        if (cachedStatic is not null)
+        {
+            companyName = cachedStatic.CompanyName;
+            role = cachedStatic.Role;
+            difficulty = cachedStatic.Difficulty;
+            estimatedWeeks = cachedStatic.EstimatedWeeks;
+            createdAt = cachedStatic.CreatedAt;
+            skillWeights = cachedStatic.SkillWeights;
+        }
+        else
+        {
+            companyName = jd.CompanyName;
+            role = jd.Role;
+            difficulty = jd.Difficulty;
+            estimatedWeeks = jd.EstimatedWeeks;
+            createdAt = jd.CreatedAt;
+
+            skillWeights = await _db.JdSkillWeights
+                .AsNoTracking()
+                .Where(sw => sw.JobDescriptionId == jd.Id)
+                .Select(sw => new SkillWeightData(sw.SkillName, sw.Weight, sw.IsTechnical))
+                .ToListAsync(cancellationToken);
+
+            // Cache only static JD data (JD fields, skill weights) — best-effort
+            ApplicationCacheService.SetT(_cache, cacheKey, new GetJdStaticDataDto(
+                jd.Id, jd.CompanyName, jd.Role, jd.Difficulty, jd.EstimatedWeeks, jd.CreatedAt,
+                skillWeights));
+        }
+
+        // Always load concepts fresh from DB for readiness and roadmap calculation
         var concepts = await _db.Concepts
             .AsNoTracking()
             .ToListAsync(cancellationToken);
 
+        // Always load fresh masteries and recompute readiness — never stale
         var masteries = await _db.StudentMasteries
             .AsNoTracking()
             .ToDictionaryAsync(m => m.ConceptId, cancellationToken);
 
         var readiness = ReadinessCalculator.Compute(
-            skillWeights, concepts, masteries, jd.EstimatedWeeks);
+            skillWeights, concepts, masteries, estimatedWeeks);
 
         var dto = new GetJdResultDto
         {
             JdId = jd.Id,
-            CompanyName = jd.CompanyName,
-            Role = jd.Role,
+            CompanyName = companyName,
+            Role = role,
             TechnicalSkills = skillWeights
                 .Where(sw => sw.IsTechnical)
                 .ToDictionary(sw => sw.SkillName, sw => sw.Weight, StringComparer.Ordinal),
             HrSkills = skillWeights
                 .Where(sw => !sw.IsTechnical)
                 .ToDictionary(sw => sw.SkillName, sw => sw.Weight, StringComparer.Ordinal),
-            Difficulty = jd.Difficulty,
+            Difficulty = difficulty,
             ReadinessScore = readiness.Score,
             Gaps = readiness.Gaps,
-            EstimatedWeeks = jd.EstimatedWeeks,
-            Roadmap = RoadmapBuilder.Build(readiness.Gaps, concepts, jd.EstimatedWeeks),
-            CreatedAt = jd.CreatedAt
+            EstimatedWeeks = estimatedWeeks,
+            Roadmap = RoadmapBuilder.Build(readiness.Gaps, concepts, estimatedWeeks),
+            CreatedAt = createdAt
         };
 
-        ApplicationCacheService.SetT(_cache, cacheKey, dto);
         return ApiResponse<GetJdResultDto>.SuccessResult(dto, "Job description retrieved successfully.");
     }
 }
+
+// Helper DTO for caching only static JD components (not readiness-derived data).
+public record GetJdStaticDataDto(
+    Guid Id,
+    string CompanyName,
+    string Role,
+    string Difficulty,
+    int EstimatedWeeks,
+    DateTime CreatedAt,
+    List<SkillWeightData> SkillWeights);
