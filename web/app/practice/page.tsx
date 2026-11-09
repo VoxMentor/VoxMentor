@@ -54,8 +54,16 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  // Keep the latest searchParams in a ref so updateParams stays stable across
+  // reads without being recreated on every searchParams object identity change.
+  const searchParamsRef = useRef(searchParams);
+  useEffect(() => {
+    searchParamsRef.current = searchParams;
+  }, [searchParams]);
+
   const [detailReload, setDetailReload] = useState(0);
   const [listReload, setListReload] = useState(0);
+  const [conceptsReload, setConceptsReload] = useState(0);
   const [concepts, setConcepts] = useState<MasteryConcept[]>([]);
 
   // --- Question detail state ---
@@ -107,6 +115,16 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     code: string;
   } | null>(null);
 
+  // Ownership of the submit loading state, tracked independently of result
+  // identity (which edits can invalidate). Only the submission that currently
+  // owns the loading state may clear it, so an earlier request's finally block
+  // cannot re-enable the button while a later submission is still in flight.
+  const submitOwner = useRef<{
+    questionId: string;
+    language: string;
+    code: string;
+  } | null>(null);
+
   // Reset editor state when the question changes, scoped to that question.
   const currentQuestionIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -115,12 +133,18 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     setLanguage("javascript");
     setCodeDrafts({});
     setSubmitResult(null);
+    setSubmitError(null);
     setSubmitting(false);
+    // Invalidate any in-flight submission so it cannot surface a result or
+    // error on the newly navigated question.
+    submitIdentity.current = null;
   }, [selectedId]);
 
   const updateCodeDraft = (newValue: string) => {
     setCodeDrafts((prev) => ({ ...prev, [language]: newValue }));
   };
+
+  const [conceptsError, setConceptsError] = useState<string | null>(null);
 
   const handleLanguageChange = (newLanguage: string) => {
     setLanguage(newLanguage);
@@ -138,6 +162,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     const codeToSubmit = code;
     const identity = { questionId: detail.id, language, code: codeToSubmit };
     submitIdentity.current = identity;
+    submitOwner.current = identity;
     setSubmitting(true);
     setSubmitResult(null);
     setSubmitError(null);
@@ -161,13 +186,16 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
         }
       }
     } finally {
-      setSubmitting(false);
+      // Only the submission that owns the loading state may clear it.
+      if (submitOwner.current === identity) {
+        setSubmitting(false);
+      }
     }
   };
 
   const updateParams = useCallback(
     (updates: Record<string, string | undefined>, replace = false) => {
-      const params = new URLSearchParams(searchParams.toString());
+      const params = new URLSearchParams(searchParamsRef.current.toString());
       for (const [key, value] of Object.entries(updates)) {
         if (value === undefined) params.delete(key);
         else params.set(key, value);
@@ -177,7 +205,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
       if (replace) router.replace(url);
       else router.push(url);
     },
-    [router, pathname, searchParams]
+    [router, pathname]
   );
 
   useEffect(() => {
@@ -240,13 +268,22 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     api
       .mastery()
       .then((m) => {
-        if (!cancelled) setConcepts(m.concepts);
+        if (!cancelled) {
+          setConcepts(m.concepts);
+          setConceptsError(null);
+        }
       })
-      .catch(() => {});
+      .catch((e) => {
+        if (cancelled) return;
+        setConcepts([]);
+        setConceptsError(
+          e instanceof ApiError ? e.message : "Failed to load concepts.",
+        );
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [conceptsReload]);
 
   useEffect(() => {
     let cancelled = false;
@@ -373,6 +410,11 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
               </div>
             ) : listError ? (
               <FetchError message={listError} onRetry={retryList} />
+            ) : conceptsError ? (
+              <FetchError
+                message={conceptsError}
+                onRetry={() => setConceptsReload((n) => n + 1)}
+              />
             ) : (
               <QuestionList
                 questions={questions}
@@ -515,10 +557,6 @@ function PracticeRoute() {
  * Navbar, and a Suspense boundary, then renders at /practice.
  */
 export default function PracticePage() {
-  return (
-    <Suspense fallback={<PageSkeleton />}>
-      <PracticeRoute />
-    </Suspense>
-  );
+  return <PracticeRoute />;
 }
 

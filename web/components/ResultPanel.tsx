@@ -2,60 +2,17 @@
 
 import { motion } from "motion/react";
 import { type SubmitCodeResult } from "@/lib/api";
+import {
+  borderColor,
+  badgeColor,
+  formatMemory,
+  masteryColor,
+  optimalLabel,
+  statusLabel,
+} from "@/lib/result-panel";
 
 interface ResultPanelProps {
   result: SubmitCodeResult;
-}
-
-function statusLabel(result: SubmitCodeResult, isCorrect: boolean | null): string {
-  // Pass/fail badge label; neutral "Ungraded" when not yet graded.
-  if (isCorrect !== null) {
-    return isCorrect ? "Correct" : "Incorrect";
-  }
-  return result.status ?? "Ungraded";
-}
-
-function borderColor(isCorrect: boolean | null): string {
-  // Left border color: success/danger when graded, neutral otherwise.
-  if (isCorrect === true) return "border-success";
-  if (isCorrect === false) return "border-danger";
-  return "border-border";
-}
-
-function badgeColor(isCorrect: boolean | null): string {
-  // Pill badge color: green/red when graded, neutral otherwise.
-  if (isCorrect === true) {
-    return "bg-success/10 border border-success/20 text-success";
-  }
-  if (isCorrect === false) {
-    return "bg-danger/10 border border-danger/20 text-danger";
-  }
-  return "bg-border/10 border border-border text-text-muted";
-}
-
-function masteryColor(masteryDelta: number): string {
-  // Mastery delta color: green when improved, red when regressed, muted when flat.
-  if (masteryDelta > 0) return "var(--success, #10B981)";
-  if (masteryDelta < 0) return "var(--danger, #EF4444)";
-  return "var(--muted, #6B7280)";
-}
-
-function optimalLabel(isOptimal: boolean | null): string {
-  // Complexity optimality assessment: optimal / not optimal / unavailable.
-  if (isOptimal === true) return "· optimal";
-  if (isOptimal === false) return "· not optimal";
-  return "· unavailable";
-}
-
-/**
- * Formats a memory usage value in kilobytes to megabytes for display.
- * Returns an unavailable indicator when the value is missing.
- */
-function formatMemory(memoryUsageKb: number | null): string {
-  if (memoryUsageKb === null || memoryUsageKb === undefined) {
-    return "—";
-  }
-  return `${(memoryUsageKb / 1024).toFixed(2)} MB`;
 }
 
 /**
@@ -118,7 +75,11 @@ export default function ResultPanel({ result }: ResultPanelProps) {
             transition={{ duration: 0.3 }}
             style={{ color: masteryColor(masteryDelta) }}
           >
-            {masteryDelta === 0 ? "0.00" : `${masteryDelta >= 0 ? "+" : ""}${masteryDelta.toFixed(2)}`}
+            {!Number.isFinite(masteryDelta)
+              ? "—"
+              : masteryDelta === 0
+                ? "0.00"
+                : `${masteryDelta >= 0 ? "+" : ""}${masteryDelta.toFixed(2)}`}
           </motion.span>
         </div>
       </div>
@@ -153,7 +114,7 @@ export default function ResultPanel({ result }: ResultPanelProps) {
               </span>
               <span className="text-sm font-medium text-text-body">
                 {result.aiEvaluation.timeComplexity.bigO}{" "}
-                {optimalLabel(result.aiEvaluation.timeComplexity.isOptimal)}
+                {optimalLabel(result.aiEvaluation.timeComplexity.bigO, result.aiEvaluation.timeComplexity.isOptimal)}
               </span>
             </div>
             <div className="flex flex-col gap-1">
@@ -162,7 +123,7 @@ export default function ResultPanel({ result }: ResultPanelProps) {
               </span>
               <span className="text-sm font-medium text-text-body">
                 {result.aiEvaluation.spaceComplexity.bigO}{" "}
-                {optimalLabel(result.aiEvaluation.spaceComplexity.isOptimal)}
+                {optimalLabel(result.aiEvaluation.spaceComplexity.bigO, result.aiEvaluation.spaceComplexity.isOptimal)}
               </span>
             </div>
           </div>
