@@ -85,11 +85,10 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     c: "#include <stdio.h>\n\nint main() {\n    // Write your solution here\n    return 0;\n}",
   };
 
-  // --- Editor state ---
+  // --- Editor state (per-language drafts) ---
   const [language, setLanguage] = useState<string>("javascript");
-  const [code, setCode] = useState<string>(LANGUAGE_TEMPLATES.javascript ?? "");
-
-  const hasUserEdited = useRef(false);
+  const [codeDrafts, setCodeDrafts] = useState<Record<string, string>>({});
+  const code = codeDrafts[language] ?? LANGUAGE_TEMPLATES[language] ?? "";
 
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<{
@@ -108,15 +107,27 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     code: string;
   } | null>(null);
 
+  // Reset editor state when the question changes, scoped to that question.
+  const currentQuestionIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (currentQuestionIdRef.current === selectedId) return;
+    currentQuestionIdRef.current = selectedId;
+    setLanguage("javascript");
+    setCodeDrafts({});
+    setSubmitResult(null);
+    setSubmitting(false);
+  }, [selectedId]);
+
+  const updateCodeDraft = (newValue: string) => {
+    setCodeDrafts((prev) => ({ ...prev, [language]: newValue }));
+  };
+
   const handleLanguageChange = (newLanguage: string) => {
     setLanguage(newLanguage);
-    if (!hasUserEdited.current) {
-      setCode(LANGUAGE_TEMPLATES[newLanguage] ?? "");
-    }
+    // Restore the selected language's draft (falling back to its template),
+    // never leaking code from the previously selected language.
     setSubmitResult(null);
     setSubmitError(null);
-    // Invalidate any in-flight submission: a language change makes its
-    // identity stale, so its result must not surface later.
     submitIdentity.current = null;
   };
 
@@ -419,8 +430,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
               language={language}
               value={code}
               onChange={(newValue) => {
-                hasUserEdited.current = true;
-                setCode(newValue ?? "");
+                updateCodeDraft(newValue ?? "");
                 setSubmitResult(null);
                 setSubmitError(null);
                 // Invalidate any in-flight submission: an edit makes its

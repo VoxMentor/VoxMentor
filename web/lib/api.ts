@@ -234,7 +234,7 @@ export interface DimensionScore {
 
 export interface ComplexityScore {
   bigO: string;
-  isOptimal: boolean;
+  isOptimal: boolean | null;
   feedback?: string;
 }
 

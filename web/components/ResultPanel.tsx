@@ -8,6 +8,7 @@ interface ResultPanelProps {
 }
 
 function statusLabel(result: SubmitCodeResult, isCorrect: boolean | null): string {
+  // Pass/fail badge label; neutral "Ungraded" when not yet graded.
   if (isCorrect !== null) {
     return isCorrect ? "Correct" : "Incorrect";
   }
@@ -15,12 +16,14 @@ function statusLabel(result: SubmitCodeResult, isCorrect: boolean | null): strin
 }
 
 function borderColor(isCorrect: boolean | null): string {
+  // Left border color: success/danger when graded, neutral otherwise.
   if (isCorrect === true) return "border-success";
   if (isCorrect === false) return "border-danger";
   return "border-border";
 }
 
 function badgeColor(isCorrect: boolean | null): string {
+  // Pill badge color: green/red when graded, neutral otherwise.
   if (isCorrect === true) {
     return "bg-success/10 border border-success/20 text-success";
   }
@@ -31,15 +34,28 @@ function badgeColor(isCorrect: boolean | null): string {
 }
 
 function masteryColor(masteryDelta: number): string {
+  // Mastery delta color: green when improved, red when regressed, muted when flat.
   if (masteryDelta > 0) return "var(--success, #10B981)";
   if (masteryDelta < 0) return "var(--danger, #EF4444)";
   return "var(--muted, #6B7280)";
 }
 
-function optimalLabel(isOptimal: boolean): string {
+function optimalLabel(isOptimal: boolean | null): string {
+  // Complexity optimality assessment: optimal / not optimal / unavailable.
   if (isOptimal === true) return "· optimal";
   if (isOptimal === false) return "· not optimal";
   return "· unavailable";
+}
+
+/**
+ * Formats a memory usage value in kilobytes to megabytes for display.
+ * Returns an unavailable indicator when the value is missing.
+ */
+function formatMemory(memoryUsageKb: number | null): string {
+  if (memoryUsageKb === null || memoryUsageKb === undefined) {
+    return "—";
+  }
+  return `${(memoryUsageKb / 1024).toFixed(2)} MB`;
 }
 
 /**
@@ -88,10 +104,7 @@ export default function ResultPanel({ result }: ResultPanelProps) {
             Memory usage
           </span>
           <span className="text-sm font-medium text-text-body">
-            {result.memoryUsageKb === null ||
-            result.memoryUsageKb === undefined
-              ? "—"
-              : `${result.memoryUsageKb} KB`}
+            {formatMemory(result.memoryUsageKb)}
           </span>
         </div>
         <div className="flex flex-col gap-1">
