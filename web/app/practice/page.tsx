@@ -15,7 +15,9 @@ import Navbar from "@/components/Navbar";
 import FetchError from "@/components/FetchError";
 import QuestionCard from "@/components/QuestionCard";
 import CodeEditor from "@/components/CodeEditor";
+import ConceptCard from "@/components/ConceptCard";
 import LanguageSelector from "@/components/LanguageSelector";
+import MasteryProgressBar from "@/components/MasteryProgressBar";
 import QuestionList from "@/components/QuestionList";
 import ResultPanel from "@/components/ResultPanel";
 
@@ -57,6 +59,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
   const [detailReload, setDetailReload] = useState(0);
   const [listReload, setListReload] = useState(0);
   const [concepts, setConcepts] = useState<MasteryConcept[]>([]);
+  const [overallReadiness, setOverallReadiness] = useState<number>(0);
 
   // --- Question detail state ---
   const detailKey = `${selectedId ?? ""}|${detailReload}`;
@@ -205,7 +208,10 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     api
       .mastery()
       .then((m) => {
-        if (!cancelled) setConcepts(m.concepts);
+        if (!cancelled) {
+          setConcepts(m.concepts);
+          setOverallReadiness(m.overallReadiness);
+        }
       })
       .catch(() => {});
     return () => {
@@ -272,6 +278,34 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     <div className="grid lg:grid-cols-[60%_40%] gap-6 min-w-0">
       {/* Left: question (60%) */}
       <section className="flex flex-col gap-4 min-w-0">
+        <div className="card p-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-xs font-medium text-text-muted">
+                Overall Readiness
+              </span>
+              <div className="text-lg font-medium text-text-heading">
+                {(overallReadiness * 100).toFixed(0)}%
+              </div>
+            </div>
+            <MasteryProgressBar mastery={overallReadiness} height="6px" />
+          </div>
+          {concepts.length === 0 ? (
+            <p className="text-sm text-text-muted">
+              No concepts available yet.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {concepts
+                .slice()
+                .sort((a, b) => (a.masteryProbability ?? 0) - (b.masteryProbability ?? 0))
+                .map((c) => (
+                  <ConceptCard key={c.conceptId} concept={c} />
+                ))}
+            </div>
+          )}
+        </div>
+
         {detail ? (
           <QuestionCard detail={detail} />
         ) : (
