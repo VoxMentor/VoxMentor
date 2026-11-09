@@ -557,6 +557,10 @@ function PracticeRoute() {
  * Navbar, and a Suspense boundary, then renders at /practice.
  */
 export default function PracticePage() {
-  return <PracticeRoute />;
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <PracticeRoute />
+    </Suspense>
+  );
 }
 
