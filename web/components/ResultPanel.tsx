@@ -1,0 +1,126 @@
+"use client";
+
+import { motion } from "framer-motion";
+import { type SubmitCodeResult } from "@/lib/api";
+
+interface ResultPanelProps {
+  result: SubmitCodeResult;
+}
+
+export default function ResultPanel({ result }: ResultPanelProps) {
+  const isCorrect = result.isCorrect ?? false;
+  const masteryDelta = result.masteryDelta;
+  const isMasteryImproved = masteryDelta > 0;
+
+  return (
+    <div className="card animate-fade-in flex flex-col gap-3 border-l-4">
+      <div
+        className={`border-l-3 px-2.5 py-2 ${
+          isCorrect
+            ? "border-success bg-success/5"
+            : "border-danger bg-danger/5"
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-text-heading">Submission result</h3>
+          <span
+            className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+              isCorrect
+                ? "bg-success/10 border border-success/20 text-success"
+                : "bg-danger/10 border border-danger/20 text-danger"
+            }`}
+          >
+            {isCorrect ? "Correct" : "Incorrect"}
+          </span>
+        </div>
+      </div>
+
+      <div className="px-4 py-3 grid grid-cols-2 gap-2 border-b border-border">
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+            Test cases
+          </span>
+          <span className="text-sm font-medium text-text-body">
+            {result.testCasesPassed} / {result.testCasesTotal}
+          </span>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+            Execution time
+          </span>
+          <span className="text-sm font-medium text-text-body">
+            {result.executionTimeMs ?? 0} ms
+          </span>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+            Memory usage
+          </span>
+          <span className="text-sm font-medium text-text-body">
+            {result.memoryUsageKb ?? 0} MB
+          </span>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+            Mastery change
+          </span>
+          <motion.span
+            className="text-sm font-medium"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            style={{
+              color: isMasteryImproved ? "var(--success, #10B981)" : "var(--danger, #EF4444)",
+            }}
+          >
+            {masteryDelta >= 0 ? "+" : ""}{masteryDelta.toFixed(2)}
+          </motion.span>
+        </div>
+      </div>
+
+      {result.aiEvaluation && (
+        <div className="px-4 py-3 border-b border-border">
+          <h4 className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-2">
+            AI evaluation
+          </h4>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+                Correctness
+              </span>
+              <span className="text-sm font-medium text-text-body">
+                {result.aiEvaluation.correctness.score} /{" "}
+                {result.aiEvaluation.correctness.maxScore}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+                Code style
+              </span>
+              <span className="text-sm font-medium text-text-body">
+                {result.aiEvaluation.codeStyle.score} /{" "}
+                {result.aiEvaluation.codeStyle.maxScore}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+                Time complexity
+              </span>
+              <span className="text-sm font-medium text-text-body">
+                {result.aiEvaluation.timeComplexity.bigO}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+                Space complexity
+              </span>
+              <span className="text-sm font-medium text-text-body">
+                {result.aiEvaluation.spaceComplexity.bigO}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

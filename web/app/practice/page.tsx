@@ -9,6 +9,7 @@ import {
   type QuestionDetail,
   type StudentQuestion,
   type SubmitCodeRequest,
+  type SubmitCodeResult,
 } from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Navbar from "@/components/Navbar";
@@ -17,6 +18,7 @@ import QuestionCard from "@/components/QuestionCard";
 import CodeEditor from "@/components/CodeEditor";
 import LanguageSelector from "@/components/LanguageSelector";
 import QuestionList from "@/components/QuestionList";
+import ResultPanel from "@/components/ResultPanel";
 
 /**
  * Rendered while question data is loading. Mirrors the 60% question / 40%
@@ -91,16 +93,16 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
   const hasUserEdited = useRef(false);
 
   const [submitting, setSubmitting] = useState(false);
-  const [submitResult, setSubmitResult] = useState<{
-    status: string;
-    message: string;
-  } | null>(null);
+  const [submitResult, setSubmitResult] = useState<SubmitCodeResult | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const handleLanguageChange = (newLanguage: string) => {
     setLanguage(newLanguage);
     if (!hasUserEdited.current) {
       setCode(LANGUAGE_TEMPLATES[newLanguage] ?? "");
     }
+    setSubmitResult(null);
+    setSubmitError(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -108,19 +110,20 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     if (!detail?.id) return;
     setSubmitting(true);
     setSubmitResult(null);
+    setSubmitError(null);
     try {
       const input: SubmitCodeRequest = {
         questionId: detail.id,
         code,
         language,
       };
-      await api.submitCode(input);
-      setSubmitResult({ status: "success", message: "Code submitted successfully." });
+      const result = await api.submitCode(input);
+      setSubmitResult(result);
     } catch (err) {
       if (err instanceof ApiError) {
-        setSubmitResult({ status: "error", message: err.message });
+        setSubmitError(err.message);
       } else {
-        setSubmitResult({ status: "error", message: "Something went wrong. Please try again." });
+        setSubmitError("Something went wrong. Please try again.");
       }
     } finally {
       setSubmitting(false);
@@ -394,18 +397,17 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
               onChange={(newValue) => {
                 hasUserEdited.current = true;
                 setCode(newValue ?? "");
+                setSubmitResult(null);
+                setSubmitError(null);
               }}
               height="100%"
             />
-            {submitResult && (
+            {submitResult && <ResultPanel result={submitResult} />}
+            {submitError && (
               <div
-                className={`p-3 rounded-[12px] text-sm ${
-                  submitResult.status === "success"
-                    ? "bg-green-50 border border-green-200 text-green-800"
-                    : "bg-red-50 border border-red-200 text-red-800"
-                }`}
+                className="p-3 rounded-[12px] text-sm bg-red-50 border border-red-200 text-red-800"
               >
-                {submitResult.message}
+                {submitError}
               </div>
             )}
             <button

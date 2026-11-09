@@ -226,6 +226,25 @@ export interface CodeTestCaseResult {
   passed: boolean;
 }
 
+export interface DimensionScore {
+  score: number;
+  maxScore: number;
+  feedback: string;
+}
+
+export interface ComplexityScore {
+  bigO: string;
+  isOptimal: boolean;
+  feedback?: string;
+}
+
+export interface CodeEvaluation {
+  correctness: DimensionScore;
+  timeComplexity: ComplexityScore;
+  spaceComplexity: ComplexityScore;
+  codeStyle: DimensionScore;
+}
+
 export interface SubmitCodeResult {
   submissionId: string;
   status: string;
@@ -234,7 +253,7 @@ export interface SubmitCodeResult {
   testCasesTotal: number;
   executionTimeMs: number | null;
   memoryUsageKb: number | null;
-  aiEvaluation: unknown;
+  aiEvaluation: CodeEvaluation | null;
   testCaseResults: CodeTestCaseResult[];
   previousMastery: number;
   newMastery: number;
