@@ -51,7 +51,7 @@ export default function ConceptCard({
         </span>
       </div>
       <div className="flex items-center justify-between text-xs text-text-muted border-t border-border pt-2">
-        <span>Problems solved</span>
+        <span>Correct attempts</span>
         <span className="font-medium text-text-body">{solved}</span>
       </div>
     </div>

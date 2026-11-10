@@ -61,6 +61,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
   const [concepts, setConcepts] = useState<MasteryConcept[]>([]);
   const [overallReadiness, setOverallReadiness] = useState(0);
   const [conceptsLoading, setConceptsLoading] = useState(true);
+  const [conceptsError, setConceptsError] = useState<string | null>(null);
 
   // --- Question detail state ---
   const detailKey = `${selectedId ?? ""}|${detailReload}`;
@@ -155,6 +156,9 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     submitIdentity.current++;
   };
 
+  // Request ID to guard against stale mastery responses
+  const masteryRequestId = useRef(0);
+
   // Fetch mastery data (concepts + overall readiness). Cancellable via AbortController
   // so that stale requests don't overwrite fresher state and can be aborted on unmount.
   const fetchMastery = useCallback(async () => {
@@ -163,16 +167,28 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     const controller = new AbortController();
     masteryController.current = controller;
 
+    // Assign a new request ID; only the latest request may update state.
+    const requestId = ++masteryRequestId.current;
+
     setConceptsLoading(true);
+    setConceptsError(null);
     try {
       const m = await api.mastery({ signal: controller.signal });
-      setConcepts(m.concepts);
-      setOverallReadiness(m.overallReadiness);
+      // Only apply if this is still the latest request.
+      if (requestId === masteryRequestId.current) {
+        setConcepts(m.concepts);
+        setOverallReadiness(m.overallReadiness);
+      }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
-      // Mastery failures are non-fatal; log but don't block the UI.
+      // Only update error if this is still the latest request.
+      if (requestId === masteryRequestId.current) {
+        setConceptsError("Failed to load mastery data. Please try again.");
+      }
     } finally {
-      setConceptsLoading(false);
+      if (requestId === masteryRequestId.current) {
+        setConceptsLoading(false);
+      }
     }
   }, []);
 
@@ -392,25 +408,39 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
               Readiness
             </h2>
             <span className="text-sm font-medium text-navy">
-              {Math.round(overallReadiness)}%
+              {Math.round(overallReadiness * 100)}%
             </span>
           </div>
           <MasteryProgressBar
-            mastery={overallReadiness / 100}
+            mastery={overallReadiness}
             label="Overall readiness"
           />
-          <div className="grid gap-2">
-            {concepts
-              .slice()
-              .sort(
-                (a, b) =>
-                  (a.masteryProbability ?? 0) -
-                  (b.masteryProbability ?? 0)
-              )
-              .map((c) => (
-                <ConceptCard key={c.conceptId} concept={c} />
-              ))}
-          </div>
+          <details>
+            <summary className="cursor-pointer text-sm">Concept mastery</summary>
+            <div className="grid gap-2">
+              {concepts
+                .slice()
+                .sort(
+                  (a, b) =>
+                    (a.masteryProbability ?? 0) -
+                    (b.masteryProbability ?? 0)
+                )
+                .map((c) => (
+                  <ConceptCard key={c.conceptId} concept={c} />
+                ))}
+            </div>
+          </details>
+          {conceptsError && !conceptsLoading && (
+            <div className="p-3 rounded-[12px] text-sm bg-red-50 border border-red-200 text-red-800 flex items-center justify-between">
+              <span>{conceptsError}</span>
+              <button
+                onClick={fetchMastery}
+                className="text-sm font-medium text-primary hover:underline cursor-pointer ml-4"
+              >
+                Retry
+              </button>
+            </div>
+          )}
         </div>
 
         {detail ? (

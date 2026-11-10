@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import { type SubmitCodeResult } from "@/lib/api";
+import { type SubmitCodeResult, type CodeTestCaseResult } from "@/lib/api";
 import {
   borderColor,
   badgeColor,
@@ -18,13 +18,15 @@ interface ResultPanelProps {
 
 /**
  * Displays a single code-submission result: pass/fail badge, test cases,
- * execution time, memory usage, mastery change, and optional AI evaluation.
+ * execution time, memory usage, mastery change, visible test-case results,
+ * and optional AI evaluation.
  * Renders a neutral ungraded state when `isCorrect` is null and an
  * unavailable indicator for missing timing/memory measurements.
  */
 export default function ResultPanel({ result }: ResultPanelProps) {
   const isCorrect = result.isCorrect;
   const masteryDelta = result.masteryDelta;
+  const status = statusLabel(result, isCorrect);
 
   return (
     <div className="card animate-fade-in flex flex-col gap-3 border-l-4">
@@ -32,7 +34,7 @@ export default function ResultPanel({ result }: ResultPanelProps) {
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-text-heading">Submission result</h3>
           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${badgeColor(isCorrect)}`}>
-            {statusLabel(result, isCorrect)}
+            {status}
           </span>
         </div>
       </div>
@@ -77,6 +79,56 @@ export default function ResultPanel({ result }: ResultPanelProps) {
           </motion.span>
         </div>
       </div>
+
+      {result.testCaseResults && result.testCaseResults.length > 0 && (
+        <div className="px-4 py-3 border-b border-border">
+          <h4 className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-2">
+            Test case results
+          </h4>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {result.testCaseResults.map((tc: CodeTestCaseResult) => (
+              <div
+                key={tc.testCaseIndex}
+                className={`p-2 rounded bg-white border ${
+                  tc.passed ? "border-success/30" : "border-danger/30"
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className="font-medium text-text-muted">Test case #{tc.testCaseIndex + 1}</span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                      tc.passed
+                        ? "bg-success/10 text-success"
+                        : "bg-danger/10 text-danger"
+                    }`}
+                  >
+                    {tc.passed ? "Passed" : "Failed"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[11px] text-text-body">
+                  <div>
+                    <span className="text-text-muted">Input:</span>
+                    <pre className="whitespace-pre-wrap font-mono mt-0.5">{tc.stdin || "—"}</pre>
+                  </div>
+                  <div>
+                    <span className="text-text-muted">Expected:</span>
+                    <pre className="whitespace-pre-wrap font-mono mt-0.5">{tc.expected || "—"}</pre>
+                  </div>
+                  {!tc.passed && (
+                    <>
+                      <div>
+                        <span className="text-text-muted">Actual:</span>
+                        <pre className="whitespace-pre-wrap font-mono mt-0.5">{tc.actual || "—"}</pre>
+                      </div>
+                      <div />
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {result.aiEvaluation && (
         <div className="px-4 py-3 border-b border-border">
