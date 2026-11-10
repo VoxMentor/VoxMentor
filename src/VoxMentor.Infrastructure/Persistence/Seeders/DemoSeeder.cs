@@ -371,6 +371,7 @@ public static class DemoSeeder
         Guid jdId, Guid id, string skillName, float weight, bool isTechnical)
     {
         var existing = await db.JdSkillWeights
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(w => w.JobDescriptionId == jdId && w.SkillName == skillName);
         if (existing is null)
         {

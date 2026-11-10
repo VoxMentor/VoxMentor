@@ -199,6 +199,7 @@ public class DemoSeederTests
         {
             Users = db.Users.Count(),
             JobDescriptions = db.JobDescriptions.Count(),
+            JdSkillWeights = db.JdSkillWeights.Count(),
             MockInterviews = db.MockInterviews.Count(),
             TutorSessions = db.TutorSessions.Count(),
             StudentMasteries = db.StudentMasteries.Count(),
@@ -210,6 +211,7 @@ public class DemoSeederTests
         {
             Users = db.Users.Count(),
             JobDescriptions = db.JobDescriptions.Count(),
+            JdSkillWeights = db.JdSkillWeights.Count(),
             MockInterviews = db.MockInterviews.Count(),
             TutorSessions = db.TutorSessions.Count(),
             StudentMasteries = db.StudentMasteries.Count(),
@@ -217,6 +219,7 @@ public class DemoSeederTests
 
         Assert.Equal(firstRunCounts.Users, secondRunCounts.Users);
         Assert.Equal(firstRunCounts.JobDescriptions, secondRunCounts.JobDescriptions);
+        Assert.Equal(firstRunCounts.JdSkillWeights, secondRunCounts.JdSkillWeights);
         Assert.Equal(firstRunCounts.MockInterviews, secondRunCounts.MockInterviews);
         Assert.Equal(firstRunCounts.TutorSessions, secondRunCounts.TutorSessions);
         Assert.Equal(firstRunCounts.StudentMasteries, secondRunCounts.StudentMasteries);
