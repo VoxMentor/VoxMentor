@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using VoxMentor.Application.Common.Models;
 using VoxMentor.Application.Features.Tutor.AskTutor;
 using VoxMentor.Application.Features.Tutor.GetTutorSession;
+using VoxMentor.Application.Features.Tutor.GetTutorSessions;
 
 namespace VoxMentor.Api.Controllers;
 
@@ -57,6 +58,22 @@ public class TutorController : ControllerBase
         CancellationToken cancellationToken)
     {
         var response = await _sender.Send(new GetTutorSessionQuery(sessionId), cancellationToken);
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Lists the authenticated student's tutor sessions, newest first.
+    /// </summary>
+    [HttpGet("sessions")]
+    [Authorize(Roles = "Student")]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<TutorSessionSummaryDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetSessions(
+        [FromQuery] int limit = 10,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _sender.Send(new GetTutorSessionsQuery { Limit = limit }, cancellationToken);
         return Ok(response);
     }
 }

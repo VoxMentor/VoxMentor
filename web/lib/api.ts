@@ -129,6 +129,16 @@ export interface ReadinessProfile {
   estimatedWeeksToReady: number;
 }
 
+export interface TutorSessionSummaryDto {
+  sessionId: string;
+  conceptId: string | null;
+  question: string;
+  status: string;
+  totalTokens: number;
+  createdAt: string;
+  completedAt: string | null;
+}
+
 // --- JD intelligence (#121): POST /v1/jd/upload, GET /v1/jd/{jdId} ---
 
 export interface JdUploadResult {
@@ -361,6 +371,9 @@ export const api = {
     }),
 
   readiness: () => request<ReadinessProfile>("/v1/student/readiness"),
+
+  tutorSessions: (limit = 10) =>
+    request<TutorSessionSummaryDto[]>(`/v1/tutor/sessions?limit=${encodeURIComponent(String(limit))}`),
 
   // --- JD intelligence (#121) ---
   jdUpload: (rawText: string) =>
