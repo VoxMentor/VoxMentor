@@ -30,6 +30,10 @@ public class DemoSeederTests
                 .Options,
             new NullCurrentUser());
 
+    /// <summary>
+    /// Builds an <see cref="IServiceProvider"/> with DbContext, UserManager, and RoleManager
+    /// registered as singletons around the given InMemory database instance.
+    /// </summary>
     private static IServiceProvider BuildServices(ApplicationDbContext db)
     {
         var userManager = CreateUserManager(db);
@@ -42,6 +46,9 @@ public class DemoSeederTests
         return services.BuildServiceProvider();
     }
 
+    /// <summary>
+    /// Creates a <see cref="RoleManager{IdentityRole}"/> backed by the given InMemory database.
+    /// </summary>
     private static RoleManager<IdentityRole> CreateRoleManager(ApplicationDbContext db)
         => new(
             new RoleStore<IdentityRole>(db),
@@ -50,6 +57,9 @@ public class DemoSeederTests
             new IdentityErrorDescriber(),
             NullLogger<RoleManager<IdentityRole>>.Instance);
 
+    /// <summary>
+    /// Seeds the Student and ContentAdmin roles if they do not already exist.
+    /// </summary>
     private static async Task SeedRolesAsync(IServiceProvider services, ApplicationDbContext db)
     {
         var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
@@ -61,6 +71,9 @@ public class DemoSeederTests
         await db.SaveChangesAsync();
     }
 
+    /// <summary>
+    /// Builds an <see cref="IConfiguration"/> with optional in-memory key-value pairs.
+    /// </summary>
     private static IConfiguration Config(Action<Microsoft.Extensions.Configuration.ConfigurationBuilder>? configure = null)
     {
         var builder = new ConfigurationBuilder();
@@ -68,6 +81,9 @@ public class DemoSeederTests
         return builder.Build();
     }
 
+    /// <summary>
+    /// Seeds the 10 DSA concepts required by the demo seed into the database.
+    /// </summary>
     private static async Task SeedConceptsAsync(ApplicationDbContext db)
     {
         foreach (var id in DemoSeederTestsExposed.ExistingConceptIds())
@@ -95,11 +111,11 @@ public class DemoSeederTests
 
         await DemoSeeder.SeedDemoDataAsync(BuildServices(db), config);
 
-        Assert.Empty(db.Users);
-        Assert.Empty(db.JobDescriptions);
-        Assert.Empty(db.MockInterviews);
-        Assert.Empty(db.TutorSessions);
-        Assert.Empty(db.StudentMasteries);
+        Assert.Empty(db.Users.IgnoreQueryFilters());
+        Assert.Empty(db.JobDescriptions.IgnoreQueryFilters());
+        Assert.Empty(db.MockInterviews.IgnoreQueryFilters());
+        Assert.Empty(db.TutorSessions.IgnoreQueryFilters());
+        Assert.Empty(db.StudentMasteries.IgnoreQueryFilters());
     }
 
     [Fact]
@@ -110,7 +126,7 @@ public class DemoSeederTests
 
         await DemoSeeder.SeedDemoDataAsync(BuildServices(db), config);
 
-        Assert.Empty(db.Users);
+        Assert.Empty(db.Users.IgnoreQueryFilters());
     }
 
     [Fact]
@@ -197,24 +213,32 @@ public class DemoSeederTests
         await DemoSeeder.SeedDemoDataAsync(services, config);
         var firstRunCounts = new
         {
-            Users = db.Users.Count(),
-            JobDescriptions = db.JobDescriptions.Count(),
-            JdSkillWeights = db.JdSkillWeights.Count(),
-            MockInterviews = db.MockInterviews.Count(),
-            TutorSessions = db.TutorSessions.Count(),
-            StudentMasteries = db.StudentMasteries.Count(),
+            Users = db.Users.IgnoreQueryFilters().Count(),
+            JobDescriptions = db.JobDescriptions.IgnoreQueryFilters().Count(),
+            JdSkillWeights = db.JdSkillWeights.IgnoreQueryFilters().Count(),
+            MockInterviews = db.MockInterviews.IgnoreQueryFilters().Count(),
+            TutorSessions = db.TutorSessions.IgnoreQueryFilters().Count(),
+            StudentMasteries = db.StudentMasteries.IgnoreQueryFilters().Count(),
         };
+
+        // Assert expected first-run totals
+        Assert.Equal(2, firstRunCounts.Users);
+        Assert.Equal(2, firstRunCounts.JobDescriptions);
+        Assert.Equal(10, firstRunCounts.JdSkillWeights);
+        Assert.Equal(2, firstRunCounts.MockInterviews);
+        Assert.Equal(3, firstRunCounts.TutorSessions);
+        Assert.Equal(10, firstRunCounts.StudentMasteries);
 
         // Second run (should be idempotent)
         await DemoSeeder.SeedDemoDataAsync(services, config);
         var secondRunCounts = new
         {
-            Users = db.Users.Count(),
-            JobDescriptions = db.JobDescriptions.Count(),
-            JdSkillWeights = db.JdSkillWeights.Count(),
-            MockInterviews = db.MockInterviews.Count(),
-            TutorSessions = db.TutorSessions.Count(),
-            StudentMasteries = db.StudentMasteries.Count(),
+            Users = db.Users.IgnoreQueryFilters().Count(),
+            JobDescriptions = db.JobDescriptions.IgnoreQueryFilters().Count(),
+            JdSkillWeights = db.JdSkillWeights.IgnoreQueryFilters().Count(),
+            MockInterviews = db.MockInterviews.IgnoreQueryFilters().Count(),
+            TutorSessions = db.TutorSessions.IgnoreQueryFilters().Count(),
+            StudentMasteries = db.StudentMasteries.IgnoreQueryFilters().Count(),
         };
 
         Assert.Equal(firstRunCounts.Users, secondRunCounts.Users);
@@ -225,6 +249,9 @@ public class DemoSeederTests
         Assert.Equal(firstRunCounts.StudentMasteries, secondRunCounts.StudentMasteries);
     }
 
+    /// <summary>
+    /// Creates a <see cref="UserManager{ApplicationUser}"/> backed by the given InMemory database.
+    /// </summary>
     private static UserManager<ApplicationUser> CreateUserManager(ApplicationDbContext db)
         => new(
             new UserStore<ApplicationUser>(db),

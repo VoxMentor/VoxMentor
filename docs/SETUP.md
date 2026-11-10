@@ -203,7 +203,10 @@ dotnet run --project src/VoxMentor.Api -- --seed-demo
 
 # Or enable via config for hands-off dev boots (set in appsettings.Development.json or env)
 # Seed__Demo=true
+# Seed__DemoPassword=<your-demo-password>  # required; no default shipped
 # Then just: dotnet run --project src/VoxMentor.Api
+# Example:
+# Seed__Demo=true Seed__DemoPassword=Demo123! dotnet run --project src/VoxMentor.Api -- --seed-demo
 ```
 
 **What this creates:**

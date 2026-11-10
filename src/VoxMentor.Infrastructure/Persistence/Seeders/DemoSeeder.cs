@@ -76,9 +76,9 @@ public static class DemoSeeder
         Guid.Parse("a0000001-0000-0000-0000-000000000005"), // Space Complexity
         Guid.Parse("a0000001-0000-0000-0000-000000000006"), // Arrays
         Guid.Parse("a0000001-0000-0000-0000-000000000007"), // Strings
-        Guid.Parse("a0000001-0000-0000-0000-000000000008"), // Linked Lists
+        Guid.Parse("a0000001-0000-0000-0000-000000000008"), // Singly Linked Lists
         Guid.Parse("a0000001-0000-0000-0000-000000000009"), // Stacks and Queues
-        Guid.Parse("a0000001-0000-0000-0000-000000000010"), // Hash Maps
+        Guid.Parse("a0000001-0000-0000-0000-000000000010"), // Hash Maps and Sets
     };
 
     // Fixed base time for reproducible timestamps across re-runs.
@@ -137,6 +137,14 @@ public static class DemoSeeder
             await userManager.AddToRoleAsync(student, "Student");
         }
 
+        // Ensure roles are assigned even when the user already existed
+        if (!await userManager.IsInRoleAsync(student, "Student"))
+        {
+            var roleResult = await userManager.AddToRoleAsync(student, "Student");
+            if (!roleResult.Succeeded)
+                throw new InvalidOperationException($"Failed to assign Student role: {string.Join(", ", roleResult.Errors.Select(e => e.Description))}");
+        }
+
         var admin = await userManager.FindByEmailAsync("demo-admin@voxmentor.dev");
         if (admin is null)
         {
@@ -155,6 +163,13 @@ public static class DemoSeeder
             await userManager.AddToRoleAsync(admin, "ContentAdmin");
         }
 
+        if (!await userManager.IsInRoleAsync(admin, "ContentAdmin"))
+        {
+            var roleResult = await userManager.AddToRoleAsync(admin, "ContentAdmin");
+            if (!roleResult.Succeeded)
+                throw new InvalidOperationException($"Failed to assign ContentAdmin role: {string.Join(", ", roleResult.Errors.Select(e => e.Description))}");
+        }
+
         // ── Job Descriptions ─────────────────────────────────────────────────
         var jdAmazon = await db.JobDescriptions
             .IgnoreQueryFilters()
@@ -164,7 +179,7 @@ public static class DemoSeeder
             jdAmazon = new JobDescription
             {
                 Id = JdAmazonId,
-                UserId = StudentId.ToString(),
+                UserId = student.Id,
                 CompanyName = "Amazon",
                 Role = "Software Development Engineer II",
                 RawText = "Amazon SDE II role. Design and build scalable distributed systems. Strong ownership, customer obsession, and bias for action required. 3+ years experience with Java/Python/C++, system design, and algorithms.",
@@ -183,7 +198,7 @@ public static class DemoSeeder
             jdGoogle = new JobDescription
             {
                 Id = JdGoogleId,
-                UserId = StudentId.ToString(),
+                UserId = student.Id,
                 CompanyName = "Google",
                 Role = "Software Engineer, Level 4",
                 RawText = "Google SWE L4. Build next-gen products at massive scale. Googliness: collaboration, user focus, comfort with ambiguity. Strong algorithms, data structures, and system design. 2+ years experience.",
@@ -233,7 +248,7 @@ public static class DemoSeeder
                 m = new StudentMastery
                 {
                     Id = id,
-                    UserId = StudentId.ToString(),
+                    UserId = student.Id,
                     ConceptId = conceptId,
                     MasteryProbability = mastery,
                     CorrectAttempts = correct,
@@ -269,8 +284,8 @@ public static class DemoSeeder
                 Type: "Technical",
                 TechnicalReview: new Dictionary<string, ProblemReview>(StringComparer.Ordinal)
                 {
-                    ["problem1"] = new ProblemReview(true, "Optimal", "Clean LRU implementation with proper O(1) operations. Good edge-case handling for capacity=0."),
-                    ["problem2"] = new ProblemReview(true, "Optimal", "Strong system design discussion — identified sharding strategy, consistent hashing, and failure modes."),
+                    ["problem1"] = new ProblemReview(true, "Optimal", "Strong system design discussion — identified sharding strategy, consistent hashing, and failure modes."),
+                    ["problem2"] = new ProblemReview(true, "Optimal", "Clean LRU implementation with proper O(1) operations. Good edge-case handling for capacity=0."),
                     ["problem3"] = new ProblemReview(true, "Good", "STAR-structured behavioral answer showing ownership and bias for action. Could quantify impact more."),
                 },
                 ReadinessDelta: new ReadinessDeltaDto(68f, 74f, 6f),
@@ -280,7 +295,7 @@ public static class DemoSeeder
             interviewTech = new MockInterview
             {
                 Id = InterviewTechId,
-                UserId = StudentId.ToString(),
+                UserId = student.Id,
                 Type = InterviewType.Technical,
                 TotalQuestions = 3,
                 AnsweredQuestions = 3,
@@ -330,7 +345,7 @@ public static class DemoSeeder
             interviewBehav = new MockInterview
             {
                 Id = InterviewBehavId,
-                UserId = StudentId.ToString(),
+                UserId = student.Id,
                 Type = InterviewType.Behavioral,
                 TotalQuestions = 3,
                 AnsweredQuestions = 3,
@@ -348,17 +363,17 @@ public static class DemoSeeder
         }
 
         // ── Tutor Sessions ──────────────────────────────────────────────────
-        await UpsertTutorSessionAsync(db, Tutor1Id, StudentId.ToString(), ExistingConceptIds[0],
+        await UpsertTutorSessionAsync(db, Tutor1Id, student.Id, ExistingConceptIds[0],
             "Can you explain the difference between pass-by-value and pass-by-reference in C#?",
             "In C#, **pass-by-value** (default for structs) copies the value. **Pass-by-reference** (using `ref`/`out` or passing a reference type) passes the reference, so changes affect the original. Reference types (classes) are passed by value of the reference — you can mutate the object but not reassign the parameter itself without `ref`.",
             TutorSessionStatus.Completed, 342, SeedBaseTime.AddDays(-8));
 
-        await UpsertTutorSessionAsync(db, Tutor2Id, StudentId.ToString(), ExistingConceptIds[3],
+        await UpsertTutorSessionAsync(db, Tutor2Id, student.Id, ExistingConceptIds[3],
             "What's the time complexity of merge sort and why?",
             "Merge sort is **O(n log n)** in all cases (best/average/worst). It divides the array recursively (log n levels) and merges at each level (O(n) work per level). Space complexity is O(n) for the auxiliary array. Unlike quicksort, it doesn't degrade to O(n²) because the split is always balanced.",
             TutorSessionStatus.Completed, 287, SeedBaseTime.AddDays(-5));
 
-        await UpsertTutorSessionAsync(db, Tutor3Id, StudentId.ToString(), ExistingConceptIds[7],
+        await UpsertTutorSessionAsync(db, Tutor3Id, student.Id, ExistingConceptIds[8],
             "How do you detect a cycle in a linked list?",
             "Use **Floyd's Tortoise and Hare** (two-pointer) algorithm: one pointer moves 1 step, the other 2 steps. If there's a cycle, they'll meet inside the cycle. Time O(n), space O(1). To find the cycle start, reset one pointer to head and advance both 1 step at a time — they meet at the cycle entry.",
             TutorSessionStatus.Completed, 415, SeedBaseTime.AddDays(-2));
