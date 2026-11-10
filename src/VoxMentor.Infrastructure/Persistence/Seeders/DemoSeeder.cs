@@ -133,16 +133,36 @@ public static class DemoSeeder
             };
             var result = await userManager.CreateAsync(student, demoPassword);
             if (!result.Succeeded)
-                throw new InvalidOperationException($"Failed to create demo student: {string.Join(", ", result.Errors.Select(e => e.Description))}");
-            await userManager.AddToRoleAsync(student, "Student");
+            {
+                // Handle race condition: user might have been created concurrently
+                var dupEmail = result.Errors.Any(e => e.Code == "DuplicateUserName" || e.Code == "DuplicateEmail");
+                if (dupEmail)
+                {
+                    student = await userManager.FindByEmailAsync("demo-student@voxmentor.dev");
+                    if (student is null)
+                        throw new InvalidOperationException("Race condition: demo student created but not found.");
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Failed to create demo student: {string.Join(", ", result.Errors.Select(e => e.Description))}");
+                }
+            }
+            if (!await userManager.IsInRoleAsync(student, "Student"))
+            {
+                var roleResult = await userManager.AddToRoleAsync(student, "Student");
+                if (!roleResult.Succeeded)
+                    throw new InvalidOperationException($"Failed to assign Student role: {string.Join(", ", roleResult.Errors.Select(e => e.Description))}");
+            }
         }
-
-        // Ensure roles are assigned even when the user already existed
-        if (!await userManager.IsInRoleAsync(student, "Student"))
+        else
         {
-            var roleResult = await userManager.AddToRoleAsync(student, "Student");
-            if (!roleResult.Succeeded)
-                throw new InvalidOperationException($"Failed to assign Student role: {string.Join(", ", roleResult.Errors.Select(e => e.Description))}");
+            // User exists, ensure role is assigned
+            if (!await userManager.IsInRoleAsync(student, "Student"))
+            {
+                var roleResult = await userManager.AddToRoleAsync(student, "Student");
+                if (!roleResult.Succeeded)
+                    throw new InvalidOperationException($"Failed to assign Student role: {string.Join(", ", roleResult.Errors.Select(e => e.Description))}");
+            }
         }
 
         var admin = await userManager.FindByEmailAsync("demo-admin@voxmentor.dev");
@@ -159,8 +179,20 @@ public static class DemoSeeder
             };
             var result = await userManager.CreateAsync(admin, demoPassword);
             if (!result.Succeeded)
-                throw new InvalidOperationException($"Failed to create demo admin: {string.Join(", ", result.Errors.Select(e => e.Description))}");
-            await userManager.AddToRoleAsync(admin, "ContentAdmin");
+            {
+                // Handle race condition: user might have been created concurrently
+                var dupEmail = result.Errors.Any(e => e.Code == "DuplicateUserName" || e.Code == "DuplicateEmail");
+                if (dupEmail)
+                {
+                    admin = await userManager.FindByEmailAsync("demo-admin@voxmentor.dev");
+                    if (admin is null)
+                        throw new InvalidOperationException("Race condition: demo admin created but not found.");
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Failed to create demo admin: {string.Join(", ", result.Errors.Select(e => e.Description))}");
+                }
+            }
         }
 
         if (!await userManager.IsInRoleAsync(admin, "ContentAdmin"))

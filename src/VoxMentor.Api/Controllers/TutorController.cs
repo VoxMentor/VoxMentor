@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -69,8 +70,9 @@ public class TutorController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<TutorSessionSummaryDto>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetSessions(
-        [FromQuery] int limit = 10,
+        [FromQuery] [Range(1, 50, ErrorMessage = "Limit must be between 1 and 50.")] int limit = 10,
         CancellationToken cancellationToken = default)
     {
         var response = await _sender.Send(new GetTutorSessionsQuery { Limit = limit }, cancellationToken);
