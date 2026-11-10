@@ -133,11 +133,13 @@ export interface TutorSessionSummaryDto {
   sessionId: string;
   conceptId: string | null;
   question: string;
-  status: string;
+  status: TutorSessionStatus;
   totalTokens: number;
   createdAt: string;
   completedAt: string | null;
 }
+
+export type TutorSessionStatus = "Pending" | "Streaming" | "Completed" | "Failed";
 
 // --- JD intelligence (#121): POST /v1/jd/upload, GET /v1/jd/{jdId} ---
 

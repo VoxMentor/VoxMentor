@@ -31,6 +31,7 @@ public class GetTutorSessionsHandler : IRequestHandler<GetTutorSessionsQuery, Ap
         var limit = Math.Clamp(request.Limit, 1, 50);
 
         var sessions = await _db.TutorSessions
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(s => s.UserId == userId)
             .OrderByDescending(s => s.CreatedAt)
