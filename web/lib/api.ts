@@ -340,6 +340,40 @@ export interface AdminTutorSessionDetailResult {
   session: AdminTutorSessionDetail;
 }
 
+// --- Admin plagiarism review (#107) ---
+
+export interface AdminPlagiarismSubmission {
+  submissionId: string;
+  userId: string;
+  userName?: string;
+  title: string;
+  similarityScore: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminPlagiarismSubmissionDetail {
+  submissionId: string;
+  userId: string;
+  userName?: string;
+  title: string;
+  similarityScore: number;
+  comparison: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminPlagiarismSessionsResult {
+  submissions: AdminPlagiarismSubmission[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AdminPlagiarismSessionDetailResult {
+  session: AdminPlagiarismSubmissionDetail;
+}
+
 export interface AdminUser {
   id: string;
   email: string | null;
@@ -528,6 +562,17 @@ export const api = {
   adminTutorSession: (id: string) =>
     request<AdminTutorSessionDetailResult>(
       `/v1/admin/tutor/sessions/${encodeURIComponent(id)}`
+    ),
+
+  // --- Admin plagiarism review (#107) ---
+  adminPlagiarismSessions: (page = 1, pageSize = 20) =>
+    request<AdminPlagiarismSessionsResult>(
+      `/v1/admin/plagiarism/submissions?page=${page}&pageSize=${pageSize}`
+    ),
+
+  adminPlagiarismSession: (id: string) =>
+    request<AdminPlagiarismSessionDetailResult>(
+      `/v1/admin/plagiarism/submissions/${encodeURIComponent(id)}`
     ),
 };
 
