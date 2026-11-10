@@ -1,57 +1,54 @@
 "use client";
 
 interface MasteryProgressBarProps {
-  mastery: number;          // 0-1 probability
-  label?: string;           // concept label (shown above bar)
-  showPercentage?: boolean; // whether to show percentage text inside bar
-  height?: string;          // bar height, default "8px"
+  mastery: number | null; // 0–1 probability; null when no data
+  label?: string;
+  height?: string;
 }
 
 /**
  * Color-coded mastery progress bar.
- * Colors: red (<30%), yellow (30-70%), green (>70%).
+ * Red <30%, yellow 30–70%, green >70%, gray when no data.
+ * The component renders only the bar — callers render their own text so the
+ * percentage is never duplicated. Exposes progressbar semantics for screen
+ * readers and clamps the fill to the track.
  */
 export default function MasteryProgressBar({
   mastery,
   label,
-  showPercentage = true,
   height = "8px",
 }: MasteryProgressBarProps) {
-  const percentage = Math.round((mastery ?? 0) * 100);
-  const isMastered = mastery !== null && mastery >= 0.85;
+  const percentage = mastery === null ? 0 : Math.round(mastery * 100);
+  const width = Math.min(Math.max(percentage, 0), 100);
 
-  const barColor =
-    mastery === null
-      ? "#E2E8F0" // gray when no data
-      : mastery < 0.3
-        ? "#EF4444" // red — danger
-        : mastery < 0.7
-          ? "#F5A623" // yellow — accent/gold
-          : "#10B981"; // green — success
+  let barColor: string;
+  let ariaValueText: string;
+  if (mastery === null) {
+    barColor = "#E2E8F0"; // gray — no data
+    ariaValueText = "not practiced";
+  } else if (mastery < 0.3) {
+    barColor = "#EF4444"; // red — danger
+    ariaValueText = `${percentage}%`;
+  } else if (mastery < 0.7) {
+    barColor = "#F5A623"; // yellow — accent/gold
+    ariaValueText = `${percentage}%`;
+  } else {
+    barColor = "#10B981"; // green — success
+    ariaValueText = `${percentage}%`;
+  }
 
   return (
-    <div className="flex flex-col gap-2">
-      {label && (
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-text-body">{label}</span>
-          {showPercentage && (
-            <span className="text-xs font-medium text-text-muted">
-              {percentage}%
-            </span>
-          )}
-        </div>
-      )}
-      <div className="w-full relative bg-gray-200 rounded-full" style={{ height }}>
-        <div
-          className="h-full rounded-full transition-all duration-500 ease-out"
-          style={{ width: `${Math.max(percentage, 0)}%`, backgroundColor: barColor }}
-        />
-      </div>
-      {!showPercentage && (
-        <span className="text-xs font-medium text-text-muted">
-          {isMastered ? "Mastered" : percentage + "%"}
-        </span>
-      )}
+    <div className="w-full relative bg-gray-200 rounded-full" style={{ height }}>
+      <div
+        role="progressbar"
+        aria-valuenow={percentage}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuetext={ariaValueText}
+        aria-label={label}
+        className="h-full rounded-full transition-all duration-500 ease-out"
+        style={{ width: `${width}%`, backgroundColor: barColor }}
+      />
     </div>
   );
 }

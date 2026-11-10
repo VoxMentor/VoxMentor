@@ -15,11 +15,11 @@ import Navbar from "@/components/Navbar";
 import FetchError from "@/components/FetchError";
 import QuestionCard from "@/components/QuestionCard";
 import CodeEditor from "@/components/CodeEditor";
-import ConceptCard from "@/components/ConceptCard";
 import LanguageSelector from "@/components/LanguageSelector";
-import MasteryProgressBar from "@/components/MasteryProgressBar";
 import QuestionList from "@/components/QuestionList";
 import ResultPanel from "@/components/ResultPanel";
+import MasteryProgressBar from "@/components/MasteryProgressBar";
+import ConceptCard from "@/components/ConceptCard";
 
 /**
  * Rendered while question data is loading. Mirrors the 60% question / 40%
@@ -59,7 +59,9 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
   const [detailReload, setDetailReload] = useState(0);
   const [listReload, setListReload] = useState(0);
   const [concepts, setConcepts] = useState<MasteryConcept[]>([]);
-  const [overallReadiness, setOverallReadiness] = useState<number>(0);
+  const [overallReadiness, setOverallReadiness] = useState(0);
+  const [conceptsLoading, setConceptsLoading] = useState(true);
+  const [conceptsError, setConceptsError] = useState<string | null>(null);
 
   // --- Question detail state ---
   const detailKey = `${selectedId ?? ""}|${detailReload}`;
@@ -88,50 +90,173 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     c: "#include <stdio.h>\n\nint main() {\n    // Write your solution here\n    return 0;\n}",
   };
 
-  // --- Editor state ---
+  // --- Editor state (per-question, per-language drafts) ---
   const [language, setLanguage] = useState<string>("javascript");
-  const [code, setCode] = useState<string>(LANGUAGE_TEMPLATES.javascript ?? "");
-
-  const hasUserEdited = useRef(false);
+  // Key: `${questionId}|${language}` — keeps drafts isolated per question.
+  const [codeDrafts, setCodeDrafts] = useState<Record<string, string>>({});
+  const draftKey = selectedId ? `${selectedId}|${language}` : "";
+  const code = draftKey ? codeDrafts[draftKey] ?? LANGUAGE_TEMPLATES[language] ?? "" : "";
 
   const [submitting, setSubmitting] = useState(false);
-  const [submitResult, setSubmitResult] = useState<SubmitCodeResult | null>(null);
+  const [submitResult, setSubmitResult] = useState<{
+    questionId: string;
+    result: SubmitCodeResult;
+  } | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Identity of the in-flight submission. A monotonically increasing counter
+  // ensures we only surface results for the most recent submission; edits or
+  // language switches increment the counter, invalidating prior in-flight requests.
+  const submitIdentity = useRef(0);
+
+  // Separate sequence counter for the submitting flag — allows clearing it in
+  // finally only when the request still owns the latest submission, even when
+  // submitIdentity is nullified by edits/language changes.
+  const submitSeq = useRef(0);
+
+  // Refs for aborting in-flight submission on unmount and clearing its timeout.
+  const submitController = useRef<AbortController | null>(null);
+  const submitTimeoutId = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Ref for the deferred mastery timer so it can be cleared on cleanup.
+  const masteryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Controller for cancelling in-flight mastery fetches.
+  const masteryController = useRef<AbortController | null>(null);
+
+  // Sanitize server error messages before surfacing to the client UI.
+  function sanitizeError(err: unknown): string {
+    if (err instanceof ApiError) {
+      return "Request failed. Please try again.";
+    }
+    return "Something went wrong. Please try again.";
+  }
+
+  // Reset editor state when the question changes, scoped to that question.
+  const currentQuestionIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (currentQuestionIdRef.current === selectedId) return;
+    currentQuestionIdRef.current = selectedId;
+    setLanguage("javascript");
+    setCodeDrafts({});
+    setSubmitResult(null);
+    setSubmitError(null);
+    setSubmitting(false);
+    // Invalidate any in-flight submission so it cannot surface a result or
+    // error on the newly navigated question.
+    submitIdentity.current++;
+    // Increment submitSeq so any in-flight request's finally block won't
+    // re-enable submitting for the new question.
+    submitSeq.current++;
+  }, [selectedId]);
+
+  const updateCodeDraft = (newValue: string) => {
+    if (!draftKey) return;
+    setCodeDrafts((prev) => ({ ...prev, [draftKey]: newValue }));
+  };
 
   const handleLanguageChange = (newLanguage: string) => {
     setLanguage(newLanguage);
-    if (!hasUserEdited.current) {
-      setCode(LANGUAGE_TEMPLATES[newLanguage] ?? "");
-    }
+    // Restore the selected language's draft (falling back to its template),
+    // never leaking code from the previously selected language.
     setSubmitResult(null);
     setSubmitError(null);
+    submitIdentity.current++;
+    submitSeq.current++;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Request ID to guard against stale mastery responses
+  const masteryRequestId = useRef(0);
+
+  // Fetch mastery data (concepts + overall readiness). Cancellable via AbortController
+  // so that stale requests don't overwrite fresher state and can be aborted on unmount.
+  const fetchMastery = useCallback(async () => {
+    // Cancel any in-flight mastery request before starting a new one.
+    masteryController.current?.abort();
+    const controller = new AbortController();
+    masteryController.current = controller;
+
+    // Assign a new request ID; only the latest request may update state.
+    const requestId = ++masteryRequestId.current;
+
+    setConceptsLoading(true);
+    setConceptsError(null);
+    try {
+      const m = await api.mastery({ signal: controller.signal });
+      // Only apply if this is still the latest request.
+      if (requestId === masteryRequestId.current) {
+        setConcepts(m.concepts);
+        setOverallReadiness(m.overallReadiness);
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      // Only update error if this is still the latest request.
+      if (requestId === masteryRequestId.current) {
+        setConceptsError("Failed to load mastery data. Please try again.");
+      }
+    } finally {
+      if (requestId === masteryRequestId.current) {
+        setConceptsLoading(false);
+      }
+    }
+  }, []);
+
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!detail?.id || submitting) return;
 
     const codeToSubmit = code;
+    const submissionId = ++submitIdentity.current;
+    // Separate sequence for the submitting flag — allows clearing it in
+    // finally only when this request still owns the latest submission.
+    const seq = ++submitSeq.current;
     setSubmitting(true);
     setSubmitResult(null);
     setSubmitError(null);
+
+    // Abort any in-flight submission before starting a new one.
+    submitController.current?.abort();
+    const controller = new AbortController();
+    submitController.current = controller;
+
+    // Abort after 60s to prevent frozen UI if backend hangs.
+    const timeoutId = setTimeout(() => controller.abort(), 60_000);
+    submitTimeoutId.current = timeoutId;
+
     try {
-      const result = await api.submitCode({
-        questionId: detail.id,
-        code: codeToSubmit,
-        language,
-      });
-      setSubmitResult(result);
+      const result = await api.submitCode(
+        { questionId: detail.id, code: codeToSubmit, language },
+        { signal: controller.signal },
+      );
+      // Only surface the result if this is still the latest submission.
+      if (submitIdentity.current === submissionId) {
+        setSubmitResult({ questionId: detail.id, result });
+        // Refresh mastery so the readiness bar and concept cards reflect
+        // the new values after a successful submission.
+        // Fire-and-forget: mastery errors should not mask successful submission.
+        fetchMastery();
+      }
     } catch (err) {
-      if (err instanceof ApiError) {
-        setSubmitError(err.message);
+      if (err instanceof DOMException && err.name === "AbortError") {
+        if (submitIdentity.current === submissionId) {
+          setSubmitError("Request timed out. Please try again.");
+        }
       } else {
-        setSubmitError("Something went wrong. Please try again.");
+        // Only surface the error if this is still the latest submission.
+        if (submitIdentity.current === submissionId) {
+          setSubmitError(sanitizeError(err));
+        }
       }
     } finally {
-      setSubmitting(false);
+      clearTimeout(timeoutId);
+      submitTimeoutId.current = null;
+      submitController.current = null;
+      // Only clear submitting if this is still the latest submission.
+      if (submitSeq.current === seq) {
+        setSubmitting(false);
+      }
     }
-  };
+  }, [detail, code, language, submitting, fetchMastery]);
 
   const updateParams = useCallback(
     (updates: Record<string, string | undefined>, replace = false) => {
@@ -204,31 +329,42 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
   );
 
   useEffect(() => {
-    let cancelled = false;
-    api
-      .mastery()
-      .then((m) => {
-        if (!cancelled) {
-          setConcepts(m.concepts);
-          setOverallReadiness(m.overallReadiness);
-        }
-      })
-      .catch(() => {});
+    // Defer to avoid synchronous setState in effect body.
+    if (masteryTimerRef.current !== null) clearTimeout(masteryTimerRef.current);
+    masteryTimerRef.current = setTimeout(() => {
+      masteryTimerRef.current = null;
+      fetchMastery();
+    }, 0);
     return () => {
-      cancelled = true;
+      if (masteryTimerRef.current !== null) {
+        clearTimeout(masteryTimerRef.current);
+        masteryTimerRef.current = null;
+      }
+    };
+  }, [fetchMastery]);
+
+  // Unmount cleanup: abort in-flight submission and clear its timeout.
+  useEffect(() => {
+    return () => {
+      submitController.current?.abort();
+      if (submitTimeoutId.current !== null) {
+        clearTimeout(submitTimeoutId.current);
+        submitTimeoutId.current = null;
+      }
     };
   }, []);
 
+  // Fetch question list with AbortController for cancellation on filter change/unmount.
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     api
       .questions({
         conceptId: filters.conceptId,
         difficulty: filters.difficulty,
         pageSize: 100,
+        signal: controller.signal,
       })
       .then((res) => {
-        if (cancelled) return;
         setListState({
           key: listKey,
           ok: true,
@@ -236,7 +372,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
         });
       })
       .catch((e) => {
-        if (cancelled) return;
+        if (e instanceof DOMException && e.name === "AbortError") return;
         setListState({
           key: listKey,
           ok: false,
@@ -245,7 +381,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
         });
       });
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [listKey, filters.conceptId, filters.difficulty]);
 
@@ -254,7 +390,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     if (!selectedId || !questions.some((q) => q.id === selectedId)) {
       updateParams({ question: questions[0].id }, true);
     }
-  }, [listLoading, questions, selectedId, updateParams]);
+  }, [listLoading, questions, selectedId, updateParams, listKey]);
 
   const applyFilter = useCallback(
     (updates: { conceptId?: string; difficulty?: number }) => {
@@ -278,30 +414,43 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     <div className="grid lg:grid-cols-[60%_40%] gap-6 min-w-0">
       {/* Left: question (60%) */}
       <section className="flex flex-col gap-4 min-w-0">
-        <div className="card p-4 flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-xs font-medium text-text-muted">
-                Overall Readiness
-              </span>
-              <div className="text-lg font-medium text-text-heading">
-                {(overallReadiness * 100).toFixed(0)}%
-              </div>
-            </div>
-            <MasteryProgressBar mastery={overallReadiness} height="6px" />
+        <div className="card !p-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-medium text-text-heading">
+              Readiness
+            </h2>
+            <span className="text-sm font-medium text-navy">
+              {Math.round(overallReadiness * 100)}%
+            </span>
           </div>
-          {concepts.length === 0 ? (
-            <p className="text-sm text-text-muted">
-              No concepts available yet.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-3">
+          <MasteryProgressBar
+            mastery={overallReadiness}
+            label="Overall readiness"
+          />
+          <details>
+            <summary className="cursor-pointer text-sm">Concept mastery</summary>
+            <div className="grid gap-2">
               {concepts
                 .slice()
-                .sort((a, b) => (a.masteryProbability ?? 0) - (b.masteryProbability ?? 0))
+                .sort(
+                  (a, b) =>
+                    (a.masteryProbability ?? 0) -
+                    (b.masteryProbability ?? 0)
+                )
                 .map((c) => (
                   <ConceptCard key={c.conceptId} concept={c} />
                 ))}
+            </div>
+          </details>
+          {conceptsError && !conceptsLoading && (
+            <div className="p-3 rounded-[12px] text-sm bg-red-50 border border-red-200 text-red-800 flex items-center justify-between">
+              <span>{conceptsError}</span>
+              <button
+                onClick={fetchMastery}
+                className="text-sm font-medium text-primary hover:underline cursor-pointer ml-4"
+              >
+                Retry
+              </button>
             </div>
           )}
         </div>
@@ -326,15 +475,19 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
                       conceptId: e.target.value || undefined,
                       difficulty: filters.difficulty,
                     })}
-                  disabled={concepts.length === 0}
+                  disabled={conceptsLoading || concepts.length === 0}
                   className="w-full text-sm rounded-[14px] border-[1.5px] border-border bg-white px-4 py-3 text-text-body focus:border-primary focus:shadow-[0_0_0_3px_rgba(74,173,219,0.12)] focus:outline-none cursor-pointer"
                 >
                   <option value="">All concepts</option>
-                  {concepts.map((c) => (
-                    <option key={c.conceptId} value={c.conceptId}>
-                      {c.name}
-                    </option>
-                  ))}
+                  {conceptsLoading ? (
+                    <option disabled>Loading concepts…</option>
+                  ) : (
+                    concepts.map((c) => (
+                      <option key={c.conceptId} value={c.conceptId}>
+                        {c.name}
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
               <div>
@@ -429,14 +582,20 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
               language={language}
               value={code}
               onChange={(newValue) => {
-                hasUserEdited.current = true;
-                setCode(newValue ?? "");
+                updateCodeDraft(newValue ?? "");
                 setSubmitResult(null);
                 setSubmitError(null);
+                // Invalidate any in-flight submission: an edit makes its
+                // identity stale, so its result must not surface later.
+                submitIdentity.current++;
+                submitSeq.current++;
               }}
               height="100%"
             />
-            {submitResult && <ResultPanel result={submitResult} />}
+            {detail?.id &&
+              submitResult?.questionId === detail.id && (
+                <ResultPanel result={submitResult.result} />
+              )}
             {submitError && (
               <div
                 className="p-3 rounded-[12px] text-sm bg-red-50 border border-red-200 text-red-800"
