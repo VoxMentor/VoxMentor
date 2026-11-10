@@ -1,11 +1,20 @@
 // Run with: npm test  (Node's built-in test runner - no test dependencies).
 // Covers the pure presentational helpers for the submission result panel:
 // formatMemory (KB/MB edge cases), optimalLabel (empty Big-O handling),
-// and statusLabel (Correct / Incorrect / execution-failure / Ungraded).
+// statusLabel (Correct / Incorrect / execution-failure / Ungraded),
+// borderColor, badgeColor, masteryColor, formatMasteryDelta.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { type SubmitCodeResult } from "./api.ts";
-import { formatMemory, optimalLabel, statusLabel } from "./result-panel.ts";
+import {
+  formatMemory,
+  optimalLabel,
+  statusLabel,
+  borderColor,
+  badgeColor,
+  masteryColor,
+  formatMasteryDelta,
+} from "./result-panel.ts";
 
 function makeResult(overrides: Partial<SubmitCodeResult>): SubmitCodeResult {
   return {
@@ -100,4 +109,67 @@ test("statusLabel returns execution-failure status when isCorrect is false", () 
 test("statusLabel returns Ungraded when isCorrect is null", () => {
   assert.equal(statusLabel(makeResult({ status: "pending" }), null), "pending");
   assert.equal(statusLabel(makeResult({ status: undefined }), null), "Ungraded");
+});
+
+test("borderColor returns success for true", () => {
+  assert.equal(borderColor(true), "border-success");
+});
+
+test("borderColor returns danger for false", () => {
+  assert.equal(borderColor(false), "border-danger");
+});
+
+test("borderColor returns border for null", () => {
+  assert.equal(borderColor(null), "border-border");
+});
+
+test("badgeColor returns success classes for true", () => {
+  assert.equal(badgeColor(true), "bg-success/10 border border-success/20 text-success");
+});
+
+test("badgeColor returns danger classes for false", () => {
+  assert.equal(badgeColor(false), "bg-danger/10 border border-danger/20 text-danger");
+});
+
+test("badgeColor returns muted classes for null", () => {
+  assert.equal(badgeColor(null), "bg-border/10 border border-border text-text-muted");
+});
+
+test("masteryColor returns success for positive delta", () => {
+  assert.equal(masteryColor(0.5), "var(--success, #10B981)");
+});
+
+test("masteryColor returns danger for negative delta", () => {
+  assert.equal(masteryColor(-0.3), "var(--danger, #EF4444)");
+});
+
+test("masteryColor returns muted for zero delta", () => {
+  assert.equal(masteryColor(0), "var(--muted, #6B7280)");
+});
+
+test("formatMasteryDelta handles non-finite values", () => {
+  assert.equal(formatMasteryDelta(NaN), "—");
+  assert.equal(formatMasteryDelta(Infinity), "—");
+  assert.equal(formatMasteryDelta(-Infinity), "—");
+});
+
+test("formatMasteryDelta handles zero", () => {
+  assert.equal(formatMasteryDelta(0), "0.00");
+  assert.equal(formatMasteryDelta(-0), "0.00");
+});
+
+test("formatMasteryDelta formats positive deltas with sign", () => {
+  assert.equal(formatMasteryDelta(0.5), "+0.50");
+  assert.equal(formatMasteryDelta(1.234), "+1.23");
+});
+
+test("formatMasteryDelta formats negative deltas", () => {
+  assert.equal(formatMasteryDelta(-0.5), "-0.50");
+  assert.equal(formatMasteryDelta(-1.234), "-1.23");
+});
+
+test("formatMasteryDelta uses 4 decimals for small values", () => {
+  assert.equal(formatMasteryDelta(0.001), "+0.0010");
+  assert.equal(formatMasteryDelta(-0.001), "-0.0010");
+  assert.equal(formatMasteryDelta(0.0049), "+0.0049");
 });

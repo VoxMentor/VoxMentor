@@ -5,6 +5,9 @@
 
 import { type SubmitCodeResult } from "./api.ts";
 
+/** Known execution-failure status prefixes (case-insensitive). */
+const FAILURE_STATUS_PREFIXES = ["error", "timeout", "crash", "fail", "internal"] as const;
+
 /**
   * Returns the pass/fail verdict label: "Correct" or "Incorrect" when graded,
   * otherwise the submission status or "Ungraded". When a submission failed to
@@ -14,11 +17,9 @@ import { type SubmitCodeResult } from "./api.ts";
 export function statusLabel(result: SubmitCodeResult, isCorrect: boolean | null): string {
   if (isCorrect === true) return "Correct";
   if (isCorrect === false) {
-    return result.status?.toLowerCase().includes("error") ||
-      result.status?.toLowerCase().includes("timeout") ||
-      result.status?.toLowerCase().includes("crash")
-      ? result.status
-      : "Incorrect";
+    const status = result.status?.toLowerCase() ?? "";
+    const isFailure = FAILURE_STATUS_PREFIXES.some((prefix) => status.startsWith(prefix));
+    return isFailure ? (result.status ?? "Incorrect") : "Incorrect";
   }
   return result.status ?? "Ungraded";
 }
@@ -83,4 +84,21 @@ export function formatMemory(memoryUsageKb: number | null | undefined): string {
     return `${memoryUsageKb} KB`;
   }
   return `${mb.toFixed(2)} MB`;
+}
+
+/**
+ * Formats the mastery delta so small nonzero changes remain visible.
+ * Zero or non-finite values are shown as "0.00" / "—", meaningful changes
+ * keep two-decimal precision, and sub-0.005 changes show enough decimals to
+ * stay distinguishable from zero.
+ */
+export function formatMasteryDelta(masteryDelta: number): string {
+  if (!Number.isFinite(masteryDelta)) return "—";
+  if (masteryDelta === 0) return "0.00";
+  const rounded = masteryDelta.toFixed(2);
+  // Check if rounded value is effectively zero (handles "-0.00" for negative small numbers)
+  if (Number(rounded) === 0) {
+    return `${masteryDelta >= 0 ? "+" : ""}${masteryDelta.toFixed(4)}`;
+  }
+  return `${masteryDelta >= 0 ? "+" : ""}${rounded}`;
 }

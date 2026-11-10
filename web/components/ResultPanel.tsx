@@ -6,6 +6,7 @@ import {
   borderColor,
   badgeColor,
   formatMemory,
+  formatMasteryDelta,
   masteryColor,
   optimalLabel,
   statusLabel,
@@ -50,10 +51,7 @@ export default function ResultPanel({ result }: ResultPanelProps) {
             Execution time
           </span>
           <span className="text-sm font-medium text-text-body">
-            {result.executionTimeMs === null ||
-            result.executionTimeMs === undefined
-              ? "—"
-              : `${result.executionTimeMs} ms`}
+            {result.executionTimeMs === null ? "—" : `${result.executionTimeMs} ms`}
           </span>
         </div>
         <div className="flex flex-col gap-1">
@@ -91,8 +89,8 @@ export default function ResultPanel({ result }: ResultPanelProps) {
                 Correctness
               </span>
               <span className="text-sm font-medium text-text-body">
-                {result.aiEvaluation.correctness.score} /{" "}
-                {result.aiEvaluation.correctness.maxScore}
+                {result.aiEvaluation.correctness.score ?? "—"} /{" "}
+                {result.aiEvaluation.correctness.maxScore ?? "—"}
               </span>
             </div>
             <div className="flex flex-col gap-1">
@@ -100,8 +98,8 @@ export default function ResultPanel({ result }: ResultPanelProps) {
                 Code style
               </span>
               <span className="text-sm font-medium text-text-body">
-                {result.aiEvaluation.codeStyle.score} /{" "}
-                {result.aiEvaluation.codeStyle.maxScore}
+                {result.aiEvaluation.codeStyle.score ?? "—"} /{" "}
+                {result.aiEvaluation.codeStyle.maxScore ?? "—"}
               </span>
             </div>
             <div className="flex flex-col gap-1">
@@ -109,8 +107,11 @@ export default function ResultPanel({ result }: ResultPanelProps) {
                 Time complexity
               </span>
               <span className="text-sm font-medium text-text-body">
-                {result.aiEvaluation.timeComplexity.bigO}{" "}
-                {optimalLabel(result.aiEvaluation.timeComplexity.bigO, result.aiEvaluation.timeComplexity.isOptimal)}
+                {result.aiEvaluation.timeComplexity.bigO ?? "—"}{" "}
+                {optimalLabel(
+                  result.aiEvaluation.timeComplexity.bigO ?? "",
+                  result.aiEvaluation.timeComplexity.isOptimal,
+                )}
               </span>
             </div>
             <div className="flex flex-col gap-1">
@@ -118,8 +119,11 @@ export default function ResultPanel({ result }: ResultPanelProps) {
                 Space complexity
               </span>
               <span className="text-sm font-medium text-text-body">
-                {result.aiEvaluation.spaceComplexity.bigO}{" "}
-                {optimalLabel(result.aiEvaluation.spaceComplexity.bigO, result.aiEvaluation.spaceComplexity.isOptimal)}
+                {result.aiEvaluation.spaceComplexity.bigO ?? "—"}{" "}
+                {optimalLabel(
+                  result.aiEvaluation.spaceComplexity.bigO ?? "",
+                  result.aiEvaluation.spaceComplexity.isOptimal,
+                )}
               </span>
             </div>
           </div>
@@ -127,20 +131,4 @@ export default function ResultPanel({ result }: ResultPanelProps) {
       )}
     </div>
   );
-}
-
-/**
- * Formats the mastery delta so small nonzero changes remain visible.
- * Zero or non-finite values are shown as "0.00" / "—", meaningful changes
- * keep two-decimal precision, and sub-0.005 changes show enough decimals to
- * stay distinguishable from zero.
- */
-function formatMasteryDelta(masteryDelta: number): string {
-  if (!Number.isFinite(masteryDelta)) return "—";
-  if (masteryDelta === 0) return "0.00";
-  const rounded = masteryDelta.toFixed(2);
-  if (rounded === "0.00") {
-    return `${masteryDelta >= 0 ? "+" : ""}${masteryDelta.toFixed(4)}`;
-  }
-  return `${masteryDelta >= 0 ? "+" : ""}${rounded}`;
 }
