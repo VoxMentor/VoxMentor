@@ -53,7 +53,7 @@ export default function ResultPanel({ result }: ResultPanelProps) {
             Execution time
           </span>
           <span className="text-sm font-medium text-text-body">
-            {result.executionTimeMs === null ? "—" : `${result.executionTimeMs} ms`}
+            {result.executionTimeMs == null ? "—" : `${result.executionTimeMs} ms`}
           </span>
         </div>
         <div className="flex flex-col gap-1">
@@ -169,9 +169,9 @@ export default function ResultPanel({ result }: ResultPanelProps) {
                 Time complexity
               </span>
               <span className="text-sm font-medium text-text-body">
-                {result.aiEvaluation.timeComplexity.bigO ?? "—"}{" "}
+                {result.aiEvaluation.timeComplexity.bigO}{" "}
                 {optimalLabel(
-                  result.aiEvaluation.timeComplexity.bigO ?? "",
+                  result.aiEvaluation.timeComplexity.bigO,
                   result.aiEvaluation.timeComplexity.isOptimal,
                 )}
               </span>
@@ -186,9 +186,9 @@ export default function ResultPanel({ result }: ResultPanelProps) {
                 Space complexity
               </span>
               <span className="text-sm font-medium text-text-body">
-                {result.aiEvaluation.spaceComplexity.bigO ?? "—"}{" "}
+                {result.aiEvaluation.spaceComplexity.bigO}{" "}
                 {optimalLabel(
-                  result.aiEvaluation.spaceComplexity.bigO ?? "",
+                  result.aiEvaluation.spaceComplexity.bigO,
                   result.aiEvaluation.spaceComplexity.isOptimal,
                 )}
               </span>

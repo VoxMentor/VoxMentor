@@ -25,6 +25,14 @@ import ConceptCard from "@/components/ConceptCard";
  * Rendered while question data is loading. Mirrors the 60% question / 40%
  * editor layout so the page doesn't shift when content arrives.
  */
+/** Sanitize server error messages before surfacing to the client UI. */
+function sanitizeError(err: unknown): string {
+  if (err instanceof ApiError) {
+    return "Request failed. Please try again.";
+  }
+  return "Something went wrong. Please try again.";
+}
+
 function PageSkeleton() {
   return (
     <div className="grid lg:grid-cols-[60%_40%] gap-6 min-w-0">
@@ -118,14 +126,6 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
 
   // Controller for cancelling in-flight mastery fetches.
   const masteryController = useRef<AbortController | null>(null);
-
-  // Sanitize server error messages before surfacing to the client UI.
-  function sanitizeError(err: unknown): string {
-    if (err instanceof ApiError) {
-      return "Request failed. Please try again.";
-    }
-    return "Something went wrong. Please try again.";
-  }
 
   // Reset editor state when the question changes, scoped to that question.
   const currentQuestionIdRef = useRef<string | undefined>(undefined);

@@ -45,7 +45,7 @@ export default function ConceptCard({
         )}
       </div>
       <div className="flex items-center gap-3">
-        <MasteryProgressBar mastery={concept.masteryProbability} height="6px" />
+        <MasteryProgressBar mastery={concept.masteryProbability} height="6px" label={concept.name} />
         <span className="text-sm font-medium text-text-body w-12 text-right">
           {concept.masteryProbability === null ? "—" : `${pct}%`}
         </span>
