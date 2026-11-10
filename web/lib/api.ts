@@ -260,6 +260,54 @@ export interface SubmitCodeResult {
   masteryDelta: number;
 }
 
+// --- Tutor chat (#74): sessions, session detail, ask ---
+
+export interface TutorSession {
+  sessionId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  questionCount: number;
+}
+
+export interface Citation {
+  source: string;
+  chunkText: string;
+  relevance: number;
+}
+
+export interface TutorMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  citations?: Citation[];
+}
+
+export interface TutorSessionDetail {
+  sessionId: string;
+  messages: TutorMessage[];
+}
+
+export interface TutorAskRequest {
+  sessionId?: string;
+  question: string;
+}
+
+export interface TutorAskResponse {
+  sessionId: string;
+  answer: string;
+  citations: Citation[];
+  tokenCount: number;
+}
+
+export interface TutorSessionsResult {
+  sessions: TutorSession[];
+}
+
+export interface TutorSessionDetailResult {
+  session: TutorSessionDetail;
+}
+
 export interface AdminUser {
   id: string;
   email: string | null;
@@ -380,6 +428,21 @@ export const api = {
   // --- Code submission (#33): POST /v1/student/submit-code ---
   submitCode: (input: SubmitCodeRequest) =>
     request<SubmitCodeResult>("/v1/student/submit-code", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  // --- Tutor chat (#74) ---
+  tutorSessions: () =>
+    request<TutorSessionsResult>("/v1/tutor/sessions", { method: "GET" }),
+
+  tutorSession: (id: string) =>
+    request<TutorSessionDetailResult>(
+      `/v1/tutor/sessions/${encodeURIComponent(id)}`
+    ),
+
+  tutorAsk: (input: TutorAskRequest) =>
+    request<TutorAskResponse>("/v1/tutor/ask", {
       method: "POST",
       body: JSON.stringify(input),
     }),
