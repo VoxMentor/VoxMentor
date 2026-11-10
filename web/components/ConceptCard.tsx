@@ -22,12 +22,7 @@ export default function ConceptCard({
 }: ConceptCardProps) {
   const mastery = concept.masteryProbability ?? 0;
   const pct = Math.round(mastery * 100);
-  // Only consider "mastered" when we have actual mastery data (not null).
-  // If masteryProbability is null, don't show "Mastered" badge even if isMastered=true
-  // to avoid inconsistent "Not practiced" + "Mastered" display.
-  const isMastered =
-    concept.masteryProbability !== null &&
-    (mastery >= MASTERED_THRESHOLD || concept.isMastered);
+  const isMastered = mastery >= MASTERED_THRESHOLD || concept.isMastered;
   const solved = problemsSolved ?? concept.correctAttempts;
 
   return (
