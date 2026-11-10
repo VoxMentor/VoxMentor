@@ -79,21 +79,27 @@ public class TutorSupportController : ControllerBase
             query = query.Where(s => s.Status == status.Value);
         }
 
+        // Join with Users to avoid N+1 query for emails
         var items = await query
             .OrderByDescending(s => s.CreatedAt)
             .ThenByDescending(s => s.Id)
             .Skip((int)offset)
             .Take(pageSize)
-            .Select(s => new TutorSessionSummaryDto(
-                s.Id,
-                s.UserId,
-                _db.Users.Where(u => u.Id == s.UserId).Select(u => u.Email).FirstOrDefault(),
-                s.ConceptId,
-                s.Question,
-                s.Status,
-                s.TotalTokens,
-                s.CreatedAt,
-                s.CompletedAt))
+            .Join(
+                _db.Users,
+                s => s.UserId,
+                u => u.Id,
+                (s, u) => new { Session = s, Email = u.Email })
+            .Select(x => new TutorSessionSummaryDto(
+                x.Session.Id,
+                x.Session.UserId,
+                x.Email,
+                x.Session.ConceptId,
+                x.Session.Question,
+                x.Session.Status,
+                x.Session.TotalTokens,
+                x.Session.CreatedAt,
+                x.Session.CompletedAt))
             .ToListAsync(cancellationToken);
 
         return Ok(ApiResponse<IReadOnlyList<TutorSessionSummaryDto>>.SuccessResult(items));

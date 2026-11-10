@@ -129,6 +129,18 @@ export interface ReadinessProfile {
   estimatedWeeksToReady: number;
 }
 
+export interface TutorSessionSummaryDto {
+  sessionId: string;
+  conceptId: string | null;
+  question: string;
+  status: TutorSessionStatus;
+  totalTokens: number;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export type TutorSessionStatus = "Pending" | "Streaming" | "Completed" | "Failed";
+
 // --- JD intelligence (#121): POST /v1/jd/upload, GET /v1/jd/{jdId} ---
 
 export interface JdUploadResult {
@@ -234,7 +246,7 @@ export interface DimensionScore {
 
 export interface ComplexityScore {
   bigO: string;
-  isOptimal: boolean;
+  isOptimal: boolean | null;
   feedback?: string;
 }
 
@@ -247,7 +259,7 @@ export interface CodeEvaluation {
 
 export interface SubmitCodeResult {
   submissionId: string;
-  status: string;
+  status?: string;
   isCorrect: boolean | null;
   testCasesPassed: number;
   testCasesTotal: number;
@@ -313,6 +325,17 @@ export interface AdminUser {
   email: string | null;
   fullName: string;
   roles: string[];
+}
+
+export interface AuditLog {
+  id: number;
+  userId: string | null;
+  action: string;
+  entity: string;
+  entityId: string | null;
+  oldValues: string | null;
+  newValues: string | null;
+  createdAt: string;
 }
 
 // --- Admin question bank (#103): GET/POST /v1/admin/questions, ManageContent policy ---
@@ -392,9 +415,15 @@ export const api = {
   logout: () =>
     request<object>("/v1/auth/logout", { method: "POST" }),
 
-  mastery: () => request<MasteryProfile>("/v1/student/mastery"),
+  mastery: (options?: { signal?: AbortSignal }) =>
+    request<MasteryProfile>("/v1/student/mastery", {
+      signal: options?.signal,
+    }),
 
   readiness: () => request<ReadinessProfile>("/v1/student/readiness"),
+
+  tutorSessions: (limit = 10) =>
+    request<TutorSessionSummaryDto[]>(`/v1/tutor/sessions?limit=${encodeURIComponent(String(limit))}`),
 
   // --- JD intelligence (#121) ---
   jdUpload: (rawText: string) =>
@@ -406,13 +435,14 @@ export const api = {
   jd: (id: string) => request<JdDetail>(`/v1/jd/${encodeURIComponent(id)}`),
 
   submissions: (limit = 10) =>
-    request<SubmissionItem[]>(`/v1/student/submissions?limit=${limit}`),
+    request<SubmissionItem[]>(`/v1/student/submissions?limit=${encodeURIComponent(String(limit))}`),
 
   questions: (params: {
     conceptId?: string;
     difficulty?: number;
     page?: number;
     pageSize?: number;
+    signal?: AbortSignal;
   } = {}) => {
     const q = new URLSearchParams();
     if (params.conceptId) q.set("conceptId", params.conceptId);
@@ -420,16 +450,19 @@ export const api = {
     if (params.page) q.set("page", String(params.page));
     if (params.pageSize) q.set("pageSize", String(params.pageSize));
     const qs = q.toString();
-    return request<QuestionListResult>(`/v1/questions${qs ? `?${qs}` : ""}`);
+    return request<QuestionListResult>(`/v1/questions${qs ? `?${qs}` : ""}`, {
+      signal: params.signal,
+    });
   },
 
   question: (id: string) => request<QuestionDetail>(`/v1/questions/${encodeURIComponent(id)}`),
 
   // --- Code submission (#33): POST /v1/student/submit-code ---
-  submitCode: (input: SubmitCodeRequest) =>
+  submitCode: (input: SubmitCodeRequest, options?: { signal?: AbortSignal }) =>
     request<SubmitCodeResult>("/v1/student/submit-code", {
       method: "POST",
       body: JSON.stringify(input),
+      signal: options?.signal,
     }),
 
   // --- Tutor chat (#74) ---
@@ -449,7 +482,10 @@ export const api = {
 
   // --- admin (#105): SuperAdmin-only via ManageRoles policy; 401/403 enforced server-side ---
   adminUsers: (page = 1, pageSize = 50) =>
-    request<AdminUser[]>(`/v1/admin/users?page=${page}&pageSize=${pageSize}`),
+    request<AdminUser[]>(`/v1/admin/users?page=${encodeURIComponent(String(page))}&pageSize=${encodeURIComponent(String(pageSize))}`),
+
+  adminAuditLogs: (page = 1, pageSize = 50) =>
+    request<AuditLog[]>(`/v1/admin/audit-logs?page=${encodeURIComponent(String(page))}&pageSize=${encodeURIComponent(String(pageSize))}`),
 
   adminRoles: () => request<string[]>("/v1/admin/roles"),
 
@@ -467,7 +503,7 @@ export const api = {
 
   // --- admin questions (#103): ContentAdmin + SuperAdmin via ManageContent policy ---
   adminQuestions: (page = 1, pageSize = 20) =>
-    request<AdminQuestionListResult>(`/v1/admin/questions?page=${page}&pageSize=${pageSize}`),
+    request<AdminQuestionListResult>(`/v1/admin/questions?page=${encodeURIComponent(String(page))}&pageSize=${encodeURIComponent(String(pageSize))}`),
 
   adminCreateQuestion: (input: CreateAdminQuestionInput) =>
     request<AdminQuestionCreated>("/v1/admin/questions", {
