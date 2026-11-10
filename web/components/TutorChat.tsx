@@ -49,6 +49,13 @@ export default function TutorChat({
   // Session state
   const [sessionId, setSessionId] = useState<string | null>(initialSessionId ?? null);
 
+  // Messages state
+  const [messages, setMessages] = useState<{ id: string; role: string; content: string; citations?: Citation[] }[]>([]);
+
+  // Concept selector state
+  const [concepts, setConcepts] = useState<{ conceptId: string; name: string }[]>([]);
+  const [selectedConcept, setSelectedConcept] = useState<string | null>(null);
+
   const statusRef = useRef<Status>("idle");
 
   // Keep statusRef in sync with status for the onclose handler
@@ -56,11 +63,19 @@ export default function TutorChat({
     statusRef.current = status;
   }, [status]);
 
-  // Fetch sessions on mount
+  // Fetch concepts on mount for the concept selector
   useEffect(() => {
-    setTimeout(() => {
-      api.tutorSessions().catch(() => setSessionsLoading(false));
-    }, 0);
+    api
+      .mastery()
+      .then((profile) => {
+        setConcepts(
+          profile.concepts.map((c) => ({
+            conceptId: c.conceptId,
+            name: c.name,
+          }))
+        );
+      })
+      .catch(() => {});
   }, []);
 
   // Load session detail when sessionId changes

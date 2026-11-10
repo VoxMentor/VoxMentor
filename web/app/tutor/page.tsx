@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { api, type TutorSession } from "@/lib/api";
+import { api, type TutorSessionSummaryDto } from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Navbar from "@/components/Navbar";
 import TutorChat from "@/components/TutorChat";
@@ -13,7 +13,7 @@ function TutorPage() {
   const router = useRouter();
   const pathname = usePathname();
 
-  const [sessions, setSessions] = useState<TutorSession[]>([]);
+  const [sessions, setSessions] = useState<TutorSessionSummaryDto[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | undefined>(
@@ -24,8 +24,8 @@ function TutorPage() {
     setSessionsLoading(true);
     setSessionsError(null);
     try {
-      const result = await api.tutorSessions();
-      setSessions(result.sessions);
+      const sessionsData = await api.tutorSessions();
+      setSessions(sessionsData);
     } catch (e) {
       setSessionsError(e instanceof Error ? e.message : "Failed to load sessions.");
     } finally {
@@ -69,9 +69,7 @@ function TutorPage() {
       No sessions yet. Start by asking a question.
     </p>
   ) : (
-      sessions.map((session) => {
-        const title = session.title || "Untitled session";
-      return (
+      sessions.map((session) => (
         <button
           key={session.sessionId}
           onClick={() => handleSessionSelect(session.sessionId)}
@@ -79,21 +77,15 @@ function TutorPage() {
         >
           <div className="flex justify-between items-start mb-1">
             <span className="font-medium text-text-heading truncate">
-              {title}
+              {session.question}
             </span>
             <span className="text-[10px] text-text-muted">
-              {formatDate(session.updatedAt)}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-text-muted">
-              {session.questionCount} question
-              {session.questionCount !== 1 ? "s" : ""}
+              {formatDate(session.createdAt)}
             </span>
           </div>
         </button>
-      );
-    })
+      )
+    )
   );
 
   return (

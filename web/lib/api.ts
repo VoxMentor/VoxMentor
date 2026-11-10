@@ -466,9 +466,6 @@ export const api = {
     }),
 
   // --- Tutor chat (#74) ---
-  tutorSessions: () =>
-    request<TutorSessionsResult>("/v1/tutor/sessions", { method: "GET" }),
-
   tutorSession: (id: string) =>
     request<TutorSessionDetailResult>(
       `/v1/tutor/sessions/${encodeURIComponent(id)}`
