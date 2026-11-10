@@ -53,7 +53,7 @@ export default function ResultPanel({ result }: ResultPanelProps) {
             Execution time
           </span>
           <span className="text-sm font-medium text-text-body">
-            {result.executionTimeMs === null ? "—" : `${result.executionTimeMs} ms`}
+            {result.executionTimeMs == null ? "—" : `${result.executionTimeMs} ms`}
           </span>
         </div>
         <div className="flex flex-col gap-1">
@@ -144,6 +144,11 @@ export default function ResultPanel({ result }: ResultPanelProps) {
                 {result.aiEvaluation.correctness.score ?? "—"} /{" "}
                 {result.aiEvaluation.correctness.maxScore ?? "—"}
               </span>
+              {result.aiEvaluation.correctness.feedback && (
+                <p className="text-[11px] text-text-muted mt-1">
+                  {result.aiEvaluation.correctness.feedback}
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
@@ -153,30 +158,45 @@ export default function ResultPanel({ result }: ResultPanelProps) {
                 {result.aiEvaluation.codeStyle.score ?? "—"} /{" "}
                 {result.aiEvaluation.codeStyle.maxScore ?? "—"}
               </span>
+              {result.aiEvaluation.codeStyle.feedback && (
+                <p className="text-[11px] text-text-muted mt-1">
+                  {result.aiEvaluation.codeStyle.feedback}
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
                 Time complexity
               </span>
               <span className="text-sm font-medium text-text-body">
-                {result.aiEvaluation.timeComplexity.bigO ?? "—"}{" "}
+                {result.aiEvaluation.timeComplexity.bigO}{" "}
                 {optimalLabel(
-                  result.aiEvaluation.timeComplexity.bigO ?? "",
+                  result.aiEvaluation.timeComplexity.bigO,
                   result.aiEvaluation.timeComplexity.isOptimal,
                 )}
               </span>
+              {result.aiEvaluation.timeComplexity.feedback && (
+                <p className="text-[11px] text-text-muted mt-1">
+                  {result.aiEvaluation.timeComplexity.feedback}
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
                 Space complexity
               </span>
               <span className="text-sm font-medium text-text-body">
-                {result.aiEvaluation.spaceComplexity.bigO ?? "—"}{" "}
+                {result.aiEvaluation.spaceComplexity.bigO}{" "}
                 {optimalLabel(
-                  result.aiEvaluation.spaceComplexity.bigO ?? "",
+                  result.aiEvaluation.spaceComplexity.bigO,
                   result.aiEvaluation.spaceComplexity.isOptimal,
                 )}
               </span>
+              {result.aiEvaluation.spaceComplexity.feedback && (
+                <p className="text-[11px] text-text-muted mt-1">
+                  {result.aiEvaluation.spaceComplexity.feedback}
+                </p>
+              )}
             </div>
           </div>
         </div>
