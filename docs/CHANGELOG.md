@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Demo seed data ([#155](https://github.com/VoxMentor/VoxMentor/issues/155)): idempotent one-liner (`dotnet run --project src/VoxMentor.Api -- --seed-demo`) creates demo student/admin accounts, two job descriptions (Amazon + Google), 10 mastery rows with varied BKT probabilities, two completed mock interviews with full transcripts and AI reviews (Technical score 82, Behavioral score 76), and three completed tutor sessions; off by default in production (`Seed:Demo=false`), documented in SETUP.md Step 4c
 - Load testing with NBomber (Refs [#153](https://github.com/VoxMentor/VoxMentor/issues/153)): new `src/VoxMentor.LoadTests` console project covering the hot paths (auth login/refresh, practice submit-code, mock-interview start/answer, tutor ask) with sustained + spike simulations for all four scenarios; p50/p95/p99 planning targets are documented in `src/VoxMentor.LoadTests/README.md` and no measured baseline is recorded yet — see `docs/load-test-results.md` for run status; tutor asks go through a per-account zero-wait admission gate (at most one send per account per 6 minutes and non-quota copies are dropped without calling the API; load-test-side only) to stay within the 10 req/hour/student rate limit; manual/nightly only, not in PR CI
 - Resume ATS analyzer ([#151](https://github.com/VoxMentor/VoxMentor/issues/151)): `POST /api/v1/resume/analyze` — PDF resume upload plus a required `jdId`, in-process PdfPig text extraction (page/char capped), weighted skill match against `JdSkillWeights` with matched/missing skills, ATS parseability heuristics, and suggestions; `401`/`400`/`404`/`429` via existing middleware, 5/min per-user rate limit, results persisted to `ResumeAnalyses`
 - Company-specific interview tracks ([#150](https://github.com/VoxMentor/VoxMentor/issues/150)): a data-driven `InterviewTracks` config section (`appsettings.json`) maps company aliases to a `Prompt` (dialogue style) and `Rubric` (evaluation standard) — currently Amazon Leadership Principles and Google Googliness; `OllamaMockInterviewGenerator` resolves the JD's `CompanyName` against the table (case-insensitive alias match) and appends the track text to all four prompt surfaces: opening, follow-up, answer verdict (`AssessAnswerSolvedAsync`), and review rubric; `FollowUpStreamAsync`/`AssessAnswerSolvedAsync` gain a `company` parameter (the answer path now reads the JD once per answer instead of only on the advance branch); unknown or missing companies resolve to no track, so prompts stay byte-identical to the generic behavior (the canned model-down path stays generic); adding a company is one config entry, never a code branch
@@ -26,7 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docker Compose production configuration
 - GitHub Actions CI/CD pipeline
 - OpenTelemetry distributed tracing
-- Demo seed data
 - README polish + screenshots
 
 ---

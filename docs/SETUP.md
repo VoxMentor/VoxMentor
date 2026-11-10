@@ -191,6 +191,41 @@ python -m unittest scripts.test_seed_corpus
 
 ---
 
+## Step 4c: Demo seed data (optional)
+
+Populate a fresh stack with a realistic demo user, two job descriptions, mastery/readiness values, two completed mock interviews with AI reviews, and three tutor sessions — so the dashboard is never empty on first login.
+
+**Prerequisite:** Steps 2–4 must have run first (Postgres up, migrations applied, 50 DSA concepts + 100 questions seeded via `scripts/seed-*.sql`). The seeder fails fast with a clear message if concepts are missing.
+
+```bash
+# One-liner (requires Postgres running from Step 2; runs migrations if needed)
+dotnet run --project src/VoxMentor.Api -- --seed-demo
+
+# Or enable via config for hands-off dev boots (set in appsettings.Development.json or env)
+# Seed__Demo=true
+# Then just: dotnet run --project src/VoxMentor.Api
+```
+
+**What this creates:**
+
+| Entity | Count | Details |
+|---|---|---|
+| Users | 2 | `demo-student@voxmentor.dev` (Student) · `demo-admin@voxmentor.dev` (ContentAdmin) |
+| JobDescriptions | 2 | Amazon SDE II + Google L4, with 5 skill weights each |
+| StudentMastery | 10 | Varied BKT probabilities (0.48–0.92) across existing DSA concepts |
+| MockInterviews | 2 | 1 Technical (Amazon JD, score 82) + 1 Behavioral (score 76), both Completed with full TranscriptJson + ReviewJson |
+| TutorSessions | 3 | Completed Q&A on Variables, Time Complexity, Linked Lists |
+
+**Accounts** (password from `Seed:DemoPassword` — required when seeding):
+- **demo-student@voxmentor.dev** — lands on a populated dashboard immediately
+- **demo-admin@voxmentor.dev** — can access textbook upload and admin endpoints (`ContentAdmin`)
+
+**Re-run safely:** idempotent — inserts only what's missing by deterministic ID or natural key. Re-running does not revert values you've changed (e.g. edited mastery probabilities); it only avoids duplicates.
+
+**Production safety:** the seeder refuses to run unless `Seed:Demo=true` **and** the app is running in Development (`ASPNETCORE_ENVIRONMENT=Development`). Default configs have `Seed:Demo=false` — prod boots clean even if the flag leaks into env vars.
+
+---
+
 ## Step 5: Run the Backend
 
 ```bash
@@ -358,6 +393,9 @@ dotnet ef database update --project src/VoxMentor.Infrastructure --startup-proje
 # Re-seed data
 docker compose exec db psql -U voxmentor -d voxmentor -f scripts/seed-dsa-concepts.sql
 docker compose exec db psql -U voxmentor -d voxmentor -f scripts/seed-questions.sql
+
+# Re-run demo seed (idempotent, Development only)
+dotnet run --project src/VoxMentor.Api -- --seed-demo
 ```
 
 ### Frontend can't connect to backend

@@ -161,6 +161,19 @@ using (var scope = app.Services.CreateScope())
         }
     }
     await RoleSeeder.SeedRolesAsync(services);
+    // Demo seed runs only in Development — prod safety can't rely on config
+    // discipline alone (Seed:Demo could leak into production env vars).
+    if (builder.Environment.IsDevelopment())
+    {
+        // Parse --seed-demo CLI arg only in Development; ignored in Production.
+        // Accepts bare --seed-demo, --seed-demo=true/1/yes/on, --seed-demo=false/0/no/off.
+        var seedDemoValue = ParseSeedDemoArg(args);
+        if (seedDemoValue.HasValue)
+        {
+            builder.Configuration["Seed:Demo"] = seedDemoValue.Value ? "true" : "false";
+        }
+        await DemoSeeder.SeedDemoDataAsync(services, builder.Configuration);
+    }
 }
 
 // Configure HTTP request pipeline
@@ -247,5 +260,30 @@ app.MapHub<MasteryHub>("/hubs/mastery");
 app.MapHub<InterviewHub>("/hubs/interview");
 
 app.Run();
+
+/// <summary>
+/// Parses the --seed-demo CLI argument.
+/// Accepts bare --seed-demo (true), --seed-demo=true/1/yes/on (true),
+/// --seed-demo=false/0/no/off (false). Returns null when not present.
+/// </summary>
+static bool? ParseSeedDemoArg(string[] args)
+{
+    for (var i = 0; i < args.Length; i++)
+    {
+        var arg = args[i];
+        if (!arg.StartsWith("--seed-demo", StringComparison.OrdinalIgnoreCase))
+            continue;
+        if (arg.Length == "--seed-demo".Length)
+            return true; // bare flag
+        if (arg["--seed-demo".Length] != '=')
+            continue; // not a value form
+        var value = arg.AsSpan("--seed-demo".Length + 1).Trim();
+        return value.Equals("true", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("1", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("yes", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("on", StringComparison.OrdinalIgnoreCase);
+    }
+    return null;
+}
 
 public partial class Program { }
