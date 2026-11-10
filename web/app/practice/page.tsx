@@ -18,6 +18,8 @@ import CodeEditor from "@/components/CodeEditor";
 import LanguageSelector from "@/components/LanguageSelector";
 import QuestionList from "@/components/QuestionList";
 import ResultPanel from "@/components/ResultPanel";
+import MasteryProgressBar from "@/components/MasteryProgressBar";
+import ConceptCard from "@/components/ConceptCard";
 
 /**
  * Rendered while question data is loading. Mirrors the 60% question / 40%
@@ -54,17 +56,10 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // Keep the latest searchParams in a ref so updateParams stays stable across
-  // reads without being recreated on every searchParams object identity change.
-  const searchParamsRef = useRef(searchParams);
-  useEffect(() => {
-    searchParamsRef.current = searchParams;
-  }, [searchParams]);
-
   const [detailReload, setDetailReload] = useState(0);
   const [listReload, setListReload] = useState(0);
-  const [conceptsReload, setConceptsReload] = useState(0);
   const [concepts, setConcepts] = useState<MasteryConcept[]>([]);
+  const [overallReadiness, setOverallReadiness] = useState(0);
 
   // --- Question detail state ---
   const detailKey = `${selectedId ?? ""}|${detailReload}`;
@@ -115,16 +110,6 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     code: string;
   } | null>(null);
 
-  // Ownership of the submit loading state, tracked independently of result
-  // identity (which edits can invalidate). Only the submission that currently
-  // owns the loading state may clear it, so an earlier request's finally block
-  // cannot re-enable the button while a later submission is still in flight.
-  const submitOwner = useRef<{
-    questionId: string;
-    language: string;
-    code: string;
-  } | null>(null);
-
   // Reset editor state when the question changes, scoped to that question.
   const currentQuestionIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -144,8 +129,6 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     setCodeDrafts((prev) => ({ ...prev, [language]: newValue }));
   };
 
-  const [conceptsError, setConceptsError] = useState<string | null>(null);
-
   const handleLanguageChange = (newLanguage: string) => {
     setLanguage(newLanguage);
     // Restore the selected language's draft (falling back to its template),
@@ -162,7 +145,6 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     const codeToSubmit = code;
     const identity = { questionId: detail.id, language, code: codeToSubmit };
     submitIdentity.current = identity;
-    submitOwner.current = identity;
     setSubmitting(true);
     setSubmitResult(null);
     setSubmitError(null);
@@ -175,6 +157,9 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
       // Only surface the result if the submission identity is still current.
       if (submitIdentity.current === identity) {
         setSubmitResult({ questionId: detail.id, result });
+        // Refresh mastery so the readiness bar and concept cards reflect
+        // the new values after a successful submission.
+        fetchMastery();
       }
     } catch (err) {
       // Only surface the error if the submission identity is still current.
@@ -186,16 +171,13 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
         }
       }
     } finally {
-      // Only the submission that owns the loading state may clear it.
-      if (submitOwner.current === identity) {
-        setSubmitting(false);
-      }
+      setSubmitting(false);
     }
   };
 
   const updateParams = useCallback(
     (updates: Record<string, string | undefined>, replace = false) => {
-      const params = new URLSearchParams(searchParamsRef.current.toString());
+      const params = new URLSearchParams(searchParams.toString());
       for (const [key, value] of Object.entries(updates)) {
         if (value === undefined) params.delete(key);
         else params.set(key, value);
@@ -205,7 +187,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
       if (replace) router.replace(url);
       else router.push(url);
     },
-    [router, pathname]
+    [router, pathname, searchParams]
   );
 
   useEffect(() => {
@@ -263,27 +245,25 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     [listOk, listState]
   );
 
-  useEffect(() => {
+  const fetchMastery = useCallback(() => {
     let cancelled = false;
     api
       .mastery()
       .then((m) => {
         if (!cancelled) {
           setConcepts(m.concepts);
-          setConceptsError(null);
+          setOverallReadiness(m.overallReadiness);
         }
       })
-      .catch((e) => {
-        if (cancelled) return;
-        setConcepts([]);
-        setConceptsError(
-          e instanceof ApiError ? e.message : "Failed to load concepts.",
-        );
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [conceptsReload]);
+  }, []);
+
+  useEffect(() => {
+    fetchMastery();
+  }, [fetchMastery]);
 
   useEffect(() => {
     let cancelled = false;
@@ -344,6 +324,33 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     <div className="grid lg:grid-cols-[60%_40%] gap-6 min-w-0">
       {/* Left: question (60%) */}
       <section className="flex flex-col gap-4 min-w-0">
+        <div className="card !p-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-medium text-text-heading">
+              Readiness
+            </h2>
+            <span className="text-sm font-medium text-navy">
+              {Math.round(overallReadiness)}%
+            </span>
+          </div>
+          <MasteryProgressBar
+            mastery={overallReadiness / 100}
+            label="Overall readiness"
+          />
+          <div className="grid gap-2">
+            {concepts
+              .slice()
+              .sort(
+                (a, b) =>
+                  (a.masteryProbability ?? 0) -
+                  (b.masteryProbability ?? 0)
+              )
+              .map((c) => (
+                <ConceptCard key={c.conceptId} concept={c} />
+              ))}
+          </div>
+        </div>
+
         {detail ? (
           <QuestionCard detail={detail} />
         ) : (
@@ -410,11 +417,6 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
               </div>
             ) : listError ? (
               <FetchError message={listError} onRetry={retryList} />
-            ) : conceptsError ? (
-              <FetchError
-                message={conceptsError}
-                onRetry={() => setConceptsReload((n) => n + 1)}
-              />
             ) : (
               <QuestionList
                 questions={questions}

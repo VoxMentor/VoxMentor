@@ -75,11 +75,7 @@ export default function ResultPanel({ result }: ResultPanelProps) {
             transition={{ duration: 0.3 }}
             style={{ color: masteryColor(masteryDelta) }}
           >
-            {!Number.isFinite(masteryDelta)
-              ? "—"
-              : masteryDelta === 0
-                ? "0.00"
-                : `${masteryDelta >= 0 ? "+" : ""}${masteryDelta.toFixed(2)}`}
+            {formatMasteryDelta(masteryDelta)}
           </motion.span>
         </div>
       </div>
@@ -131,4 +127,20 @@ export default function ResultPanel({ result }: ResultPanelProps) {
       )}
     </div>
   );
+}
+
+/**
+ * Formats the mastery delta so small nonzero changes remain visible.
+ * Zero or non-finite values are shown as "0.00" / "—", meaningful changes
+ * keep two-decimal precision, and sub-0.005 changes show enough decimals to
+ * stay distinguishable from zero.
+ */
+function formatMasteryDelta(masteryDelta: number): string {
+  if (!Number.isFinite(masteryDelta)) return "—";
+  if (masteryDelta === 0) return "0.00";
+  const rounded = masteryDelta.toFixed(2);
+  if (rounded === "0.00") {
+    return `${masteryDelta >= 0 ? "+" : ""}${masteryDelta.toFixed(4)}`;
+  }
+  return `${masteryDelta >= 0 ? "+" : ""}${rounded}`;
 }

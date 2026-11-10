@@ -1,9 +1,29 @@
 // Run with: npm test  (Node's built-in test runner - no test dependencies).
 // Covers the pure presentational helpers for the submission result panel:
-// formatMemory (KB/MB edge cases) and optimalLabel (empty Big-O handling).
+// formatMemory (KB/MB edge cases), optimalLabel (empty Big-O handling),
+// and statusLabel (Correct / Incorrect / execution-failure / Ungraded).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatMemory, optimalLabel } from "./result-panel.ts";
+import { type SubmitCodeResult } from "./api.ts";
+import { formatMemory, optimalLabel, statusLabel } from "./result-panel.ts";
+
+function makeResult(overrides: Partial<SubmitCodeResult>): SubmitCodeResult {
+  return {
+    submissionId: "test",
+    status: "success",
+    isCorrect: null,
+    testCasesPassed: 0,
+    testCasesTotal: 0,
+    executionTimeMs: null,
+    memoryUsageKb: null,
+    aiEvaluation: null,
+    testCaseResults: [],
+    previousMastery: 0,
+    newMastery: 0,
+    masteryDelta: 0,
+    ...overrides,
+  };
+}
 
 test("formatMemory renders missing values as an unavailable indicator", () => {
   assert.equal(formatMemory(null), "—");
@@ -46,4 +66,38 @@ test("optimalLabel treats missing assessment as unavailable", () => {
 test("optimalLabel renders explicit optimality distinctly", () => {
   assert.equal(optimalLabel("O(n)", true), "· optimal");
   assert.equal(optimalLabel("O(n)", false), "· not optimal");
+});
+
+test("formatMemory treats NaN as unavailable", () => {
+  assert.equal(formatMemory(NaN), "—");
+});
+
+test("formatMemory treats Infinity as unavailable", () => {
+  assert.equal(formatMemory(Infinity), "—");
+});
+
+test("formatMemory treats negative Infinity as unavailable", () => {
+  assert.equal(formatMemory(-Infinity), "—");
+});
+
+test("statusLabel returns Correct when isCorrect is true", () => {
+  assert.equal(statusLabel(makeResult({ status: "success", isCorrect: true }), true), "Correct");
+});
+
+test("statusLabel returns Incorrect for false without error status", () => {
+  assert.equal(statusLabel(makeResult({ status: "success", isCorrect: false }), false), "Incorrect");
+});
+
+test("statusLabel returns execution-failure status when isCorrect is false", () => {
+  assert.equal(statusLabel(makeResult({ status: "timeout", isCorrect: false }), false), "timeout");
+  assert.equal(statusLabel(makeResult({ status: "CRASHED", isCorrect: false }), false), "CRASHED");
+  assert.equal(
+    statusLabel(makeResult({ status: "Internal Server Error", isCorrect: false }), false),
+    "Internal Server Error",
+  );
+});
+
+test("statusLabel returns Ungraded when isCorrect is null", () => {
+  assert.equal(statusLabel(makeResult({ status: "pending" }), null), "pending");
+  assert.equal(statusLabel(makeResult({ status: undefined }), null), "Ungraded");
 });
