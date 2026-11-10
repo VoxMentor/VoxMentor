@@ -267,6 +267,17 @@ export interface AdminUser {
   roles: string[];
 }
 
+export interface AuditLog {
+  id: number;
+  userId: string | null;
+  action: string;
+  entity: string;
+  entityId: string | null;
+  oldValues: string | null;
+  newValues: string | null;
+  createdAt: string;
+}
+
 // --- Admin question bank (#103): GET/POST /v1/admin/questions, ManageContent policy ---
 
 export interface AdminQuestion {
@@ -394,6 +405,9 @@ export const api = {
   // --- admin (#105): SuperAdmin-only via ManageRoles policy; 401/403 enforced server-side ---
   adminUsers: (page = 1, pageSize = 50) =>
     request<AdminUser[]>(`/v1/admin/users?page=${encodeURIComponent(String(page))}&pageSize=${encodeURIComponent(String(pageSize))}`),
+
+  adminAuditLogs: (page = 1, pageSize = 50) =>
+    request<AuditLog[]>(`/v1/admin/audit-logs?page=${encodeURIComponent(String(page))}&pageSize=${encodeURIComponent(String(pageSize))}`),
 
   adminRoles: () => request<string[]>("/v1/admin/roles"),
 
