@@ -6,7 +6,7 @@
 import { type SubmitCodeResult } from "./api.ts";
 
 /** Known execution-failure status prefixes (case-insensitive). */
-const FAILURE_STATUS_PREFIXES = ["error", "timeout", "crash", "fail", "internal"] as const;
+const FAILURE_STATUS_PREFIXES = ["error", "runtime", "timeout", "crash", "fail", "internal"] as const;
 
 /**
   * Returns the pass/fail verdict label: "Correct" or "Incorrect" when graded,

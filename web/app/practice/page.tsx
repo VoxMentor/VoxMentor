@@ -124,6 +124,15 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
   // Controller for cancelling in-flight mastery fetches.
   const masteryController = useRef<AbortController | null>(null);
 
+  // Mounted ref to prevent setState after unmount.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   // Sanitize server error messages before surfacing to the client UI.
   function sanitizeError(err: unknown): string {
     if (err instanceof ApiError) {
@@ -131,6 +140,14 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     }
     return "Something went wrong. Please try again.";
   }
+
+  // Invalidate the in-flight submission: increment identity, abort request, clear submitting.
+  const invalidateSubmission = useCallback(() => {
+    submitIdentity.current++;
+    submitSeq.current++;
+    submitController.current?.abort();
+    setSubmitting(false);
+  }, []);
 
   // Reset editor state when the question changes, scoped to that question.
   const currentQuestionIdRef = useRef<string | undefined>(undefined);
@@ -141,14 +158,10 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     setCodeDrafts({});
     setSubmitResult(null);
     setSubmitError(null);
-    setSubmitting(false);
     // Invalidate any in-flight submission so it cannot surface a result or
     // error on the newly navigated question.
-    submitIdentity.current++;
-    // Increment submitSeq so any in-flight request's finally block won't
-    // re-enable submitting for the new question.
-    submitSeq.current++;
-  }, [selectedId]);
+    invalidateSubmission();
+  }, [selectedId, invalidateSubmission]);
 
   const updateCodeDraft = (newValue: string) => {
     if (!draftKey) return;
@@ -161,8 +174,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     // never leaking code from the previously selected language.
     setSubmitResult(null);
     setSubmitError(null);
-    submitIdentity.current++;
-    submitSeq.current++;
+    invalidateSubmission();
   };
 
   // Request ID to guard against stale mastery responses
@@ -183,19 +195,19 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     setConceptsError(null);
     try {
       const m = await api.mastery({ signal: controller.signal });
-      // Only apply if this is still the latest request.
-      if (requestId === masteryRequestId.current) {
+      // Only apply if this is still the latest request and component is mounted.
+      if (mountedRef.current && requestId === masteryRequestId.current) {
         setConcepts(m.concepts);
         setOverallReadiness(m.overallReadiness);
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
-      // Only update error if this is still the latest request.
-      if (requestId === masteryRequestId.current) {
+      // Only update error if this is still the latest request and mounted.
+      if (mountedRef.current && requestId === masteryRequestId.current) {
         setConceptsError("Failed to load mastery data. Please try again.");
       }
     } finally {
-      if (requestId === masteryRequestId.current) {
+      if (mountedRef.current && requestId === masteryRequestId.current) {
         setConceptsLoading(false);
       }
     }
@@ -206,6 +218,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     if (!detail?.id || submitting) return;
 
     const codeToSubmit = code;
+    const languageToSubmit = language;
     const submissionId = ++submitIdentity.current;
     // Separate sequence for the submitting flag — allows clearing it in
     // finally only when this request still owns the latest submission.
@@ -225,7 +238,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
 
     try {
       const result = await api.submitCode(
-        { questionId: detail.id, code: codeToSubmit, language },
+        { questionId: detail.id, code: codeToSubmit, language: languageToSubmit },
         { signal: controller.signal },
       );
       // Only surface the result if this is still the latest submission.
@@ -249,8 +262,12 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
       }
     } finally {
       clearTimeout(timeoutId);
-      submitTimeoutId.current = null;
-      submitController.current = null;
+      if (submitTimeoutId.current === timeoutId) {
+        submitTimeoutId.current = null;
+      }
+      if (submitController.current === controller) {
+        submitController.current = null;
+      }
       // Only clear submitting if this is still the latest submission.
       if (submitSeq.current === seq) {
         setSubmitting(false);
@@ -288,7 +305,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
         setDetailState({
           key: detailKey,
           status: notFound ? "notFound" : "error",
-          message: notFound ? undefined : e instanceof ApiError ? e.message : "Failed to load question.",
+          message: notFound ? undefined : e instanceof ApiError ? sanitizeError(e) : "Failed to load question.",
         });
       });
     return () => {
@@ -302,9 +319,10 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
   const filters = useMemo(
     () => ({
       conceptId: searchParams.get("concept") ?? undefined,
-      difficulty: searchParams.get("difficulty")
-        ? Number(searchParams.get("difficulty"))
-        : undefined,
+      difficulty: (() => {
+          const v = Number(searchParams.get("difficulty"));
+          return Number.isNaN(v) ? undefined : v;
+        })(),
     }),
     [searchParams]
   );
@@ -347,6 +365,11 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
   useEffect(() => {
     return () => {
       submitController.current?.abort();
+      masteryController.current?.abort();
+      if (masteryTimerRef.current !== null) {
+        clearTimeout(masteryTimerRef.current);
+        masteryTimerRef.current = null;
+      }
       if (submitTimeoutId.current !== null) {
         clearTimeout(submitTimeoutId.current);
         submitTimeoutId.current = null;
@@ -357,6 +380,8 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
   // Fetch question list with AbortController for cancellation on filter change/unmount.
   useEffect(() => {
     const controller = new AbortController();
+    // Capture listKey at effect start to guard against stale responses.
+    const myListKey = listKey;
     api
       .questions({
         conceptId: filters.conceptId,
@@ -365,6 +390,8 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
         signal: controller.signal,
       })
       .then((res) => {
+        // Only apply if this request is still current.
+        if (myListKey !== listKey) return;
         setListState({
           key: listKey,
           ok: true,
@@ -373,11 +400,13 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
       })
       .catch((e) => {
         if (e instanceof DOMException && e.name === "AbortError") return;
+        // Only update error state if this request is still current.
+        if (myListKey !== listKey) return;
         setListState({
           key: listKey,
           ok: false,
           questions: [],
-          message: e instanceof ApiError ? e.message : "Failed to load questions.",
+          message: e instanceof ApiError ? sanitizeError(e) : "Failed to load questions.",
         });
       });
     return () => {
@@ -587,8 +616,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
                 setSubmitError(null);
                 // Invalidate any in-flight submission: an edit makes its
                 // identity stale, so its result must not surface later.
-                submitIdentity.current++;
-                submitSeq.current++;
+                invalidateSubmission();
               }}
               height="100%"
             />
@@ -638,7 +666,9 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
  */
 function PracticeRoute() {
   const searchParams = useSearchParams();
-  const questionId = searchParams.get("question") ?? undefined;
+  const rawQuestionId = searchParams.get("question") ?? undefined;
+  // Validate questionId format (UUID or numeric ID) before using.
+  const questionId = /^[0-9a-fA-F-]{8,}$/.test(rawQuestionId ?? "") ? rawQuestionId : undefined;
 
   return (
     <ProtectedRoute>
