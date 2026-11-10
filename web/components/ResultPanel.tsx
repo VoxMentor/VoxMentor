@@ -144,6 +144,11 @@ export default function ResultPanel({ result }: ResultPanelProps) {
                 {result.aiEvaluation.correctness.score ?? "—"} /{" "}
                 {result.aiEvaluation.correctness.maxScore ?? "—"}
               </span>
+              {result.aiEvaluation.correctness.feedback && (
+                <p className="text-[11px] text-text-muted mt-1">
+                  {result.aiEvaluation.correctness.feedback}
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
@@ -153,6 +158,11 @@ export default function ResultPanel({ result }: ResultPanelProps) {
                 {result.aiEvaluation.codeStyle.score ?? "—"} /{" "}
                 {result.aiEvaluation.codeStyle.maxScore ?? "—"}
               </span>
+              {result.aiEvaluation.codeStyle.feedback && (
+                <p className="text-[11px] text-text-muted mt-1">
+                  {result.aiEvaluation.codeStyle.feedback}
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
@@ -165,6 +175,11 @@ export default function ResultPanel({ result }: ResultPanelProps) {
                   result.aiEvaluation.timeComplexity.isOptimal,
                 )}
               </span>
+              {result.aiEvaluation.timeComplexity.feedback && (
+                <p className="text-[11px] text-text-muted mt-1">
+                  {result.aiEvaluation.timeComplexity.feedback}
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
@@ -177,6 +192,11 @@ export default function ResultPanel({ result }: ResultPanelProps) {
                   result.aiEvaluation.spaceComplexity.isOptimal,
                 )}
               </span>
+              {result.aiEvaluation.spaceComplexity.feedback && (
+                <p className="text-[11px] text-text-muted mt-1">
+                  {result.aiEvaluation.spaceComplexity.feedback}
+                </p>
+              )}
             </div>
           </div>
         </div>

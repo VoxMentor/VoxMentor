@@ -317,13 +317,20 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
 
   // --- Question list state ---
   const filters = useMemo(
-    () => ({
-      conceptId: searchParams.get("concept") ?? undefined,
-      difficulty: (() => {
-          const v = Number(searchParams.get("difficulty"));
-          return Number.isNaN(v) ? undefined : v;
-        })(),
-    }),
+    () => {
+      const rawDifficulty = searchParams.get("difficulty");
+      let difficulty: number | undefined;
+      if (rawDifficulty !== null && rawDifficulty !== "") {
+        const v = Number(rawDifficulty);
+        if (Number.isInteger(v) && v >= 1 && v <= 10) {
+          difficulty = v;
+        }
+      }
+      return {
+        conceptId: searchParams.get("concept") ?? undefined,
+        difficulty,
+      };
+    },
     [searchParams]
   );
 
