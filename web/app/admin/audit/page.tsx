@@ -165,29 +165,31 @@ function AuditContent() {
                   ))}
                 </tbody>
               </table>
-
-              <nav className="flex items-center justify-between mt-4 px-4" aria-label="Pagination">
-                <button
-                  onClick={() => goToPage(page - 1)}
-                  disabled={page === 1}
-                  className="px-3 py-1.5 text-sm font-medium text-primary hover:bg-accent-light-blue rounded-xl transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                >
-                  Previous
-                </button>
-                <span className="text-sm text-text-muted">Page {page}</span>
-                {/* ponytail: API returns the page only, no totalCount -- Next is
-                    a full-page heuristic like /admin/users; an exact multiple of
-                    PAGE_SIZE can land on one empty page. Add totals if needed. */}
-                <button
-                  onClick={() => goToPage(page + 1)}
-                  disabled={logs.length < PAGE_SIZE}
-                  className="px-3 py-1.5 text-sm font-medium text-primary hover:bg-accent-light-blue rounded-xl transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                >
-                  Next
-                </button>
-              </nav>
             </div>
           )}
+
+          {/* Pagination renders for empty pages too (e.g. out-of-range page),
+              so Previous can bring the user back. */}
+          <nav className="flex items-center justify-between mt-4 px-4" aria-label="Pagination">
+            <button
+              onClick={() => goToPage(page - 1)}
+              disabled={page === 1}
+              className="px-3 py-1.5 text-sm font-medium text-primary hover:bg-accent-light-blue rounded-xl transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            >
+              Previous
+            </button>
+            <span className="text-sm text-text-muted">Page {page}</span>
+            {/* ponytail: API returns the page only, no totalCount -- Next is
+                a full-page heuristic like /admin/users; an exact multiple of
+                PAGE_SIZE can land on one empty page. Add totals if needed. */}
+            <button
+              onClick={() => goToPage(page + 1)}
+              disabled={logs.length < PAGE_SIZE}
+              className="px-3 py-1.5 text-sm font-medium text-primary hover:bg-accent-light-blue rounded-xl transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            >
+              Next
+            </button>
+          </nav>
         </>
       )}
     </>
