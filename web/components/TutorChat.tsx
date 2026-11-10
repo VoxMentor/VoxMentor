@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getTutorConnection } from "@/lib/signalr";
-import { api, type Citation } from "@/lib/api";
+import { api, type Citation, type TutorSession } from "@/lib/api";
 import type { HubConnection } from "@microsoft/signalr";
 import TutorCitation from "@/components/TutorCitation";
 
@@ -17,6 +17,13 @@ interface TutorCompletePayload {
 interface TutorErrorPayload {
   sessionId: string | null;
   message: string;
+}
+
+interface TutorMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  citations?: Citation[];
 }
 
 // ponytail: one mounted TutorChat (dashboard). The close callback must be
@@ -48,6 +55,13 @@ export default function TutorChat({
 
   // Session state
   const [sessionId, setSessionId] = useState<string | null>(initialSessionId ?? null);
+  const [messages, setMessages] = useState<TutorMessage[]>([]);
+  const [sessions, setSessions] = useState<TutorSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+
+  // Concept selector state
+  const [concepts, setConcepts] = useState<{ conceptId: string; name: string }[]>([]);
+  const [selectedConcept, setSelectedConcept] = useState<string | null>(null);
 
   const statusRef = useRef<Status>("idle");
 
@@ -59,7 +73,14 @@ export default function TutorChat({
   // Fetch sessions on mount
   useEffect(() => {
     setTimeout(() => {
-      api.tutorSessions().catch(() => setSessionsLoading(false));
+      setSessionsLoading(true);
+      api
+        .tutorSessions()
+        .then((result) => {
+          setSessions(result.sessions);
+          setSessionsLoading(false);
+        })
+        .catch(() => setSessionsLoading(false));
     }, 0);
   }, []);
 
@@ -116,6 +137,7 @@ export default function TutorChat({
     const q = question.trim();
     if (!q || busy) return;
 
+    // Set busy immediately to prevent double-click race
     setStatus("connecting");
     setError("");
     setAnswer("");
@@ -124,6 +146,7 @@ export default function TutorChat({
     try {
       const conn = getTutorConnection();
 
+      // Re-register handlers each ask so tokens never append twice.
       conn.off("TutorToken");
       conn.off("TutorComplete");
       conn.off("TutorError");
@@ -135,11 +158,13 @@ export default function TutorChat({
       conn.on("TutorComplete", (payload: TutorCompletePayload) => {
         setStats({ sessionId: payload.sessionId, totalTokens: payload.totalTokens });
 
+        // Capture new session ID (for first message in a new session)
         if (payload.sessionId && payload.sessionId !== sessionId) {
           setSessionId(payload.sessionId);
           onSessionChange?.(payload.sessionId);
         }
 
+        // Append assistant message with citations to message history
         setMessages((prev) => [
           ...prev,
           {
