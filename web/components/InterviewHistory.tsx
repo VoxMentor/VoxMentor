@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type MockInterviewHistoryItem } from "@/lib/api";
 import FetchError from "@/components/FetchError";
 
@@ -37,15 +37,19 @@ export default function InterviewHistory({
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  // Bumped whenever the first page reloads, so a Load more response that
+  // straddles a refresh cannot append a stale page (duplicate rows).
+  const generationRef = useRef(0);
 
   // First page (or a refresh after a new interview): replace the list and
   // work out whether more pages exist - a full page means there probably is.
   useEffect(() => {
+    const generation = ++generationRef.current;
     let cancelled = false;
     api
       .mockHistory(1, PAGE_SIZE)
       .then((res) => {
-        if (cancelled) return;
+        if (cancelled || generation !== generationRef.current) return;
         const rows = res.interviews ?? [];
         setItems(rows);
         setPage(1);
@@ -53,7 +57,7 @@ export default function InterviewHistory({
         setError(null);
       })
       .catch(() => {
-        if (cancelled) return;
+        if (cancelled || generation !== generationRef.current) return;
         setItems([]);
         setError("Could not load your interview history.");
       });
@@ -68,9 +72,11 @@ export default function InterviewHistory({
    */
   const loadMore = async () => {
     if (loadingMore) return;
+    const generation = generationRef.current;
     setLoadingMore(true);
     try {
       const res = await api.mockHistory(page + 1, PAGE_SIZE);
+      if (generation !== generationRef.current) return;
       const rows = res.interviews ?? [];
       setItems((prev) => [...(prev ?? []), ...rows]);
       setPage((p) => p + 1);

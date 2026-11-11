@@ -19,9 +19,12 @@ test("appendToken adds the token to the turn being filled", () => {
 
   const next = appendToken(turns, 1, "lo");
 
+  assert.notEqual(next, turns);
+  assert.notEqual(next[0], turns[0]);
   assert.equal(next[0].text, "Hello");
   assert.equal(next[1].text, "Hi");
   assert.equal(next.length, 2);
+  assert.equal(turns[0].text, "Hel");
 });
 
 test("appendToken drops a token for an unknown turn", () => {
@@ -46,6 +49,7 @@ test("openingTurns falls back to the opening message when nothing streamed", () 
   const next = openingTurns(turns, 2, "fallback message");
 
   assert.equal(next.length, 1);
+  assert.equal(next[0].id, 2);
   assert.equal(next[0].role, "interviewer");
   assert.equal(next[0].text, "fallback message");
 });
@@ -54,12 +58,16 @@ test("dropEmptyTurn removes a turn that never received text", () => {
   const turns: InterviewTurn[] = [
     { id: 1, role: "candidate", text: "my answer" },
     { id: 2, role: "interviewer", text: "" },
+    { id: 3, role: "interviewer", text: "" },
   ];
 
   const next = dropEmptyTurn(turns, 2);
 
-  assert.equal(next.length, 1);
-  assert.equal(next[0].id, 1);
+  assert.equal(next.length, 2);
+  assert.deepEqual(
+    next.map((turn) => turn.id),
+    [1, 3]
+  );
 });
 
 test("dropEmptyTurn keeps a turn that received text", () => {

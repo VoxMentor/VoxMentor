@@ -149,6 +149,10 @@ export default function InterviewChat({
   const interviewIdRef = useRef<string | null>(null);
   // The turn the next streamed token belongs to; null when nothing streams.
   const streamingTurnRef = useRef<number | null>(null);
+  // The last InterviewError message for the action in flight. The hub sends
+  // the real reason and then returns null, so the generic "could not be
+  // started" fallback must not replace it.
+  const hubErrorRef = useRef<string | null>(null);
   const turnIdRef = useRef(0);
   const statusRef = useRef<Status>("idle");
   const transcriptRef = useRef<HTMLDivElement | null>(null);
@@ -250,6 +254,7 @@ export default function InterviewChat({
     }
 
     setError(null);
+    hubErrorRef.current = null;
     setReview(null);
     setTurns([]);
     setAnswer("");
@@ -272,7 +277,7 @@ export default function InterviewChat({
       conn.off("InterviewError");
       conn.on("InterviewerMessage", (token: string) => {
         const target = streamingTurnRef.current;
-        if (target == null) return;
+        if (target === null) return;
         setTurns((prev) => appendToken(prev, target, token));
         if (statusRef.current !== "streaming") updateStatus("streaming");
       });
@@ -285,7 +290,9 @@ export default function InterviewChat({
           ) {
             return;
           }
-          setError(payload.message || "The interview failed.");
+          const message = payload.message || "The interview failed.";
+          hubErrorRef.current = message;
+          setError(message);
           updateStatus("error");
         }
       );
@@ -311,7 +318,7 @@ export default function InterviewChat({
       streamingTurnRef.current = null;
       // A stream that failed before the first token leaves an empty bubble.
       setTurns((prev) => dropEmptyTurn(prev, turnId));
-      setError(errorMessage(e));
+      setError(hubErrorRef.current ?? errorMessage(e));
       updateStatus("error");
       // The deadline won: the invoke keeps running server-side, so drop the
       // connection to stop its tokens reaching a later turn.
@@ -332,6 +339,7 @@ export default function InterviewChat({
     if (statusRef.current !== "ready" && statusRef.current !== "error") return;
 
     setError(null);
+    hubErrorRef.current = null;
     setAnswer("");
     const candidateTurnId = ++turnIdRef.current;
     setTurns((prev) => [
@@ -354,7 +362,7 @@ export default function InterviewChat({
       conn.off("InterviewError");
       conn.on("InterviewerMessage", (token: string) => {
         const target = streamingTurnRef.current;
-        if (target == null) return;
+        if (target === null) return;
         setTurns((prev) => appendToken(prev, target, token));
         if (statusRef.current !== "streaming") updateStatus("streaming");
       });
@@ -370,8 +378,10 @@ export default function InterviewChat({
           // All questions spent (the resume case): close the answer box and
           // point at the finish button rather than letting the user retype
           // into an interview the server refuses to extend.
-          if (/already ended/i.test(payload.message ?? "")) setOngoing(false);
-          setError(payload.message || "The interview failed.");
+          const message = payload.message || "The interview failed.";
+          if (/already ended/i.test(message)) setOngoing(false);
+          hubErrorRef.current = message;
+          setError(message);
           updateStatus("error");
         }
       );
@@ -397,7 +407,7 @@ export default function InterviewChat({
         return invoked ? kept : kept.filter((t) => t.id !== candidateTurnId);
       });
       if (!invoked) setAnswer(message);
-      setError(errorMessage(e));
+      setError(hubErrorRef.current ?? errorMessage(e));
       updateStatus("error");
       // The deadline won: the invoke keeps running server-side, so drop the
       // connection to stop its tokens reaching a later turn.

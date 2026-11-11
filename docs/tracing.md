@@ -43,8 +43,8 @@ every service in one deployment.
 **Zero-config local dev.** With none of these set, the services still record
 the spans but drop them: no exporter is registered, nothing is sent anywhere,
 and a missing collector can never degrade or crash a service. The API's
-integration test `Api_serves_requests_without_a_collector` covers exactly this
-case.
+integration test `Api_NoCollector_ServesRequests` covers the boot-and-serve
+half of this case.
 
 A collector that is configured but not running only produces export warnings -
 the OTLP exporter retries in the background and never fails a request.

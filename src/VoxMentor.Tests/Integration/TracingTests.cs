@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,11 +32,39 @@ public class TracingWebApplicationFactory : CustomWebApplicationFactory
         // an exported endpoint/exporter would make these tests depend on a
         // running collector. Clearing them before the host starts keeps the
         // zero-config path under test regardless of the shell (CodeRabbit #176).
-        Environment.SetEnvironmentVariable("OTEL_SERVICE_NAME", null);
-        Environment.SetEnvironmentVariable("OTEL_TRACES_EXPORTER", null);
-        Environment.SetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT", null);
+        // OTEL_SDK_DISABLED / OTEL_TRACES_SAMPLER also stop spans being
+        // recorded, so a shell that sets either would fail the assertions.
+        // The originals are saved below and restored in Dispose so this
+        // fixture never leaks cleared variables into the rest of the process.
+        _originalOtelEnv = new Dictionary<string, string?>();
+        foreach (var v in OtelEnvVars)
+        {
+            _originalOtelEnv[v] = Environment.GetEnvironmentVariable(v);
+            Environment.SetEnvironmentVariable(v, null);
+        }
 
         Exporter = new LockingExporter(Exported, ExportedLock);
+    }
+
+    private static readonly string[] OtelEnvVars = {
+        "OTEL_SERVICE_NAME",
+        "OTEL_TRACES_EXPORTER",
+        "OTEL_EXPORTER_OTLP_ENDPOINT",
+        "OTEL_SDK_DISABLED",
+        "OTEL_TRACES_SAMPLER",
+        "OTEL_TRACES_SAMPLER_ARG",
+    };
+    private readonly Dictionary<string, string?> _originalOtelEnv;
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            // Restore the process environment exactly as we found it.
+            foreach (var kv in _originalOtelEnv)
+                Environment.SetEnvironmentVariable(kv.Key, kv.Value);
+        }
+        base.Dispose(disposing);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -101,7 +130,7 @@ public class TracingTests : IClassFixture<TracingWebApplicationFactory>
     /// say so, and the test environment sets neither.
     /// </summary>
     [Fact]
-    public async Task Api_serves_requests_without_a_collector()
+    public async Task Api_NoCollector_ServesRequests()
     {
         var client = _factory.CreateClient();
 
@@ -109,7 +138,7 @@ public class TracingTests : IClassFixture<TracingWebApplicationFactory>
 
         // No route matches the probe path, so the API answers 404 - but it
         // answers, which is the point: tracing must not stop the API booting.
-        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     /// <summary>
@@ -117,7 +146,7 @@ public class TracingTests : IClassFixture<TracingWebApplicationFactory>
     /// tagged with the service name the API reports to the collector.
     /// </summary>
     [Fact]
-    public async Task Requests_are_traced()
+    public async Task Api_Request_ExportsSpanWithServiceName()
     {
         var client = _factory.CreateClient();
 
@@ -132,7 +161,7 @@ public class TracingTests : IClassFixture<TracingWebApplicationFactory>
 
         await client.GetAsync(ProbePath);
 
-        var span = WaitForSpan("tracing-probe", TimeSpan.FromSeconds(5));
+        var span = await WaitForSpanAsync("tracing-probe", TimeSpan.FromSeconds(5));
 
         Assert.True(span != null, "exported spans: " + Describe());
         Assert.Equal("Microsoft.AspNetCore", span!.Source.Name);
@@ -141,7 +170,7 @@ public class TracingTests : IClassFixture<TracingWebApplicationFactory>
     }
 
     /// <summary>Waits for the exported span that covers the given path fragment.</summary>
-    private Activity? WaitForSpan(string fragment, TimeSpan timeout)
+    private async Task<Activity?> WaitForSpanAsync(string fragment, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)
@@ -152,7 +181,7 @@ public class TracingTests : IClassFixture<TracingWebApplicationFactory>
                 span = _factory.Exported.FirstOrDefault(s => Covers(s, fragment));
             }
             if (span != null) return span;
-            Thread.Sleep(25);
+            await Task.Delay(25);
         }
         return null;
     }
