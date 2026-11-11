@@ -329,33 +329,28 @@ export interface TutorSessionDetailResult {
 // --- Admin tutor sessions (#108) ---
 
 export interface AdminTutorSession {
-  sessionId: string;
+  id: string;
   userId: string;
-  userName?: string;
-  title: string;
+  userEmail: string | null;
+  conceptId: string | null;
+  question: string;
+  status: TutorSessionStatus;
+  totalTokens: number;
   createdAt: string;
-  updatedAt: string;
-  questionCount: number;
+  completedAt: string | null;
 }
 
 export interface AdminTutorSessionDetail {
-  sessionId: string;
+  id: string;
   userId: string;
-  userName?: string;
-  messages: TutorMessage[];
+  userEmail: string | null;
+  conceptId: string | null;
+  question: string;
+  answer: string | null;
+  status: TutorSessionStatus;
+  totalTokens: number;
   createdAt: string;
-  updatedAt: string;
-}
-
-export interface AdminTutorSessionsResult {
-  sessions: AdminTutorSession[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
-
-export interface AdminTutorSessionDetailResult {
-  session: AdminTutorSessionDetail;
+  completedAt: string | null;
 }
 
 export interface AdminUser {
@@ -560,12 +555,12 @@ export const api = {
 
   // --- Admin tutor sessions (#108) ---
   adminTutorSessions: (page = 1, pageSize = 20) =>
-    request<AdminTutorSessionsResult>(
+    request<AdminTutorSession[]>(
       `/v1/admin/tutor/sessions?page=${page}&pageSize=${pageSize}`
     ),
 
   adminTutorSession: (id: string) =>
-    request<AdminTutorSessionDetailResult>(
+    request<AdminTutorSessionDetail>(
       `/v1/admin/tutor/sessions/${encodeURIComponent(id)}`
     ),
 };

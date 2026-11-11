@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { api, ApiError, type AdminTutorSession } from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Navbar from "@/components/Navbar";
@@ -14,35 +14,37 @@ import FetchError from "@/components/FetchError";
  */
 export default function AdminTutorSessionsPage() {
   const [sessions, setSessions] = useState<AdminTutorSession[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
 
-  const loadSessions = useCallback(() => {
-    setSessionsLoading(true);
-    setSessionsError(null);
-    api
-      .adminTutorSessions()
-      .then((result) => {
-        setSessions(result.sessions);
-        setSessionsLoading(false);
-      })
-      .catch((e) => {
-        setSessionsError(e instanceof ApiError ? e.message : "Failed to load sessions.");
-        setSessionsLoading(false);
-      });
-  }, []);
+  const loadSessions = useCallback(
+    (signal?: AbortSignal) => {
+      setSessionsLoading(true);
+      setSessionsError(null);
+      api
+        .adminTutorSessions()
+        .then((result) => {
+          if (!signal?.aborted) {
+            setSessions(result);
+            setSessionsLoading(false);
+          }
+        })
+        .catch((e) => {
+          if (!signal?.aborted) {
+            setSessionsError(e instanceof ApiError ? e.message : "Failed to load sessions.");
+            setSessionsLoading(false);
+          }
+        });
+    },
+    []
+  );
 
   useEffect(() => {
-    setTimeout(() => {
-      loadSessions();
-    }, 0);
+    const controller = new AbortController();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data fetch
+    loadSessions(controller.signal);
+    return () => controller.abort();
   }, [loadSessions]);
-
-  const router = useRouter();
-
-  const handleSessionSelect = (sessionId: string) => {
-    router.push(`/admin/tutor-sessions/${sessionId}`);
-  };
 
   return (
     <ProtectedRoute>
@@ -98,24 +100,29 @@ export default function AdminTutorSessionsPage() {
                   <tbody>
                     {sessions.map((session) => (
                       <tr
-                        key={session.sessionId}
-                        onClick={() => handleSessionSelect(session.sessionId)}
+                        key={session.id}
                         className="border-b border-border cursor-pointer transition-colors hover:bg-accent-light-blue"
                       >
                         <td className="py-3 px-4 text-sm text-text-body">
-                          {session.sessionId}
+                          {session.id}
                         </td>
                         <td className="py-3 px-4 text-sm text-text-body">
-                          {session.title}
+                          <Link
+                            href={`/admin/tutor-sessions/${session.id}`}
+                            className="text-primary hover:text-primary-dark underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {session.question || "Untitled session"}
+                          </Link>
                         </td>
                         <td className="py-3 px-4 text-sm text-text-body">
-                          {session.userId}
+                          {session.userEmail || session.userId}
                         </td>
                         <td className="py-3 px-4 text-sm text-text-body">
-                          {session.questionCount}
+                          {session.completedAt ? "Completed" : "In Progress"}
                         </td>
                         <td className="py-3 px-4 text-sm text-text-muted">
-                          {new Date(session.updatedAt).toLocaleDateString(
+                          {new Date(session.createdAt).toLocaleDateString(
                             undefined,
                             { month: "short", day: "numeric", year: "numeric" }
                           )}
