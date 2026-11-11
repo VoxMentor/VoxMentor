@@ -295,11 +295,6 @@ export interface TutorMessage {
   citations?: Citation[];
 }
 
-<<<<<<< HEAD
-export interface TutorSessionDetail {
-  sessionId: string;
-  messages: TutorMessage[];
-=======
 export interface TutorSessionDto {
   sessionId: string;
   conceptId: string | null;
@@ -309,7 +304,6 @@ export interface TutorSessionDto {
   totalTokens: number;
   createdAt: string;
   completedAt: string | null;
->>>>>>> main
 }
 
 export interface TutorAskRequest {
@@ -328,9 +322,8 @@ export interface TutorSessionsResult {
   sessions: TutorSession[];
 }
 
-<<<<<<< HEAD
 export interface TutorSessionDetailResult {
-  session: TutorSessionDetail;
+  session: TutorSessionDto;
 }
 
 // --- Admin tutor sessions (#108) ---
@@ -365,8 +358,6 @@ export interface AdminTutorSessionDetailResult {
   session: AdminTutorSessionDetail;
 }
 
-=======
->>>>>>> main
 export interface AdminUser {
   id: string;
   email: string | null;
@@ -515,21 +506,6 @@ export const api = {
   // --- Tutor chat (#74) ---
   tutorSession: (id: string) =>
     request<TutorSessionDto>(
-      `/v1/tutor/sessions/${encodeURIComponent(id)}`
-    ),
-
-  tutorAsk: (input: TutorAskRequest) =>
-    request<TutorAskResponse>("/v1/tutor/ask", {
-      method: "POST",
-      body: JSON.stringify(input),
-    }),
-
-  // --- Tutor chat (#74) ---
-  tutorSessions: () =>
-    request<TutorSessionsResult>("/v1/tutor/sessions", { method: "GET" }),
-
-  tutorSession: (id: string) =>
-    request<TutorSessionDetailResult>(
       `/v1/tutor/sessions/${encodeURIComponent(id)}`
     ),
 

@@ -2,11 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getTutorConnection } from "@/lib/signalr";
-<<<<<<< HEAD
-import { api, type Citation, type TutorSession } from "@/lib/api";
-=======
 import { api, type Citation } from "@/lib/api";
->>>>>>> main
 import type { HubConnection } from "@microsoft/signalr";
 import TutorCitation from "@/components/TutorCitation";
 
@@ -23,13 +19,6 @@ interface TutorErrorPayload {
   message: string;
 }
 
-interface TutorMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  citations?: Citation[];
-}
-
 // ponytail: one mounted TutorChat (dashboard). The close callback must be
 // registered exactly once per cached connection — HubConnection.onclose has no
 // matching off(), so re-registering per mount would pile up handlers.
@@ -44,11 +33,7 @@ interface TutorChatProps {
 }
 
 export default function TutorChat({
-<<<<<<< HEAD
-  sessionId: initialSessionId,
-=======
   sessionId: sessionIdProp,
->>>>>>> main
   onSessionChange,
 }: TutorChatProps = {}) {
   const [question, setQuestion] = useState("");
@@ -61,13 +46,6 @@ export default function TutorChat({
     citations?: Citation[];
   } | null>(null);
 
-<<<<<<< HEAD
-  // Session state
-  const [sessionId, setSessionId] = useState<string | null>(initialSessionId ?? null);
-  const [messages, setMessages] = useState<TutorMessage[]>([]);
-  const [sessions, setSessions] = useState<TutorSession[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState(false);
-=======
   // Session state — derived from the prop so selecting a session in the
   // sidebar loads its history (prop is not read once at mount).
   const [sessionId, setSessionId] = useState<string | null>(sessionIdProp ?? null);
@@ -83,13 +61,10 @@ export default function TutorChat({
   useEffect(() => {
     answerRef.current = answer;
   }, [answer]);
->>>>>>> main
 
   // Concept selector state
   const [concepts, setConcepts] = useState<{ conceptId: string; name: string }[]>([]);
   const [selectedConcept, setSelectedConcept] = useState<string | null>(null);
-<<<<<<< HEAD
-=======
 
   // Session ID this client just created — skip the detail reload for it so the
   // streamed answer/citations aren't wiped by a server poll. `undefined` means
@@ -100,52 +75,12 @@ export default function TutorChat({
   // different session (e.g. after a mid-stream session change) are ignored so
   // stream events stay scoped to their session (#172).
   const streamSessionRef = useRef<string | null>(null);
->>>>>>> main
 
   const statusRef = useRef<Status>("idle");
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
 
-<<<<<<< HEAD
-  // Fetch sessions on mount
-  useEffect(() => {
-    setTimeout(() => {
-      setSessionsLoading(true);
-      api
-        .tutorSessions()
-        .then((result) => {
-          setSessions(result.sessions);
-          setSessionsLoading(false);
-        })
-        .catch(() => setSessionsLoading(false));
-    }, 0);
-  }, []);
-
-  // Load session detail when sessionId changes
-  useEffect(() => {
-    if (!sessionId) {
-      setTimeout(() => {
-        setMessages([]);
-        setAnswer("");
-        setError("");
-        setStats(null);
-      }, 0);
-      return;
-    }
-
-    api
-      .tutorSession(sessionId)
-      .then((result) => {
-        setMessages(result.session.messages);
-        setAnswer("");
-        setError("");
-        setStats(null);
-      })
-      .catch(() => {
-        setError("Failed to load session.");
-      });
-=======
   // Fetch concepts on mount for the concept selector
   useEffect(() => {
     api
@@ -200,7 +135,6 @@ export default function TutorChat({
     return () => {
       cancelled = true;
     };
->>>>>>> main
   }, [sessionId]);
 
   useEffect(() => {
@@ -255,12 +189,6 @@ export default function TutorChat({
         setAnswer((prev) => prev + token);
       });
       conn.on("TutorComplete", (payload: TutorCompletePayload) => {
-<<<<<<< HEAD
-        setStats({ sessionId: payload.sessionId, totalTokens: payload.totalTokens });
-
-        // Capture new session ID (for first message in a new session)
-        if (payload.sessionId && payload.sessionId !== sessionId) {
-=======
         setStats({
           sessionId: payload.sessionId,
           totalTokens: payload.totalTokens,
@@ -269,25 +197,10 @@ export default function TutorChat({
 
         if (payload.sessionId && payload.sessionId !== sessionId) {
           justCreatedRef.current = payload.sessionId;
->>>>>>> main
           setSessionId(payload.sessionId);
           onSessionChange?.(payload.sessionId);
         }
 
-<<<<<<< HEAD
-        // Append assistant message with citations to message history
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now().toString(),
-            role: "assistant",
-            content: answer,
-            citations: payload.citations,
-          },
-        ]);
-
-=======
->>>>>>> main
         setStatus("done");
       });
       conn.on("TutorError", (payload: TutorErrorPayload) => {
@@ -298,13 +211,9 @@ export default function TutorChat({
       if (conn.state !== "Connected") {
         await conn.start();
       }
-<<<<<<< HEAD
-      await conn.invoke("AskTutor", sessionId ?? "", q);
-=======
       // The hub signature is AskTutor(conceptId, question). Pass the selected
       // concept, not the session ID (a session ID is not a valid concept Guid).
       await conn.invoke("AskTutor", selectedConcept ?? "", q);
->>>>>>> main
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setStatus("error");
@@ -313,18 +222,9 @@ export default function TutorChat({
 
   const handleNewSession = () => {
     setSessionId(null);
-<<<<<<< HEAD
-    setTimeout(() => {
-      setMessages([]);
-      setAnswer("");
-      setError("");
-      setStats(null);
-    }, 0);
-=======
     setAnswer("");
     setError("");
     setStats(null);
->>>>>>> main
     setQuestion("");
     onSessionChange?.(null);
   };
