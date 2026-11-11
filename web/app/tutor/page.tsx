@@ -75,22 +75,25 @@ function TutorPage() {
       No sessions yet. Start by asking a question.
     </p>
   ) : (
-      sessions.map((session) => (
-        <button
-          key={session.sessionId}
-          onClick={() => handleSessionSelect(session.sessionId)}
-          className={`w-full text-left px-3 py-2.5 text-sm text-text-body border-[1.5px] border-border rounded-[10px] hover:bg-accent-light-blue transition-colors cursor-pointer`}
-        >
-          <div className="flex justify-between items-start mb-1">
-            <span className="font-medium text-text-heading truncate">
-              {session.question}
-            </span>
-            <span className="text-[10px] text-text-muted">
-              {formatDate(session.createdAt)}
-            </span>
-          </div>
-        </button>
-      ))
+      sessions.map((session) => {
+        const title = session.question || "Untitled session";
+        return (
+          <button
+            key={session.sessionId}
+            onClick={() => handleSessionSelect(session.sessionId)}
+            className={`w-full text-left px-3 py-2.5 text-sm text-text-body border-[1.5px] border-border rounded-[10px] hover:bg-accent-light-blue transition-colors cursor-pointer`}
+          >
+            <div className="flex justify-between items-start mb-1">
+              <span className="font-medium text-text-heading truncate">
+                {title}
+              </span>
+              <span className="text-[10px] text-text-muted">
+                {formatDate(session.createdAt)}
+              </span>
+            </div>
+          </button>
+        );
+      })
     );
 
   return (

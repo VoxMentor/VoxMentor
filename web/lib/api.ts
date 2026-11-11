@@ -322,6 +322,37 @@ export interface TutorSessionsResult {
   sessions: TutorSession[];
 }
 
+export interface TutorSessionDetailResult {
+  session: TutorSessionDto;
+}
+
+// --- Admin tutor sessions (#108) ---
+
+export interface AdminTutorSession {
+  id: string;
+  userId: string;
+  userEmail: string | null;
+  conceptId: string | null;
+  question: string;
+  status: TutorSessionStatus;
+  totalTokens: number;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface AdminTutorSessionDetail {
+  id: string;
+  userId: string;
+  userEmail: string | null;
+  conceptId: string | null;
+  question: string;
+  answer: string | null;
+  status: TutorSessionStatus;
+  totalTokens: number;
+  createdAt: string;
+  completedAt: string | null;
+}
+
 export interface AdminUser {
   id: string;
   email: string | null;
@@ -521,6 +552,17 @@ export const api = {
 
   adminTextbookJob: (jobId: string) =>
     request<TextbookJob>(`/v1/admin/textbook/status/${encodeURIComponent(jobId)}`),
+
+  // --- Admin tutor sessions (#108) ---
+  adminTutorSessions: (page = 1, pageSize = 20) =>
+    request<AdminTutorSession[]>(
+      `/v1/admin/tutor/sessions?page=${page}&pageSize=${pageSize}`
+    ),
+
+  adminTutorSession: (id: string) =>
+    request<AdminTutorSessionDetail>(
+      `/v1/admin/tutor/sessions/${encodeURIComponent(id)}`
+    ),
 };
 
 export { ApiError };
