@@ -76,6 +76,12 @@ async function invokeWithTimeout<T>(
  * REST call. Mirrors TutorChat's session/stream structure rather than
  * inventing a third one.
  */
+// ponytail: one mounted InterviewChat. The close callback must be
+// registered exactly once per cached connection — HubConnection.onclose has
+// no matching off(), so re-registering per mount would pile up handlers.
+let closeHandler: ((err?: Error) => void) | null = null;
+const closeRegistered = new WeakSet<HubConnection>();
+
 export default function InterviewChat({
   initialJdId,
   onCompleted,
@@ -114,38 +120,32 @@ export default function InterviewChat({
   // The interviewer has no problems left - only /complete may close the run.
   const canAnswer = !busy && ongoing;
 
-  // Streamed tokens land in the turn opened just before the invoke. The
-  // handler is registered once per mount; the target turn is read from a ref
-  // so it never closes over stale state.
-  useEffect(() => {
-    const conn = getInterviewConnection();
-
-    const onToken = (token: string) => {
-      const target = streamingTurnRef.current;
-      if (target == null) return;
-      setTurns((prev) => appendToken(prev, target, token));
-      if (statusRef.current !== "streaming") updateStatus("streaming");
-    };
-
-    const onHubError = (payload: { interviewId: string | null; message: string }) => {
-      if (
-        payload.interviewId &&
-        payload.interviewId !== interviewIdRef.current
-      ) {
-        return;
-      }
-      setError(payload.message || "The interview failed.");
+// Streamed tokens land in the turn opened just before the invoke. Handlers
+// are registered per action (mirroring TutorChat's ask()), scoped to the
+// current turn/interview via refs so they never close over stale state.
+// The disconnect handler is registered once per cached connection:
+// HubConnection.onclose has no off(), so re-registering per mount would pile
+// up handlers.
+useEffect(() => {
+  const conn = getInterviewConnection();
+  closeHandler = (err) => {
+    if (
+      statusRef.current === "streaming" ||
+      statusRef.current === "starting"
+    ) {
+      setError(err?.message ?? "Connection lost");
       updateStatus("error");
-    };
-
-    conn.on("InterviewerMessage", onToken);
-    conn.on("InterviewError", onHubError);
-
-    return () => {
-      conn.off("InterviewerMessage", onToken);
-      conn.off("InterviewError", onHubError);
-    };
-  }, [updateStatus]);
+    }
+  };
+  if (!closeRegistered.has(conn)) {
+    closeRegistered.add(conn);
+    conn.onclose((err) => closeHandler?.(err));
+  }
+  // Handlers are registered per action below; nothing to clean here.
+  // updateStatus is stable (useCallback [], []) and closeRegistered is
+  // module-level, so neither needs to be a dependency.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
   // Keep the newest line in view while the interviewer talks.
   useEffect(() => {
@@ -181,6 +181,29 @@ export default function InterviewChat({
       if (conn.state !== "Connected") await conn.start();
 
       turnId = openInterviewerTurn();
+
+      conn.off("InterviewerMessage");
+      conn.off("InterviewError");
+      conn.on("InterviewerMessage", (token: string) => {
+        const target = streamingTurnRef.current;
+        if (target == null) return;
+        setTurns((prev) => appendToken(prev, target, token));
+        if (statusRef.current !== "streaming") updateStatus("streaming");
+      });
+      conn.on(
+        "InterviewError",
+        (payload: { interviewId: string | null; message: string }) => {
+          if (
+            payload.interviewId &&
+            payload.interviewId !== interviewIdRef.current
+          ) {
+            return;
+          }
+          setError(payload.message || "The interview failed.");
+          updateStatus("error");
+        }
+      );
+
       const result = await invokeWithTimeout<MockInterviewStartResult | null>(
         conn,
         "StartMock",
@@ -227,6 +250,29 @@ export default function InterviewChat({
       if (conn.state !== "Connected") await conn.start();
 
       turnId = openInterviewerTurn();
+
+      conn.off("InterviewerMessage");
+      conn.off("InterviewError");
+      conn.on("InterviewerMessage", (token: string) => {
+        const target = streamingTurnRef.current;
+        if (target == null) return;
+        setTurns((prev) => appendToken(prev, target, token));
+        if (statusRef.current !== "streaming") updateStatus("streaming");
+      });
+      conn.on(
+        "InterviewError",
+        (payload: { interviewId: string | null; message: string }) => {
+          if (
+            payload.interviewId &&
+            payload.interviewId !== interviewIdRef.current
+          ) {
+            return;
+          }
+          setError(payload.message || "The interview failed.");
+          updateStatus("error");
+        }
+      );
+
       const result = await invokeWithTimeout<MockInterviewAnswerResult | null>(
         conn,
         "SendAnswer",

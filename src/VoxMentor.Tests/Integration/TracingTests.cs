@@ -86,6 +86,15 @@ public class TracingTests : IClassFixture<TracingWebApplicationFactory>
     {
         var client = _factory.CreateClient();
 
+        // The two tests share the probe path and the in-memory exporter, so
+        // clear previously exported spans before asserting on this test's own
+        // span — otherwise WaitForSpan could match a span left by another
+        // test.
+        lock (_factory.ExportedLock)
+        {
+            _factory.Exported.Clear();
+        }
+
         await client.GetAsync(ProbePath);
 
         var span = WaitForSpan("tracing-probe", TimeSpan.FromSeconds(5));

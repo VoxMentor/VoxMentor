@@ -27,6 +27,19 @@ The exporter is chosen from the environment - nothing is enabled by default.
 | `OTEL_TRACES_EXPORTER` | `console` prints the spans to stdout instead of exporting them. |
 | `OTEL_SERVICE_NAME` | Overrides the `service.name` on the spans. |
 
+**Package note.** `OpenTelemetry.Instrumentation.EntityFrameworkCore` is pinned at
+the prerelease `1.20.2-beta.1` — it is the only official OTel EF Core tracer,
+the build is green, and it is used only for tracing database spans. Pin it
+exactly (don't let a restore float it to a later beta) until a stable release
+exists.
+
+**Security note.** `OTEL_EXPORTER_OTLP_ENDPOINT` is operator-trusted: anyone
+who can write the host environment can point the exporter at an
+attacker-controlled collector and receive the recorded spans (which may
+include request URLs/query strings). Treat it like a connection string — do
+not set it from end-user input, and prefer the same allowlisted collector for
+every service in one deployment.
+
 **Zero-config local dev.** With none of these set, the services still record
 the spans but drop them: no exporter is registered, nothing is sent anywhere,
 and a missing collector can never degrade or crash a service. The API's
