@@ -38,3 +38,11 @@ export function openingTurns(
   if (turns.some((turn) => turn.text)) return turns;
   return [{ id, role: "interviewer", text: openingMessage }];
 }
+
+/**
+ * Drops a turn that never received any text. A stream that failed halfway
+ * leaves an empty bubble behind, and an empty bubble is worse than no bubble.
+ */
+export function dropEmptyTurn(turns: InterviewTurn[], id: number): InterviewTurn[] {
+  return turns.filter((turn) => turn.id !== id || turn.text.length > 0);
+}

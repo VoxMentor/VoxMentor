@@ -14,6 +14,7 @@ import {
 import InterviewReviewCard from "@/components/InterviewReviewCard";
 import {
   appendToken,
+  dropEmptyTurn,
   openingTurns,
   type InterviewTurn,
 } from "@/lib/interview";
@@ -107,6 +108,11 @@ export default function InterviewChat({
   const busy =
     status === "starting" || status === "streaming" || status === "completing";
   const hasInterview = interviewId !== null;
+  // The setup is locked while a run is in flight; once it is over the job
+  // description and the format can be changed for the next run.
+  const locked = busy || (hasInterview && status !== "done");
+  // The interviewer has no problems left - only /complete may close the run.
+  const canAnswer = !busy && ongoing;
 
   // Streamed tokens land in the turn opened just before the invoke. The
   // handler is registered once per mount; the target turn is read from a ref
@@ -151,6 +157,7 @@ export default function InterviewChat({
     const id = ++turnIdRef.current;
     streamingTurnRef.current = id;
     setTurns((prev) => [...prev, { id, role: "interviewer", text: "" }]);
+    return id;
   }, []);
 
   const startInterview = useCallback(async () => {
@@ -168,11 +175,12 @@ export default function InterviewChat({
     streamingTurnRef.current = null;
     updateStatus("starting");
 
+    let turnId = -1;
     try {
       const conn = getInterviewConnection();
       if (conn.state !== "Connected") await conn.start();
 
-      openInterviewerTurn();
+      turnId = openInterviewerTurn();
       const result = await invokeWithTimeout<MockInterviewStartResult | null>(
         conn,
         "StartMock",
@@ -192,6 +200,8 @@ export default function InterviewChat({
       updateStatus("ready");
     } catch (e) {
       streamingTurnRef.current = null;
+      // A stream that failed before the first token leaves an empty bubble.
+      setTurns((prev) => dropEmptyTurn(prev, turnId));
       setError(errorMessage(e));
       updateStatus("error");
     }
@@ -211,11 +221,12 @@ export default function InterviewChat({
     ]);
     updateStatus("starting");
 
+    let turnId = -1;
     try {
       const conn = getInterviewConnection();
       if (conn.state !== "Connected") await conn.start();
 
-      openInterviewerTurn();
+      turnId = openInterviewerTurn();
       const result = await invokeWithTimeout<MockInterviewAnswerResult | null>(
         conn,
         "SendAnswer",
@@ -228,6 +239,8 @@ export default function InterviewChat({
       updateStatus("ready");
     } catch (e) {
       streamingTurnRef.current = null;
+      // A stream that failed before the first token leaves an empty bubble.
+      setTurns((prev) => dropEmptyTurn(prev, turnId));
       setError(errorMessage(e));
       updateStatus("error");
     }
@@ -269,7 +282,7 @@ export default function InterviewChat({
             type="text"
             value={jdId}
             onChange={(e) => setJdId(e.target.value)}
-            disabled={hasInterview}
+            disabled={locked}
             placeholder="e.g. 0f3c…"
             className="w-full text-sm rounded-[14px] border-[1.5px] border-border bg-white px-4 py-3 text-text-body focus:border-primary focus:shadow-[0_0_0_3px_rgba(74,173,219,0.12)] focus:outline-none disabled:opacity-60"
           />
@@ -294,7 +307,7 @@ export default function InterviewChat({
             id="interview-type"
             value={type}
             onChange={(e) => setType(e.target.value)}
-            disabled={hasInterview}
+            disabled={locked}
             className="w-full text-sm rounded-[14px] border-[1.5px] border-border bg-white px-4 py-3 text-text-body focus:border-primary focus:shadow-[0_0_0_3px_rgba(74,173,219,0.12)] focus:outline-none cursor-pointer disabled:opacity-60"
           >
             <option value="Technical">Technical</option>
@@ -306,7 +319,7 @@ export default function InterviewChat({
       <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={startInterview}
-          disabled={busy}
+          disabled={busy || (hasInterview && status !== "done")}
           className="btn-primary !py-2.5 !px-6 !text-sm"
         >
           {status === "done" ? "Start another interview" : "Start interview"}
@@ -377,7 +390,7 @@ export default function InterviewChat({
                 }
               }}
               rows={3}
-              disabled={busy}
+              disabled={!canAnswer}
               placeholder="Type your answer… (Enter to send, Shift+Enter for newline)"
               className="w-full p-3 text-sm text-text-heading bg-white border-[1.5px] border-[var(--border)] rounded-[14px] outline-none focus:border-primary transition-all resize-none disabled:opacity-60"
             />
@@ -385,7 +398,7 @@ export default function InterviewChat({
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={answerInterview}
-              disabled={busy || answer.trim().length === 0}
+              disabled={!canAnswer || answer.trim().length === 0}
               className="btn-primary !py-2.5 !px-6 !text-sm"
             >
               {busy ? "Waiting…" : "Send answer"}

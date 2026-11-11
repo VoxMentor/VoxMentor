@@ -4,7 +4,12 @@
 // message when nothing streamed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appendToken, openingTurns, type InterviewTurn } from "./interview.ts";
+import {
+  appendToken,
+  dropEmptyTurn,
+  openingTurns,
+  type InterviewTurn,
+} from "./interview.ts";
 
 test("appendToken adds the token to the turn being filled", () => {
   const turns: InterviewTurn[] = [
@@ -43,4 +48,22 @@ test("openingTurns falls back to the opening message when nothing streamed", () 
   assert.equal(next.length, 1);
   assert.equal(next[0].role, "interviewer");
   assert.equal(next[0].text, "fallback message");
+});
+
+test("dropEmptyTurn removes a turn that never received text", () => {
+  const turns: InterviewTurn[] = [
+    { id: 1, role: "candidate", text: "my answer" },
+    { id: 2, role: "interviewer", text: "" },
+  ];
+
+  const next = dropEmptyTurn(turns, 2);
+
+  assert.equal(next.length, 1);
+  assert.equal(next[0].id, 1);
+});
+
+test("dropEmptyTurn keeps a turn that received text", () => {
+  const turns: InterviewTurn[] = [{ id: 2, role: "interviewer", text: "hello" }];
+
+  assert.deepEqual(dropEmptyTurn(turns, 2), turns);
 });
