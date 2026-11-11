@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { api, ApiError, type AdminTutorSession } from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Navbar from "@/components/Navbar";
@@ -36,6 +37,8 @@ export default function AdminTutorSessionsPage() {
       loadSessions();
     }, 0);
   }, [loadSessions]);
+
+  const router = useRouter();
 
   const handleSessionSelect = (sessionId: string) => {
     router.push(`/admin/tutor-sessions/${sessionId}`);
