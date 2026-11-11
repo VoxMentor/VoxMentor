@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test lib/question-form.test.ts lib/corpus-job.test.ts lib/result-panel.test.ts lib/admin-audit.test.ts lib/admin-tutor-sessions.test.ts"
+    "test": "c8 node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"lib/**/*.test.ts\"",
+    "test:coverage": "c8 --reporter=lcov --reporter=text --reporter=html node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"lib/**/*.test.ts\""
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.11",
@@ -27,9 +28,21 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "c8": "^10.1.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "c8": {
+    "reporter": ["lcov", "text", "html"],
+    "all": true,
+    "include": ["lib/**"],
+    "exclude": ["**/*.test.ts", "**/*.tsx", "lib/signalr.ts"],
+    "check-coverage": true,
+    "lines": 80,
+    "functions": 45,
+    "branches": 80,
+    "statements": 80
   }
 }

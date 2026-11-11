@@ -23,13 +23,21 @@ jobs:
         run: dotnet restore VoxMentor.slnx
       - name: Build
         run: dotnet build VoxMentor.slnx --no-restore --configuration Release
-      - name: Test
-        run: dotnet test VoxMentor.slnx --no-build --configuration Release
+      - name: Test with Coverage
+        run: |
+          dotnet test VoxMentor.slnx --no-build --configuration Release \
+            --collect:"XPlat Code Coverage" \
+            --settings coverlet.runsettings \
+            --results-directory coverage
+      - name: Upload Backend Coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: coverage/
+          if-no-files-found: error
+          retention-days: 7
 
   scripts:
-    # scripts/test_seed_corpus.py guards the seeded corpus list (#75): 50
-    # concepts, unique article URLs, chunk counts that must match TextChunker.cs.
-    # Those URLs are third-party and rot silently, so keep the test in CI.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,8 +62,6 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          # 24 for `npm test`: Node runs lib/*.test.ts with native type stripping
-          # (>= 23.6), so there is no test framework to install.
           node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
@@ -63,7 +69,44 @@ jobs:
         run: npm ci
       - name: Lint
         run: npm run lint
-      - name: Test
-        run: npm test
+      - name: Test with Coverage
+        # The c8 gate covers web/lib (see the "c8" block in web/package.json):
+        # the pure-logic modules the Node test runner can exercise. React
+        # components and the browser SignalR client are excluded because they
+        # need a DOM, not a Node test.
+        run: npm run test:coverage
+      - name: Upload Frontend Coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          # upload-artifact resolves `path` against the workspace root, not the
+          # job's working-directory, and c8 writes to web/coverage.
+          path: web/coverage/
+          if-no-files-found: error
+          retention-days: 7
       - name: Build
         run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v4
+      # Build only: the images are not pushed to a registry from CI.
+      - name: Build voice-service
+        uses: docker/build-push-action@v7
+        with:
+          context: ./voice-service
+          push: false
+          load: true
+          tags: voxmentor/voice-service:latest
+      - name: Build gateway
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./docker/Dockerfile.Gateway
+          push: false
+          load: true
+          tags: voxmentor/gateway:latest
