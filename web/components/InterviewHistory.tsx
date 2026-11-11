@@ -1,0 +1,115 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { api, type MockInterviewHistoryItem } from "@/lib/api";
+import FetchError from "@/components/FetchError";
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+/**
+ * The student's past mock interviews, newest first. `refreshKey` changes
+ * whenever an interview finishes so the list picks up the new row.
+ */
+export default function InterviewHistory({
+  refreshKey = 0,
+  selectedId,
+  onSelect,
+}: {
+  refreshKey?: number;
+  selectedId?: string | null;
+  onSelect?: (item: MockInterviewHistoryItem) => void;
+}) {
+  const [items, setItems] = useState<MockInterviewHistoryItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .mockHistory()
+      .then((res) => {
+        if (cancelled) return;
+        setItems(res.interviews ?? []);
+        setError(null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setItems([]);
+        setError("Could not load your interview history.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt, refreshKey]);
+
+  if (error) {
+    return <FetchError message={error} onRetry={() => setAttempt((n) => n + 1)} />;
+  }
+
+  if (items === null) {
+    return (
+      <div className="card !p-5 flex flex-col gap-2">
+        {Array.from({ length: 3 }, (_, i) => (
+          <div key={i} className="h-12 bg-border rounded-xl animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="card !p-5">
+        <p className="text-sm text-text-muted">
+          No interviews yet. Start one and it will show up here.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <ul className="flex flex-col gap-2">
+      {items.map((item) => {
+        const selected = item.interviewId === selectedId;
+        return (
+          <li key={item.interviewId}>
+            <button
+              type="button"
+              onClick={() => onSelect?.(item)}
+              disabled={!onSelect}
+              className={`w-full text-left card-flat !p-4 transition-colors cursor-pointer ${
+                selected
+                  ? "!border-primary bg-accent-light-blue"
+                  : "hover:bg-bg-light"
+              } disabled:cursor-default disabled:hover:bg-transparent`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium text-navy">
+                  {item.type} interview
+                </span>
+                <span className="text-xs text-text-muted">
+                  {formatDate(item.date)}
+                </span>
+              </div>
+              <div className="flex items-center gap-3 mt-1">
+                <span className="text-xs text-text-muted">{item.status}</span>
+                {item.score != null && (
+                  <span className="text-xs font-semibold text-navy">
+                    Score {Math.round(item.score)}
+                  </span>
+                )}
+              </div>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}

@@ -430,6 +430,70 @@ export interface TextbookJob {
   completedAt: string | null;
 }
 
+// --- Mock interviews (#129): the REST half of the page. Start/answer stream
+// over the hub; complete/review/history are plain REST calls. ---
+
+export interface MockInterviewStartResult {
+  interviewId: string;
+  questionId: string;
+  type: string;
+  status: string;
+  duration: number;
+  startedAt: string;
+  openingMessage: string;
+}
+
+export interface MockInterviewAnswerResult {
+  interviewerMessage: string;
+  turnNumber: number;
+  interviewOngoing: boolean;
+  /** The problem the interview is now on; null once the last one is answered. */
+  questionId: string | null;
+}
+
+export interface MockProblemReview {
+  solved: boolean;
+  complexity: string;
+  feedback: string;
+}
+
+export interface MockReadinessDelta {
+  before: number;
+  after: number;
+  delta: number;
+}
+
+export interface MockInterviewReview {
+  score: number;
+  type: string;
+  /** Problem id → the model's verdict on that problem. */
+  technicalReview: Record<string, MockProblemReview>;
+  readinessDelta: MockReadinessDelta;
+  nextSteps: string;
+}
+
+export interface MockInterviewReviewDetail {
+  interviewId: string;
+  status: string;
+  score: number;
+  review: MockInterviewReview;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+export interface MockInterviewHistoryItem {
+  interviewId: string;
+  type: string;
+  status: string;
+  /** Null until the interview is completed. */
+  score: number | null;
+  date: string;
+}
+
+export interface MockInterviewHistory {
+  interviews: MockInterviewHistoryItem[];
+}
+
 export const api = {
   register: (data: RegisterRequest) =>
     request<RegisterResponse>("/v1/auth/register", {
@@ -562,6 +626,25 @@ export const api = {
   adminTutorSession: (id: string) =>
     request<AdminTutorSessionDetail>(
       `/v1/admin/tutor/sessions/${encodeURIComponent(id)}`
+    ),
+
+  // --- Mock interviews (#129) ---
+  // Start and answer stream over the interview hub; these three are the plain
+  // REST calls the page needs on top of it.
+  mockComplete: (interviewId: string) =>
+    request<MockInterviewReview>(
+      `/v1/mock/${encodeURIComponent(interviewId)}/complete`,
+      { method: "POST", body: JSON.stringify({}) }
+    ),
+
+  mockReview: (interviewId: string) =>
+    request<MockInterviewReviewDetail>(
+      `/v1/mock/${encodeURIComponent(interviewId)}/review`
+    ),
+
+  mockHistory: (page = 1, pageSize = 20) =>
+    request<MockInterviewHistory>(
+      `/v1/mock/history?page=${page}&pageSize=${pageSize}`
     ),
 };
 

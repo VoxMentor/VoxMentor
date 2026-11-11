@@ -8,6 +8,7 @@ import { hasAdminRole } from "@/lib/admin-nav";
 const navLinks = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/practice", label: "Practice" },
+  { href: "/interview", label: "Interview" },
   { href: "/jd", label: "JD" },
   { href: "/dashboard#tutor", label: "Tutor" },
 ];
