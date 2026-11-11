@@ -1,0 +1,28 @@
+# OpenTelemetry collector for local development (#154).
+#
+# The API, the gateway and the voice service all export OTLP here, so one
+# trace covers the whole request path. The debug exporter prints the spans to
+# the collector's stdout - `docker compose logs otel-collector` shows the
+# trace id, the span ids and the parent/child links of every span.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]

@@ -38,6 +38,18 @@ try:  # av ships with faster-whisper; a bare local env may not have it
 except ImportError:  # pragma: no cover
     _DECODE_ERRORS = ()
 
+try:  # OpenTelemetry (#154); the container installs these, a bare env may not
+    from opentelemetry import trace
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+    _OTEL_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _OTEL_AVAILABLE = False
+
 log = logging.getLogger("voice-service")
 logging.basicConfig(level=logging.INFO)
 
@@ -160,6 +172,37 @@ class MaxBodySizeMiddleware:
 
 app = FastAPI(title="VoxMentor Voice Service")
 app.add_middleware(MaxBodySizeMiddleware, max_bytes=MAX_UPLOAD_BYTES + _MULTIPART_OVERHEAD_BYTES)
+
+
+def configure_tracing(app: FastAPI) -> None:
+    """Wire OpenTelemetry tracing (#154).
+
+    Zero-config: with no OTEL_EXPORTER_OTLP_ENDPOINT the provider records the
+    spans and drops them, so the service starts and serves traffic with no
+    collector running. With an endpoint set the spans go to the same collector
+    the .NET services export to, and the incoming ``traceparent`` header makes
+    the request part of the caller's trace (API -> gateway -> voice service).
+    A collector that is down only produces export warnings - it never fails a
+    request.
+    """
+    if not _OTEL_AVAILABLE:
+        log.warning("OpenTelemetry is not installed; tracing is disabled")
+        return
+
+    service_name = (os.environ.get("OTEL_SERVICE_NAME") or "voxmentor-voice-service").strip()
+    provider = TracerProvider(resource=Resource.create({"service.name": service_name}))
+
+    endpoint = (os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or "").strip()
+    if endpoint:
+        # The exporter reads OTEL_EXPORTER_OTLP_* (endpoint, protocol, headers)
+        # from the environment itself.
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+
+    trace.set_tracer_provider(provider)
+    FastAPIInstrumentor.instrument_app(app)
+
+
+configure_tracing(app)
 
 _whisper_lock = threading.Lock()
 _whisper_model = None

@@ -4,6 +4,8 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using VoxMentor.Api.Authorization;
 using VoxMentor.Api.Hubs;
 using VoxMentor.Api.Middleware;
@@ -89,6 +91,36 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c => c.CustomSchemaIds(x => x.FullName));
 
 builder.Services.AddSignalR();
+
+// OpenTelemetry distributed tracing (#154). Zero-config: with no exporter
+// configured the provider still records spans but drops them, so a missing
+// collector can never degrade or crash the API.
+//   OTEL_TRACES_EXPORTER=console  -> print the spans to stdout (local dev)
+//   OTEL_EXPORTER_OTLP_ENDPOINT   -> export over OTLP to the collector
+//   OTEL_SERVICE_NAME             -> service.name carried on every span
+// The OTLP exporter reads OTEL_EXPORTER_OTLP_ENDPOINT (and the protocol,
+// headers and timeout siblings) from the environment itself.
+var otelExporter = (builder.Configuration["OTEL_TRACES_EXPORTER"] ?? string.Empty).Trim().ToLowerInvariant();
+var otelEndpoint = (builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"] ?? string.Empty).Trim();
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService(
+        (builder.Configuration["OTEL_SERVICE_NAME"] ?? "voxmentor-api").Trim()))
+    .WithTracing(tracing =>
+    {
+        tracing
+            .AddAspNetCoreInstrumentation()
+            .AddEntityFrameworkCoreInstrumentation()
+            .AddHttpClientInstrumentation();
+
+        if (otelExporter == "console")
+        {
+            tracing.AddConsoleExporter();
+        }
+        else if (otelExporter != "none" && otelEndpoint.Length > 0)
+        {
+            tracing.AddOtlpExporter();
+        }
+    });
 
 // Overrides the NullMasteryEventPublisher from Infrastructure so BKT updates
 // reach /hubs/mastery (#73).

@@ -50,6 +50,10 @@ jobs:
         run: pip install -r scripts/requirements-seed.txt
       - name: Test
         run: python -m unittest scripts.test_seed_corpus
+      - name: Install voice tracing deps
+        run: pip install -r scripts/requirements-voice-tracing.txt
+      - name: Test voice tracing
+        run: python -m unittest scripts.test_voice_tracing
 
   frontend:
     runs-on: ubuntu-latest

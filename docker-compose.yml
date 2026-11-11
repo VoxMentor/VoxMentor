@@ -128,6 +128,20 @@ services:
     volumes:
       - seq-data:/data
 
+  # OpenTelemetry collector (#154). Every service exports OTLP here over
+  # http/protobuf on 4318, so one trace covers the API, the gateway and the
+  # voice service. The debug exporter prints the spans to the collector's
+  # stdout - `docker compose logs otel-collector` shows the trace.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.165.0
+    container_name: voxmentor-otel-collector
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./docker/otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+
   voice-service:
     build:
       context: ./voice-service
@@ -138,6 +152,14 @@ services:
       - VOICE_MODELS_DIR=/models
       - WHISPER_MODEL=${WHISPER_MODEL:-base}
       - PIPER_VOICE=${PIPER_VOICE:-en_US-amy-medium}
+      # Traces (#154): export to the shared collector. Unset
+      # OTEL_EXPORTER_OTLP_ENDPOINT to turn the export off - the service then
+      # records spans and drops them.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+      - OTEL_EXPORTER_OTLP_PROTOCOL=${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+      - OTEL_SERVICE_NAME=voxmentor-voice-service
+    depends_on:
+      - otel-collector
     volumes:
       - voice-models:/models
     healthcheck:

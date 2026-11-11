@@ -1,0 +1,8 @@
+# Light subset of voice-service/requirements.txt for the tracing check
+# (scripts/test_voice_tracing.py). main.py imports faster-whisper and piper
+# lazily, so the check does not need the models or their heavy dependencies.
+fastapi>=0.110
+httpx>=0.27
+opentelemetry-sdk>=1.27
+opentelemetry-exporter-otlp-proto-http>=1.27
+opentelemetry-instrumentation-fastapi>=0.48b0
