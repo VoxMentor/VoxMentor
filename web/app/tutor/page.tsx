@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { api, type TutorSessionSummaryDto } from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -19,6 +19,9 @@ function TutorPage() {
   const [activeSessionId, setActiveSessionId] = useState<string | undefined>(
     searchParams.get("session") || undefined
   );
+  // Auto-select the first session only once, on initial load — so "New Session"
+  // can actually clear the active session instead of being immediately re-selected.
+  const initialLoad = useRef(true);
 
   const loadSessions = useCallback(async () => {
     setSessionsLoading(true);
@@ -34,19 +37,17 @@ function TutorPage() {
   }, []);
 
   useEffect(() => {
-    setTimeout(() => {
-      loadSessions();
-    }, 0);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data fetch
+    loadSessions();
   }, [loadSessions]);
 
   useEffect(() => {
-    if (!activeSessionId && sessions.length > 0) {
-      setTimeout(() => {
-        setActiveSessionId(sessions[0].sessionId);
-        const q = new URLSearchParams(searchParams.toString());
-        q.set("session", sessions[0].sessionId);
-        router.replace(`${pathname}?${q.toString()}`);
-      }, 0);
+    if (initialLoad.current && !activeSessionId && sessions.length > 0) {
+      initialLoad.current = false;
+      setActiveSessionId(sessions[0].sessionId);
+      const q = new URLSearchParams(searchParams.toString());
+      q.set("session", sessions[0].sessionId);
+      router.replace(`${pathname}?${q.toString()}`);
     }
   }, [sessions, activeSessionId, searchParams, router, pathname]);
 
@@ -84,9 +85,8 @@ function TutorPage() {
             </span>
           </div>
         </button>
-      )
-    )
-  );
+      ))
+    );
 
   return (
     <ProtectedRoute>
@@ -135,8 +135,16 @@ function TutorPage() {
             <div className="flex flex-col min-w-0">
               <TutorChat
                 sessionId={activeSessionId}
-                onSessionChange={(id) =>
-                  setActiveSessionId(id === null ? undefined : id)}
+                onSessionChange={(id) => {
+                  setActiveSessionId(id === null ? undefined : id);
+                  const q = new URLSearchParams(searchParams.toString());
+                  if (id) q.set("session", id);
+                  else q.delete("session");
+                  router.replace(`${pathname}?${q.toString()}`);
+                  // Refresh the sidebar so a newly created session appears,
+                  // and re-apply the session query param after a reload.
+                  loadSessions();
+                }}
               />
             </div>
           </div>

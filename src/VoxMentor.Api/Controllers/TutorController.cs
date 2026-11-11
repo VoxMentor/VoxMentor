@@ -67,7 +67,7 @@ public class TutorController : ControllerBase
     /// </summary>
     [HttpGet("sessions")]
     [Authorize(Roles = "Student")]
-    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<TutorSessionSummaryDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<global::VoxMentor.Application.Features.Tutor.GetTutorSessions.TutorSessionSummaryDto>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]

@@ -21,7 +21,10 @@ using VoxMentor.Infrastructure.Services;
 // building configuration so it isn't misinterpreted by the command-line provider
 // (e.g. consumed as a value for --urls that follows it). We handle it ourselves
 // via ParseSeedDemoArg.
-var filteredArgs = args.Where(a => !a.StartsWith("--seed-demo", StringComparison.OrdinalIgnoreCase)).ToArray();
+var filteredArgs = args.Where(a =>
+    !a.Equals("--seed-demo", StringComparison.OrdinalIgnoreCase)
+    && !a.StartsWith("--seed-demo=", StringComparison.OrdinalIgnoreCase)
+).ToArray();
 
 var builder = WebApplication.CreateBuilder(filteredArgs);
 

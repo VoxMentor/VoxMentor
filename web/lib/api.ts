@@ -295,9 +295,15 @@ export interface TutorMessage {
   citations?: Citation[];
 }
 
-export interface TutorSessionDetail {
+export interface TutorSessionDto {
   sessionId: string;
-  messages: TutorMessage[];
+  conceptId: string | null;
+  question: string;
+  answer: string | null;
+  status: TutorSessionStatus;
+  totalTokens: number;
+  createdAt: string;
+  completedAt: string | null;
 }
 
 export interface TutorAskRequest {
@@ -314,10 +320,6 @@ export interface TutorAskResponse {
 
 export interface TutorSessionsResult {
   sessions: TutorSession[];
-}
-
-export interface TutorSessionDetailResult {
-  session: TutorSessionDetail;
 }
 
 export interface AdminUser {
@@ -467,7 +469,7 @@ export const api = {
 
   // --- Tutor chat (#74) ---
   tutorSession: (id: string) =>
-    request<TutorSessionDetailResult>(
+    request<TutorSessionDto>(
       `/v1/tutor/sessions/${encodeURIComponent(id)}`
     ),
 

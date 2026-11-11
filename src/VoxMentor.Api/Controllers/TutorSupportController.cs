@@ -69,6 +69,8 @@ public class TutorSupportController : ControllerBase
         }
 
         // Admin queue: any user's sessions — bypass the global user filter.
+        // Left join on Users so sessions survive a missing user row (e.g. after
+        // user deletion) instead of being silently dropped by an inner join.
         IQueryable<TutorSession> query = _db.TutorSessions.IgnoreQueryFilters();
         if (!string.IsNullOrWhiteSpace(userId))
         {
@@ -79,17 +81,19 @@ public class TutorSupportController : ControllerBase
             query = query.Where(s => s.Status == status.Value);
         }
 
-        // Join with Users to avoid N+1 query for emails
         var items = await query
             .OrderByDescending(s => s.CreatedAt)
             .ThenByDescending(s => s.Id)
             .Skip((int)offset)
             .Take(pageSize)
-            .Join(
+            .GroupJoin(
                 _db.Users,
                 s => s.UserId,
                 u => u.Id,
-                (s, u) => new { Session = s, Email = u.Email })
+                (s, users) => new { Session = s, Users = users })
+            .SelectMany(
+                x => x.Users.DefaultIfEmpty(),
+                (x, u) => new { Session = x.Session, Email = u!.Email })
             .Select(x => new TutorSessionSummaryDto(
                 x.Session.Id,
                 x.Session.UserId,
