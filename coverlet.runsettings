@@ -2,7 +2,12 @@
 <RunSettings>
   <DataCollectionRunSettings>
     <DataCollectors>
-      <DataCollector friendlyName="XPlat Code Coverage" uri="datacollector://microsoft/CodeCoverage/2.0" assemblyQualifiedName="Microsoft.VisualStudio.Coverage.CoverageDataCollector, Microsoft.VisualStudio.Coverage, Version=17.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+      <!-- No uri/assemblyQualifiedName here: those point at Microsoft's own
+           CodeCoverage collector, which VSTest selects before the friendly
+           name and which ignores Coverlet's Format/Exclude settings. Leaving
+           them off lets VSTest resolve "XPlat Code Coverage" to the Coverlet
+           collector from coverlet.collector. -->
+      <DataCollector friendlyName="XPlat Code Coverage">
         <Configuration>
           <Format>cobertura,lcov</Format>
           <ExcludeByAttribute>Obsolete,GeneratedCode,CompilerGenerated</ExcludeByAttribute>

@@ -10,8 +10,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "c8 node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test lib/question-form.test.ts lib/corpus-job.test.ts lib/result-panel.test.ts lib/admin-audit.test.ts lib/admin-tutor-sessions.test.ts",
-    "test:coverage": "c8 --reporter=lcov --reporter=text --reporter=html node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test lib/question-form.test.ts lib/corpus-job.test.ts lib/result-panel.test.ts lib/admin-audit.test.ts lib/admin-tutor-sessions.test.ts"
+    "test": "c8 node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"lib/**/*.test.ts\"",
+    "test:coverage": "c8 --reporter=lcov --reporter=text --reporter=html node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"lib/**/*.test.ts\""
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.11",
@@ -36,6 +36,9 @@
   },
   "c8": {
     "reporter": ["lcov", "text", "html"],
+    "all": true,
+    "include": ["lib/**"],
+    "exclude": ["**/*.test.ts", "**/*.tsx", "lib/signalr.ts"],
     "check-coverage": true,
     "lines": 80,
     "functions": 45,

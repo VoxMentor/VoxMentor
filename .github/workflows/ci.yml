@@ -34,6 +34,7 @@ jobs:
         with:
           name: backend-coverage
           path: coverage/
+          if-no-files-found: error
           retention-days: 7
 
   scripts:
@@ -69,12 +70,19 @@ jobs:
       - name: Lint
         run: npm run lint
       - name: Test with Coverage
+        # The c8 gate covers web/lib (see the "c8" block in web/package.json):
+        # the pure-logic modules the Node test runner can exercise. React
+        # components and the browser SignalR client are excluded because they
+        # need a DOM, not a Node test.
         run: npm run test:coverage
       - name: Upload Frontend Coverage
         uses: actions/upload-artifact@v4
         with:
           name: frontend-coverage
-          path: coverage/
+          # upload-artifact resolves `path` against the workspace root, not the
+          # job's working-directory, and c8 writes to web/coverage.
+          path: web/coverage/
+          if-no-files-found: error
           retention-days: 7
       - name: Build
         run: npm run build
@@ -85,8 +93,20 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
+      # Build only: the images are not pushed to a registry from CI.
       - name: Build voice-service
-        run: docker build -t voxmentor/voice-service ./voice-service
+        uses: docker/build-push-action@v7
+        with:
+          context: ./voice-service
+          push: false
+          load: true
+          tags: voxmentor/voice-service:latest
       - name: Build gateway
-        run: docker build -f docker/Dockerfile.Gateway -t voxmentor/gateway .
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./docker/Dockerfile.Gateway
+          push: false
+          load: true
+          tags: voxmentor/gateway:latest
