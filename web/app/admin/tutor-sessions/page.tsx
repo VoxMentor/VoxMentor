@@ -1,20 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { api, ApiError, type AdminTutorSession } from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Navbar from "@/components/Navbar";
 import FetchError from "@/components/FetchError";
 
-/**
- * Admin view: lists tutor sessions across the platform.
- * Only PlatformAdmin / SuperAdmin can access this page (guarded by AdminRoute
- * and the nav item role filter).
- */
 export default function AdminTutorSessionsPage() {
   const [sessions, setSessions] = useState<AdminTutorSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
+
+  const router = useRouter();
 
   const loadSessions = useCallback(() => {
     setSessionsLoading(true);
