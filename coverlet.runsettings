@@ -10,7 +10,10 @@
       <DataCollector friendlyName="XPlat Code Coverage">
         <Configuration>
           <Format>cobertura,lcov</Format>
-          <ExcludeByAttribute>Obsolete,GeneratedCode,CompilerGenerated</ExcludeByAttribute>
+          <!-- No CompilerGenerated here: it excludes async state machines, so
+               every async method body (controllers, MediatR handlers) was
+               missing from the report entirely. -->
+          <ExcludeByAttribute>Obsolete,GeneratedCode</ExcludeByAttribute>
           <Exclude>[*]*.Migrations.*</Exclude>
           <Exclude>[*]*.Migrations</Exclude>
           <SingleHit>true</SingleHit>
