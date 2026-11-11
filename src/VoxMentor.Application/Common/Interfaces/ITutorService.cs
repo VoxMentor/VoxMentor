@@ -19,5 +19,10 @@ public interface ITutorService
 /// <summary>
 /// One streamed unit from the tutor pipeline. <see cref="EvalCount"/> is set on
 /// the final chunk only (Ollama's <c>eval_count</c>), <see cref="IsFinal"/> marks it.
+/// <see cref="Citations"/> carries the retrieved source chunks on the final chunk
+/// so the client can render citation material (#172).
 /// </summary>
-public sealed record TutorChunk(string Text, bool IsFinal = false, int? EvalCount = null);
+public sealed record TutorChunk(string Text, bool IsFinal = false, int? EvalCount = null, Citation[]? Citations = null);
+
+/// <summary>One retrieved source chunk surfaced as a citation in the tutor UI.</summary>
+public sealed record Citation(string Source, string ChunkText, double Relevance);

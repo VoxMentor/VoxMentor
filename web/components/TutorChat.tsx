@@ -67,8 +67,14 @@ export default function TutorChat({
   const [selectedConcept, setSelectedConcept] = useState<string | null>(null);
 
   // Session ID this client just created — skip the detail reload for it so the
-  // streamed answer/citations aren't wiped by a server poll.
-  const justCreatedRef = useRef<string | null>(null);
+  // streamed answer/citations aren't wiped by a server poll. `undefined` means
+  // "none pending" so a null sessionId (sidebar New Session) doesn't match it.
+  const justCreatedRef = useRef<string | undefined>(undefined);
+
+  // The sessionId the current token stream belongs to. Tokens arriving for a
+  // different session (e.g. after a mid-stream session change) are ignored so
+  // stream events stay scoped to their session (#172).
+  const streamSessionRef = useRef<string | null>(null);
 
   const statusRef = useRef<Status>("idle");
   useEffect(() => {
@@ -95,7 +101,7 @@ export default function TutorChat({
   useEffect(() => {
     // Skip reload for a session this client just created.
     if (sessionId === justCreatedRef.current) {
-      justCreatedRef.current = null;
+      justCreatedRef.current = undefined;
       return;
     }
     if (!sessionId) {
@@ -109,15 +115,19 @@ export default function TutorChat({
     let cancelled = false;
     api
       .tutorSession(sessionId)
-      .then(() => {
+      .then((result) => {
         if (cancelled) return;
-        // Session detail loads a completed Q&A. The question is shown in the
-        // sidebar; the answer could be displayed but the current UI only shows
-        // the streaming answer. Clear streaming state so the UI is ready for
-        // a new question in this session.
-        setAnswer("");
+        // Restore the stored Q&A for the selected session so clicking a session
+        // in the sidebar loads its prior question and answer (acceptance criteria).
+        setAnswer(result.answer ?? "");
         setError("");
-        setStats(null);
+        setStats({
+          sessionId,
+          totalTokens: result.totalTokens,
+          // Historical sessions don't carry per-chunk citations; they arrive via
+          // the SignalR TutorComplete event during streaming.
+          citations: undefined,
+        });
       })
       .catch(() => {
         if (!cancelled) setError("Failed to load session.");
@@ -159,6 +169,9 @@ export default function TutorChat({
     setError("");
     setAnswer("");
     setStats(null);
+    // Scope this token stream to the current session so tokens never bleed
+    // into another session's answer.
+    streamSessionRef.current = sessionId;
 
     try {
       const conn = getTutorConnection();
@@ -168,11 +181,19 @@ export default function TutorChat({
       conn.off("TutorError");
 
       conn.on("TutorToken", (token: string) => {
+        // Ignore tokens that don't belong to the current session. A null
+        // sessionId means a brand-new session is being created, so tokens are
+        // allowed until TutorComplete assigns the real session id.
+        if (sessionId !== null && sessionId !== streamSessionRef.current) return;
         setStatus("streaming");
         setAnswer((prev) => prev + token);
       });
       conn.on("TutorComplete", (payload: TutorCompletePayload) => {
-        setStats({ sessionId: payload.sessionId, totalTokens: payload.totalTokens });
+        setStats({
+          sessionId: payload.sessionId,
+          totalTokens: payload.totalTokens,
+          citations: payload.citations,
+        });
 
         if (payload.sessionId && payload.sessionId !== sessionId) {
           justCreatedRef.current = payload.sessionId;

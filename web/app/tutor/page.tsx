@@ -22,17 +22,22 @@ function TutorPage() {
   // Auto-select the first session only once, on initial load — so "New Session"
   // can actually clear the active session instead of being immediately re-selected.
   const initialLoad = useRef(true);
+  // Guard against out-of-order responses: mount, Retry, and onSessionChange can
+  // each trigger loadSessions; only the latest request's result is applied.
+  const requestId = useRef(0);
 
   const loadSessions = useCallback(async () => {
+    const id = ++requestId.current;
     setSessionsLoading(true);
     setSessionsError(null);
     try {
       const sessionsData = await api.tutorSessions();
-      setSessions(sessionsData);
+      if (id === requestId.current) setSessions(sessionsData);
     } catch (e) {
-      setSessionsError(e instanceof Error ? e.message : "Failed to load sessions.");
+      if (id === requestId.current)
+        setSessionsError(e instanceof Error ? e.message : "Failed to load sessions.");
     } finally {
-      setSessionsLoading(false);
+      if (id === requestId.current) setSessionsLoading(false);
     }
   }, []);
 
