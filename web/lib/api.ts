@@ -129,6 +129,18 @@ export interface ReadinessProfile {
   estimatedWeeksToReady: number;
 }
 
+export interface TutorSessionSummaryDto {
+  sessionId: string;
+  conceptId: string | null;
+  question: string;
+  status: TutorSessionStatus;
+  totalTokens: number;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export type TutorSessionStatus = "Pending" | "Streaming" | "Completed" | "Failed";
+
 // --- JD intelligence (#121): POST /v1/jd/upload, GET /v1/jd/{jdId} ---
 
 export interface JdUploadResult {
@@ -260,6 +272,56 @@ export interface SubmitCodeResult {
   masteryDelta: number;
 }
 
+// --- Tutor chat (#74): sessions, session detail, ask ---
+
+export interface TutorSession {
+  sessionId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  questionCount: number;
+}
+
+export interface Citation {
+  source: string;
+  chunkText: string;
+  relevance: number;
+}
+
+export interface TutorMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  citations?: Citation[];
+}
+
+export interface TutorSessionDto {
+  sessionId: string;
+  conceptId: string | null;
+  question: string;
+  answer: string | null;
+  status: TutorSessionStatus;
+  totalTokens: number;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface TutorAskRequest {
+  sessionId?: string;
+  question: string;
+}
+
+export interface TutorAskResponse {
+  sessionId: string;
+  answer: string;
+  citations: Citation[];
+  tokenCount: number;
+}
+
+export interface TutorSessionsResult {
+  sessions: TutorSession[];
+}
+
 export interface AdminUser {
   id: string;
   email: string | null;
@@ -362,6 +424,9 @@ export const api = {
 
   readiness: () => request<ReadinessProfile>("/v1/student/readiness"),
 
+  tutorSessions: (limit = 10) =>
+    request<TutorSessionSummaryDto[]>(`/v1/tutor/sessions?limit=${encodeURIComponent(String(limit))}`),
+
   // --- JD intelligence (#121) ---
   jdUpload: (rawText: string) =>
     request<JdUploadResult>("/v1/jd/upload", {
@@ -400,6 +465,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
       signal: options?.signal,
+    }),
+
+  // --- Tutor chat (#74) ---
+  tutorSession: (id: string) =>
+    request<TutorSessionDto>(
+      `/v1/tutor/sessions/${encodeURIComponent(id)}`
+    ),
+
+  tutorAsk: (input: TutorAskRequest) =>
+    request<TutorAskResponse>("/v1/tutor/ask", {
+      method: "POST",
+      body: JSON.stringify(input),
     }),
 
   // --- admin (#105): SuperAdmin-only via ManageRoles policy; 401/403 enforced server-side ---

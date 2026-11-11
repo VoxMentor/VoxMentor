@@ -69,6 +69,8 @@ public class TutorSupportController : ControllerBase
         }
 
         // Admin queue: any user's sessions — bypass the global user filter.
+        // Left join on Users so sessions survive a missing user row (e.g. after
+        // user deletion) instead of being silently dropped by an inner join.
         IQueryable<TutorSession> query = _db.TutorSessions.IgnoreQueryFilters();
         if (!string.IsNullOrWhiteSpace(userId))
         {
@@ -84,16 +86,24 @@ public class TutorSupportController : ControllerBase
             .ThenByDescending(s => s.Id)
             .Skip((int)offset)
             .Take(pageSize)
-            .Select(s => new TutorSessionSummaryDto(
-                s.Id,
-                s.UserId,
-                _db.Users.Where(u => u.Id == s.UserId).Select(u => u.Email).FirstOrDefault(),
-                s.ConceptId,
-                s.Question,
-                s.Status,
-                s.TotalTokens,
-                s.CreatedAt,
-                s.CompletedAt))
+            .GroupJoin(
+                _db.Users,
+                s => s.UserId,
+                u => u.Id,
+                (s, users) => new { Session = s, Users = users })
+            .SelectMany(
+                x => x.Users.DefaultIfEmpty(),
+                (x, u) => new { Session = x.Session, Email = u!.Email })
+            .Select(x => new TutorSessionSummaryDto(
+                x.Session.Id,
+                x.Session.UserId,
+                x.Email,
+                x.Session.ConceptId,
+                x.Session.Question,
+                x.Session.Status,
+                x.Session.TotalTokens,
+                x.Session.CreatedAt,
+                x.Session.CompletedAt))
             .ToListAsync(cancellationToken);
 
         return Ok(ApiResponse<IReadOnlyList<TutorSessionSummaryDto>>.SuccessResult(items));
