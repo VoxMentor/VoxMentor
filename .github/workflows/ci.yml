@@ -23,13 +23,20 @@ jobs:
         run: dotnet restore VoxMentor.slnx
       - name: Build
         run: dotnet build VoxMentor.slnx --no-restore --configuration Release
-      - name: Test
-        run: dotnet test VoxMentor.slnx --no-build --configuration Release
+      - name: Test with Coverage
+        run: |
+          dotnet test VoxMentor.slnx --no-build --configuration Release \
+            --collect:"XPlat Code Coverage" \
+            --settings coverlet.runsettings \
+            --results-directory coverage
+      - name: Upload Backend Coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: coverage/
+          retention-days: 7
 
   scripts:
-    # scripts/test_seed_corpus.py guards the seeded corpus list (#75): 50
-    # concepts, unique article URLs, chunk counts that must match TextChunker.cs.
-    # Those URLs are third-party and rot silently, so keep the test in CI.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,8 +61,6 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          # 24 for `npm test`: Node runs lib/*.test.ts with native type stripping
-          # (>= 23.6), so there is no test framework to install.
           node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
@@ -63,7 +68,25 @@ jobs:
         run: npm ci
       - name: Lint
         run: npm run lint
-      - name: Test
-        run: npm test
+      - name: Test with Coverage
+        run: npm run test:coverage
+      - name: Upload Frontend Coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: coverage/
+          retention-days: 7
       - name: Build
         run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - name: Build voice-service
+        run: docker build -t voxmentor/voice-service ./voice-service
+      - name: Build gateway
+        run: docker build -f docker/Dockerfile.Gateway -t voxmentor/gateway .
