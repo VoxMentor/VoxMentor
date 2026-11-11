@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using OpenTelemetry;
-using OpenTelemetry.Exporter;
 using OpenTelemetry.Trace;
 using Xunit;
 
@@ -19,15 +18,24 @@ public class TracingWebApplicationFactory : CustomWebApplicationFactory
     /// <summary>The spans the API exported since the host started.</summary>
     public List<Activity> Exported { get; } = new();
 
-    /// <summary>Guards <see cref="Exported"/> - the exporter writes from the request thread.</summary>
+    /// <summary>Guards <see cref="Exported"/> - every reader and writer takes it.</summary>
     public object ExportedLock { get; } = new();
 
     /// <summary>The in-memory exporter the API's provider writes to.</summary>
-    public InMemoryExporter<Activity> Exporter { get; }
+    public BaseExporter<Activity> Exporter { get; }
 
     public TracingWebApplicationFactory()
     {
-        Exporter = new InMemoryExporter<Activity>(Exported);
+        // Test-only OTEL settings (#154): a developer's exported
+        // OTEL_SERVICE_NAME would break the fixed service-name assertion, and
+        // an exported endpoint/exporter would make these tests depend on a
+        // running collector. Clearing them before the host starts keeps the
+        // zero-config path under test regardless of the shell (CodeRabbit #176).
+        Environment.SetEnvironmentVariable("OTEL_SERVICE_NAME", null);
+        Environment.SetEnvironmentVariable("OTEL_TRACES_EXPORTER", null);
+        Environment.SetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT", null);
+
+        Exporter = new LockingExporter(Exported, ExportedLock);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -40,6 +48,33 @@ public class TracingWebApplicationFactory : CustomWebApplicationFactory
             services.ConfigureOpenTelemetryTracerProvider(tracing =>
                 tracing.AddProcessor(new SimpleActivityExportProcessor(Exporter)));
         });
+    }
+
+    /// <summary>
+    /// Appends under <see cref="ExportedLock"/>, the same lock the tests read
+    /// and clear with - the provider exports on a request thread, so an
+    /// unsynchronized collection could be mutated mid-enumeration.
+    /// </summary>
+    private sealed class LockingExporter : BaseExporter<Activity>
+    {
+        private readonly List<Activity> _target;
+        private readonly object _gate;
+
+        public LockingExporter(List<Activity> target, object gate)
+        {
+            _target = target;
+            _gate = gate;
+        }
+
+        /// <summary>Appends one batch under the gate the readers also take.</summary>
+        public override ExportResult Export(in Batch<Activity> batch)
+        {
+            lock (_gate)
+            {
+                foreach (var span in batch) _target.Add(span);
+            }
+            return ExportResult.Success;
+        }
     }
 }
 

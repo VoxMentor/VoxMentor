@@ -25,9 +25,12 @@ builder.Services.AddReverseProxy()
 //   OTEL_SERVICE_NAME             -> service.name carried on every span
 var otelExporter = (builder.Configuration["OTEL_TRACES_EXPORTER"] ?? string.Empty).Trim().ToLowerInvariant();
 var otelEndpoint = (builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"] ?? string.Empty).Trim();
+// Trim before falling back: an OTEL_SERVICE_NAME of "" or "   " would reach
+// AddService as an empty string, which OpenTelemetry rejects at startup.
+var otelServiceName = (builder.Configuration["OTEL_SERVICE_NAME"] ?? string.Empty).Trim();
+if (otelServiceName.Length == 0) otelServiceName = "voxmentor-gateway";
 builder.Services.AddOpenTelemetry()
-    .ConfigureResource(resource => resource.AddService(
-        (builder.Configuration["OTEL_SERVICE_NAME"] ?? "voxmentor-gateway").Trim()))
+    .ConfigureResource(resource => resource.AddService(otelServiceName))
     .WithTracing(tracing =>
     {
         tracing

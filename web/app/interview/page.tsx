@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useState } from "react";
+import { Suspense, useCallback, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   api,
@@ -22,29 +22,49 @@ function InterviewRoute() {
 
   const [historyKey, setHistoryKey] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // A new object per InProgress click: InterviewChat re-runs its resume
+  // effect on identity, so clicking a different unfinished row always lands.
+  const [resumeRequest, setResumeRequest] = useState<{ id: string } | null>(
+    null
+  );
   const [pastReview, setPastReview] = useState<MockInterviewReviewDetail | null>(
     null
   );
   const [pastError, setPastError] = useState<string | null>(null);
+  // Bumped per selection so a slow review response for a row the user has
+  // already clicked away from can never overwrite the newer one (CodeRabbit #176).
+  const reviewSeq = useRef(0);
 
   const refreshHistory = useCallback(
     () => setHistoryKey((k) => k + 1),
     []
   );
 
+  /**
+   * Opens a history row: an unfinished one is handed to the chat to resume
+   * (otherwise the daily quota could strand the student with no way back in),
+   * a finished one loads its stored review.
+   */
   const openHistoryItem = useCallback(
     async (item: MockInterviewHistoryItem) => {
+      const seq = ++reviewSeq.current;
       setSelectedId(item.interviewId);
       setPastReview(null);
       setPastError(null);
+      if (item.status === "InProgress") {
+        setResumeRequest({ id: item.interviewId });
+        return;
+      }
       if (item.status !== "Completed") {
         setPastError("That interview has not been completed yet.");
         return;
       }
       try {
         const detail = await api.mockReview(item.interviewId);
+        if (seq !== reviewSeq.current) return; // a newer selection won
         setPastReview(detail);
       } catch (e) {
+        if (seq !== reviewSeq.current) return;
         setPastError(
           e instanceof ApiError && e.status === 404
             ? "No review is stored for that interview yet."
@@ -75,6 +95,7 @@ function InterviewRoute() {
               <InterviewChat
                 initialJdId={jdId}
                 onCompleted={refreshHistory}
+                resumeRequest={resumeRequest}
               />
 
               {pastError && (

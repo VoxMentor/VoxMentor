@@ -152,11 +152,17 @@ services:
       - VOICE_MODELS_DIR=/models
       - WHISPER_MODEL=${WHISPER_MODEL:-base}
       - PIPER_VOICE=${PIPER_VOICE:-en_US-amy-medium}
-      # Traces (#154): export to the shared collector. Unset
-      # OTEL_EXPORTER_OTLP_ENDPOINT to turn the export off - the service then
-      # records spans and drops them.
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
-      - OTEL_EXPORTER_OTLP_PROTOCOL=${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+      # Traces (#154): export to the shared collector by default. The
+      # VOICE_-prefixed names are deliberate: a host-shell
+      # OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 (set for the
+      # host-run API/gateway, see docs/tracing.md) must not leak into the
+      # container, where localhost is the container itself. Unset -> the
+      # default collector; set VOICE_OTEL_EXPORTER_OTLP_ENDPOINT= (empty) to
+      # turn the export off - the service then records spans and drops them.
+      # ${VAR-default} is unset-only on purpose: :- would override an
+      # explicitly empty value back to the default.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${VOICE_OTEL_EXPORTER_OTLP_ENDPOINT-http://otel-collector:4318}
+      - OTEL_EXPORTER_OTLP_PROTOCOL=${VOICE_OTEL_EXPORTER_OTLP_PROTOCOL-http/protobuf}
       - OTEL_SERVICE_NAME=voxmentor-voice-service
     depends_on:
       - otel-collector

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api, type MockInterviewHistoryItem } from "@/lib/api";
 import FetchError from "@/components/FetchError";
 
+/** Formats an ISO date as "Nov 11, 2026"; passes raw text through if unparsable. */
 function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -13,6 +14,9 @@ function formatDate(value: string): string {
     day: "numeric",
   });
 }
+
+/** One history page; matches api.mockHistory's default page size. */
+const PAGE_SIZE = 20;
 
 /**
  * The student's past mock interviews, newest first. `refreshKey` changes
@@ -30,14 +34,22 @@ export default function InterviewHistory({
   const [items, setItems] = useState<MockInterviewHistoryItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
+  // First page (or a refresh after a new interview): replace the list and
+  // work out whether more pages exist - a full page means there probably is.
   useEffect(() => {
     let cancelled = false;
     api
-      .mockHistory()
+      .mockHistory(1, PAGE_SIZE)
       .then((res) => {
         if (cancelled) return;
-        setItems(res.interviews ?? []);
+        const rows = res.interviews ?? [];
+        setItems(rows);
+        setPage(1);
+        setHasMore(rows.length === PAGE_SIZE);
         setError(null);
       })
       .catch(() => {
@@ -49,6 +61,26 @@ export default function InterviewHistory({
       cancelled = true;
     };
   }, [attempt, refreshKey]);
+
+  /**
+   * Appends the next page to the list; without it everything past the
+   * newest 20 interviews would be unreachable (CodeRabbit #176).
+   */
+  const loadMore = async () => {
+    if (loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await api.mockHistory(page + 1, PAGE_SIZE);
+      const rows = res.interviews ?? [];
+      setItems((prev) => [...(prev ?? []), ...rows]);
+      setPage((p) => p + 1);
+      setHasMore(rows.length === PAGE_SIZE);
+    } catch {
+      // keep what is already listed; the button stays for a retry
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   if (error) {
     return <FetchError message={error} onRetry={() => setAttempt((n) => n + 1)} />;
@@ -75,8 +107,9 @@ export default function InterviewHistory({
   }
 
   return (
-    <ul className="flex flex-col gap-2">
-      {items.map((item) => {
+    <>
+      <ul className="flex flex-col gap-2">
+        {items.map((item) => {
         const selected = item.interviewId === selectedId;
         return (
           <li key={item.interviewId}>
@@ -110,6 +143,17 @@ export default function InterviewHistory({
           </li>
         );
       })}
-    </ul>
+      </ul>
+      {hasMore && (
+        <button
+          type="button"
+          onClick={loadMore}
+          disabled={loadingMore}
+          className="w-full px-4 py-2 text-sm font-medium text-primary border border-border rounded-xl hover:bg-accent-light-blue transition-colors cursor-pointer disabled:opacity-60"
+        >
+          {loadingMore ? "Loading…" : "Load more"}
+        </button>
+      )}
+    </>
   );
 }

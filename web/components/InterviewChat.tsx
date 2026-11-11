@@ -35,29 +35,45 @@ type Status =
  */
 const INVOKE_TIMEOUT_MS = 120_000;
 
+/**
+ * Shown when an unfinished interview is resumed from history: the server
+ * keeps the run itself, but past turns are not re-fetched, so the transcript
+ * starts fresh here.
+ */
+const RESUMED_NOTE =
+  "Interview resumed. Earlier turns aren't shown here, so the transcript starts fresh — answer to continue with the next question, or finish the interview for your review.";
+
+/** Unwraps an ApiError/Error into user-facing text, with a generic fallback. */
 function errorMessage(e: unknown): string {
   if (e instanceof ApiError) return e.message;
   if (e instanceof Error && e.message) return e.message;
   return "Something went wrong. Please try again.";
 }
 
+/** Raised when the deadline wins the race - the invoke itself keeps running. */
+class InvokeTimeoutError extends Error {}
+
 /**
  * Invokes a hub method with a deadline. A hub disconnect mid-interview
- * rejects the pending invoke, so the page always leaves the busy state — the
- * timeout only covers the case where the connection dies silently.
+ * rejects the pending invoke, so the page always leaves the busy state - the
+ * timeout only covers the case where the connection dies silently. `hint`
+ * is appended to the timeout message so the caller can point at the
+ * recovery path (the invoke may still finish on the server).
  */
 async function invokeWithTimeout<T>(
   conn: HubConnection,
   method: string,
-  args: (string | boolean)[]
+  args: (string | boolean)[],
+  hint = ""
 ): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(
       () =>
         reject(
-          new Error(
-            "The interview server did not respond in time. Check your connection and try again."
+          new InvokeTimeoutError(
+            "The interview server did not respond in time. Check your connection and try again." +
+              hint
           )
         ),
       INVOKE_TIMEOUT_MS
@@ -70,24 +86,55 @@ async function invokeWithTimeout<T>(
   }
 }
 
-/**
- * The live mock interview (#129). Start and answer go over the interview hub
- * so the interviewer's tokens stream in live; completing the run is a plain
- * REST call. Mirrors TutorChat's session/stream structure rather than
- * inventing a third one.
- */
 // ponytail: one mounted InterviewChat. The close callback must be
 // registered exactly once per cached connection — HubConnection.onclose has
 // no matching off(), so re-registering per mount would pile up handlers.
 let closeHandler: ((err?: Error) => void) | null = null;
 const closeRegistered = new WeakSet<HubConnection>();
 
+/**
+ * Registers the shared close callback on a connection exactly once. Called on
+ * mount and again at the start of every action: stopAllConnections() (logout)
+ * drops the cache, so the next getInterviewConnection() can return a fresh
+ * object that has never seen the handler.
+ */
+function ensureCloseRegistered(conn: HubConnection): void {
+  if (closeRegistered.has(conn)) return;
+  closeRegistered.add(conn);
+  conn.onclose((err) => closeHandler?.(err));
+}
+
+/**
+ * Stops the connection after a timed-out invoke. Promise.race can only
+ * abandon conn.invoke — the server keeps working and streaming on the same
+ * connection, and those untagged tokens would land in the next turn.
+ * Stopping drops that stream; the cached connection object survives, so the
+ * next action just restarts it (CodeRabbit #176).
+ */
+async function stopAfterTimeout(conn: HubConnection): Promise<void> {
+  try {
+    await conn.stop();
+  } catch {
+    // already gone — nothing to clean up
+  }
+}
+
+/**
+ * The live mock interview (#129). Start and answer go over the interview hub
+ * so the interviewer's tokens stream in live; completing the run is a plain
+ * REST call. Mirrors TutorChat's session/stream structure rather than
+ * inventing a third one. An unfinished interview from the history list
+ * comes back through `resumeRequest` so it can be continued and finished.
+ */
 export default function InterviewChat({
   initialJdId,
   onCompleted,
+  resumeRequest,
 }: {
   initialJdId?: string;
   onCompleted?: () => void;
+  /** A new object per history click; its id is the interview to resume. */
+  resumeRequest?: { id: string } | null;
 }) {
   const [jdId, setJdId] = useState(initialJdId ?? "");
   const [type, setType] = useState("Technical");
@@ -120,32 +167,61 @@ export default function InterviewChat({
   // The interviewer has no problems left - only /complete may close the run.
   const canAnswer = !busy && ongoing;
 
-// Streamed tokens land in the turn opened just before the invoke. Handlers
-// are registered per action (mirroring TutorChat's ask()), scoped to the
-// current turn/interview via refs so they never close over stale state.
-// The disconnect handler is registered once per cached connection:
-// HubConnection.onclose has no off(), so re-registering per mount would pile
-// up handlers.
-useEffect(() => {
-  const conn = getInterviewConnection();
-  closeHandler = (err) => {
+  // Streamed tokens land in the turn opened just before the invoke. Handlers
+  // are registered per action (mirroring TutorChat's ask()), scoped to the
+  // current turn/interview via refs so they never close over stale state.
+  // The disconnect handler is registered once per cached connection via
+  // ensureCloseRegistered(); HubConnection.onclose has no off(), so
+  // re-registering per mount would pile up handlers.
+  useEffect(() => {
+    closeHandler = (err) => {
+      if (
+        statusRef.current === "streaming" ||
+        statusRef.current === "starting"
+      ) {
+        setError(err?.message ?? "Connection lost");
+        updateStatus("error");
+      }
+    };
+    ensureCloseRegistered(getInterviewConnection());
+    // Handlers are registered per action below; nothing to clean here.
+    // updateStatus is stable (useCallback [], []) and the module-level
+    // helpers need no dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // History → resume (#129 recovery, CodeRabbit #176): an unfinished row
+  // hands its id back so the interview can be continued and finished instead
+  // of dead-ending on "not completed". Skipped while a stream is in flight -
+  // clobbering mid-turn would orphan the running invoke - and when the chat
+  // is already on that interview, so a double-click cannot wipe the draft.
+  useEffect(() => {
+    if (!resumeRequest) return;
     if (
+      statusRef.current === "starting" ||
       statusRef.current === "streaming" ||
-      statusRef.current === "starting"
+      statusRef.current === "completing"
     ) {
-      setError(err?.message ?? "Connection lost");
-      updateStatus("error");
+      return;
     }
-  };
-  if (!closeRegistered.has(conn)) {
-    closeRegistered.add(conn);
-    conn.onclose((err) => closeHandler?.(err));
-  }
-  // Handlers are registered per action below; nothing to clean here.
-  // updateStatus is stable (useCallback [], []) and closeRegistered is
-  // module-level, so neither needs to be a dependency.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
+    if (interviewIdRef.current === resumeRequest.id) return;
+
+    interviewIdRef.current = resumeRequest.id;
+    setInterviewId(resumeRequest.id);
+    setReview(null);
+    setAnswer("");
+    setOngoing(true);
+    streamingTurnRef.current = null;
+    setError(null);
+    setTurns([
+      {
+        id: ++turnIdRef.current,
+        role: "interviewer",
+        text: RESUMED_NOTE,
+      },
+    ]);
+    updateStatus("ready");
+  }, [resumeRequest, updateStatus]);
 
   // Keep the newest line in view while the interviewer talks.
   useEffect(() => {
@@ -153,6 +229,7 @@ useEffect(() => {
     if (el) el.scrollTop = el.scrollHeight;
   }, [turns]);
 
+  /** Opens the empty interviewer bubble the next stream will fill. */
   const openInterviewerTurn = useCallback(() => {
     const id = ++turnIdRef.current;
     streamingTurnRef.current = id;
@@ -160,6 +237,13 @@ useEffect(() => {
     return id;
   }, []);
 
+  /**
+   * Starts a fresh interview over the hub: registers the stream handlers,
+   * invokes StartMock under the hang-guard, and falls back to the start
+   * result's opening message when nothing streamed in. A timed-out start may
+   * still have created the interview server-side, so the error points at the
+   * history list where it can be picked back up.
+   */
   const startInterview = useCallback(async () => {
     if (statusRef.current !== "idle" && statusRef.current !== "error" && statusRef.current !== "done") {
       return;
@@ -175,9 +259,11 @@ useEffect(() => {
     streamingTurnRef.current = null;
     updateStatus("starting");
 
+    let conn: HubConnection | null = null;
     let turnId = -1;
     try {
-      const conn = getInterviewConnection();
+      conn = getInterviewConnection();
+      ensureCloseRegistered(conn);
       if (conn.state !== "Connected") await conn.start();
 
       turnId = openInterviewerTurn();
@@ -207,7 +293,8 @@ useEffect(() => {
       const result = await invokeWithTimeout<MockInterviewStartResult | null>(
         conn,
         "StartMock",
-        [jdId.trim(), type, false]
+        [jdId.trim(), type, false],
+        " If the interview did start anyway, it is listed under Interview history — open it there to continue."
       );
       streamingTurnRef.current = null;
 
@@ -217,9 +304,8 @@ useEffect(() => {
       setInterviewId(result.interviewId);
       // The opening normally streams in token by token; fall back to the
       // opening message the start result carries if nothing arrived.
-      setTurns((prev) =>
-        openingTurns(prev, ++turnIdRef.current, result.openingMessage)
-      );
+      const openingId = ++turnIdRef.current;
+      setTurns((prev) => openingTurns(prev, openingId, result.openingMessage));
       updateStatus("ready");
     } catch (e) {
       streamingTurnRef.current = null;
@@ -227,9 +313,18 @@ useEffect(() => {
       setTurns((prev) => dropEmptyTurn(prev, turnId));
       setError(errorMessage(e));
       updateStatus("error");
+      // The deadline won: the invoke keeps running server-side, so drop the
+      // connection to stop its tokens reaching a later turn.
+      if (e instanceof InvokeTimeoutError && conn) void stopAfterTimeout(conn);
     }
   }, [jdId, type, openInterviewerTurn, updateStatus]);
 
+  /**
+   * Sends the candidate's answer over the hub and streams the interviewer's
+   * reply into a new turn. If the connection cannot even open, SendAnswer
+   * never ran — the draft goes back in the box and the unsent turn comes out
+   * of the transcript instead of pretending it was sent (CodeRabbit #176).
+   */
   const answerInterview = useCallback(async () => {
     const message = answer.trim();
     const interviewId = interviewIdRef.current;
@@ -238,15 +333,19 @@ useEffect(() => {
 
     setError(null);
     setAnswer("");
+    const candidateTurnId = ++turnIdRef.current;
     setTurns((prev) => [
       ...prev,
-      { id: ++turnIdRef.current, role: "candidate", text: message },
+      { id: candidateTurnId, role: "candidate", text: message },
     ]);
     updateStatus("starting");
 
+    let conn: HubConnection | null = null;
     let turnId = -1;
+    let invoked = false;
     try {
-      const conn = getInterviewConnection();
+      conn = getInterviewConnection();
+      ensureCloseRegistered(conn);
       if (conn.state !== "Connected") await conn.start();
 
       turnId = openInterviewerTurn();
@@ -268,15 +367,21 @@ useEffect(() => {
           ) {
             return;
           }
+          // All questions spent (the resume case): close the answer box and
+          // point at the finish button rather than letting the user retype
+          // into an interview the server refuses to extend.
+          if (/already ended/i.test(payload.message ?? "")) setOngoing(false);
           setError(payload.message || "The interview failed.");
           updateStatus("error");
         }
       );
 
+      invoked = true;
       const result = await invokeWithTimeout<MockInterviewAnswerResult | null>(
         conn,
         "SendAnswer",
-        [interviewId, message]
+        [interviewId, message],
+        " Your answer may already have been recorded — reopen the interview from Interview history to continue."
       );
       streamingTurnRef.current = null;
 
@@ -285,13 +390,22 @@ useEffect(() => {
       updateStatus("ready");
     } catch (e) {
       streamingTurnRef.current = null;
-      // A stream that failed before the first token leaves an empty bubble.
-      setTurns((prev) => dropEmptyTurn(prev, turnId));
+      // A stream that failed before the first token leaves an empty bubble;
+      // a SendAnswer that never fired leaves the candidate's turn too.
+      setTurns((prev) => {
+        const kept = dropEmptyTurn(prev, turnId);
+        return invoked ? kept : kept.filter((t) => t.id !== candidateTurnId);
+      });
+      if (!invoked) setAnswer(message);
       setError(errorMessage(e));
       updateStatus("error");
+      // The deadline won: the invoke keeps running server-side, so drop the
+      // connection to stop its tokens reaching a later turn.
+      if (e instanceof InvokeTimeoutError && conn) void stopAfterTimeout(conn);
     }
   }, [answer, openInterviewerTurn, updateStatus]);
 
+  /** Closes the run over REST and shows the review the server hands back. */
   const completeInterview = useCallback(async () => {
     const interviewId = interviewIdRef.current;
     if (!interviewId) return;

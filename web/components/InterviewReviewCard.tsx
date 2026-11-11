@@ -52,7 +52,9 @@ export default function InterviewReviewCard({
 
       <div>
         <h3 className="text-sm font-semibold text-text-heading mb-3">
-          Technical review
+          {/* Labelled from the review type: a Behavioral run is not a
+              "Technical review" (CodeRabbit #176). */}
+          {review.type ? `${review.type} review` : "Technical review"}
         </h3>
         {problems.length === 0 ? (
           <p className="text-sm text-text-muted">
@@ -60,9 +62,14 @@ export default function InterviewReviewCard({
           </p>
         ) : (
           <ul className="space-y-3">
-            {problems.map(([problemId, problem]) => (
+            {problems.map(([problemId, problem], index) => (
               <li key={problemId} className="rounded-xl border border-border p-4">
                 <div className="flex flex-wrap items-center gap-2">
+                  {/* Which problem this verdict belongs to - the feedback
+                      alone is ambiguous when several were reviewed. */}
+                  <span className="text-xs font-semibold text-text-heading">
+                    Problem {index + 1}
+                  </span>
                   <span
                     className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                       problem.solved

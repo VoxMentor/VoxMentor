@@ -32,6 +32,7 @@ _spec.loader.exec_module(main)
 
 class VoiceTracingTests(unittest.TestCase):
     def test_request_produces_a_span(self):
+        """A health request must end one ASP.NET-style server span with a real trace id."""
         from opentelemetry import trace
         from opentelemetry.sdk.trace.export import SimpleSpanProcessor
         from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
@@ -62,6 +63,7 @@ class VoiceTracingTests(unittest.TestCase):
         self.assertNotEqual(0, span.get_span_context().trace_id)
 
     def test_provider_reports_the_voice_service_name(self):
+        """The provider must advertise the voice service's own service.name, not a caller's override."""
         from opentelemetry import trace
 
         provider = trace.get_tracer_provider()

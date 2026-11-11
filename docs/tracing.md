@@ -23,7 +23,7 @@ The exporter is chosen from the environment - nothing is enabled by default.
 | Variable | Meaning |
 |---|---|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Where to send the spans. Set it and the services export over OTLP. |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` (port 4318) or `grpc` (port 4317). The .NET services default to `grpc`, the Python one to `http/protobuf`. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` (port 4318) or `grpc` (port 4317). The .NET services default to `grpc`; the voice service only speaks `http/protobuf` — it builds the HTTP exporter and ignores a `grpc` setting, so always point it at 4318. |
 | `OTEL_TRACES_EXPORTER` | `console` prints the spans to stdout instead of exporting them. |
 | `OTEL_SERVICE_NAME` | Overrides the `service.name` on the spans. |
 
@@ -72,9 +72,17 @@ dotnet run --project src/VoxMentor.Api
 dotnet run --project src/VoxMentor.Gateway
 ```
 
-The voice service runs in compose and already points at the collector
-(`OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318` in
-`docker-compose.yml`; override it in `.env` if the collector is elsewhere).
+The voice service runs in compose and already points at the collector.
+Inside compose it reads the `VOICE_`-prefixed overrides, so a host-shell
+`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` (set above for the
+host-run services) cannot leak into the container, where localhost is the
+container itself:
+
+| Variable in `.env` / shell | Effect on the compose voice service |
+|---|---|
+| unset | exports to `http://otel-collector:4318` (the compose default) |
+| `VOICE_OTEL_EXPORTER_OTLP_ENDPOINT=http://other-host:4318` | exports elsewhere |
+| `VOICE_OTEL_EXPORTER_OTLP_ENDPOINT=` (explicitly empty) | export off — spans are recorded and dropped |
 
 To see the spans without a collector at all:
 
