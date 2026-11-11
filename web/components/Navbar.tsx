@@ -53,7 +53,7 @@ export default function Navbar() {
           <span className="logo-text">VoxMentor</span>
         </Link>
 
-        <nav className="hidden sm:flex items-center gap-1">
+        <nav className="hidden md:flex items-center gap-1">
           {links.map((link) => (
             <Link
               key={link.href}
@@ -71,7 +71,7 @@ export default function Navbar() {
             onClick={() => setMenuOpen((open) => !open)}
             aria-label="Menu"
             aria-expanded={menuOpen}
-            className="sm:hidden p-2 -mr-1 text-text-muted hover:text-text-heading hover:bg-accent-light-blue rounded-xl transition-colors cursor-pointer"
+            className="md:hidden p-2 -mr-1 text-text-muted hover:text-text-heading hover:bg-accent-light-blue rounded-xl transition-colors cursor-pointer"
           >
             <svg
               width="18"
@@ -101,7 +101,7 @@ export default function Navbar() {
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center text-white text-sm font-semibold">
               {user?.fullName?.charAt(0) ?? "?"}
             </div>
-            <span className="text-sm font-medium text-text-heading hidden sm:block">
+            <span className="text-sm font-medium text-text-heading hidden md:block">
               {user?.fullName}
             </span>
           </div>
@@ -116,7 +116,7 @@ export default function Navbar() {
 
       {/* Mobile menu: the only path to the routes the hidden desktop nav holds. */}
       {menuOpen && (
-        <nav className="sm:hidden border-t border-border bg-white px-6 py-3 flex flex-col gap-1">
+        <nav className="md:hidden border-t border-border bg-white px-6 py-3 flex flex-col gap-1">
           {links.map((link) => (
             <Link
               key={link.href}

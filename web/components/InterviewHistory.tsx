@@ -37,6 +37,7 @@ export default function InterviewHistory({
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   // Bumped whenever the first page reloads, so a Load more response that
   // straddles a refresh cannot append a stale page (duplicate rows).
   const generationRef = useRef(0);
@@ -74,6 +75,7 @@ export default function InterviewHistory({
     if (loadingMore) return;
     const generation = generationRef.current;
     setLoadingMore(true);
+    setLoadMoreError(null);
     try {
       const res = await api.mockHistory(page + 1, PAGE_SIZE);
       if (generation !== generationRef.current) return;
@@ -82,6 +84,7 @@ export default function InterviewHistory({
       setPage((p) => p + 1);
       setHasMore(rows.length === PAGE_SIZE);
     } catch {
+      setLoadMoreError("Could not load more interviews.");
       // keep what is already listed; the button stays for a retry
     } finally {
       setLoadingMore(false);
@@ -151,14 +154,21 @@ export default function InterviewHistory({
       })}
       </ul>
       {hasMore && (
-        <button
-          type="button"
-          onClick={loadMore}
-          disabled={loadingMore}
-          className="w-full px-4 py-2 text-sm font-medium text-primary border border-border rounded-xl hover:bg-accent-light-blue transition-colors cursor-pointer disabled:opacity-60"
-        >
-          {loadingMore ? "Loading…" : "Load more"}
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="w-full px-4 py-2 text-sm font-medium text-primary border border-border rounded-xl hover:bg-accent-light-blue transition-colors cursor-pointer disabled:opacity-60"
+          >
+            {loadingMore ? "Loading…" : "Load more"}
+          </button>
+          {loadMoreError && (
+            <p className="text-xs text-danger mt-1">
+              {loadMoreError}
+            </p>
+          )}
+        </>
       )}
     </>
   );

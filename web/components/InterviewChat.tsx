@@ -149,6 +149,9 @@ export default function InterviewChat({
   const interviewIdRef = useRef<string | null>(null);
   // The turn the next streamed token belongs to; null when nothing streams.
   const streamingTurnRef = useRef<number | null>(null);
+  // A resume request that arrived while the chat was busy; applied once the
+  // current action finishes so it is never lost (CodeRabbit #176).
+  const pendingResumeRef = useRef<string | null>(null);
   // The last InterviewError message for the action in flight. The hub sends
   // the real reason and then returns null, so the generic "could not be
   // started" fallback must not replace it.
@@ -199,8 +202,14 @@ export default function InterviewChat({
   // of dead-ending on "not completed". Skipped while a stream is in flight -
   // clobbering mid-turn would orphan the running invoke - and when the chat
   // is already on that interview, so a double-click cannot wipe the draft.
+  // A request made while busy is remembered in pendingResumeRef and applied
+  // as soon as the current action finishes (status change re-runs this effect).
   useEffect(() => {
-    if (!resumeRequest) return;
+    if (resumeRequest) {
+      pendingResumeRef.current = resumeRequest.id;
+    }
+    const id = pendingResumeRef.current;
+    if (!id) return;
     if (
       statusRef.current === "starting" ||
       statusRef.current === "streaming" ||
@@ -208,10 +217,14 @@ export default function InterviewChat({
     ) {
       return;
     }
-    if (interviewIdRef.current === resumeRequest.id) return;
+    if (interviewIdRef.current === id) {
+      pendingResumeRef.current = null;
+      return;
+    }
+    pendingResumeRef.current = null;
 
-    interviewIdRef.current = resumeRequest.id;
-    setInterviewId(resumeRequest.id);
+    interviewIdRef.current = id;
+    setInterviewId(id);
     setReview(null);
     setAnswer("");
     setOngoing(true);
@@ -225,7 +238,7 @@ export default function InterviewChat({
       },
     ]);
     updateStatus("ready");
-  }, [resumeRequest, updateStatus]);
+  }, [resumeRequest, status, updateStatus]);
 
   // Keep the newest line in view while the interviewer talks.
   useEffect(() => {
@@ -328,9 +341,9 @@ export default function InterviewChat({
 
   /**
    * Sends the candidate's answer over the hub and streams the interviewer's
-   * reply into a new turn. If the connection cannot even open, SendAnswer
-   * never ran — the draft goes back in the box and the unsent turn comes out
-   * of the transcript instead of pretending it was sent (CodeRabbit #176).
+   * reply into a new turn. The draft is only cleared once the server has
+   * recorded the answer; on any failure the candidate turn is rolled back and
+   * the draft stays in the box so the user can retry (CodeRabbit #176).
    */
   const answerInterview = useCallback(async () => {
     const message = answer.trim();
@@ -340,8 +353,9 @@ export default function InterviewChat({
 
     setError(null);
     hubErrorRef.current = null;
-    setAnswer("");
+    // Optimistic candidate turn; rolled back unless the server records it.
     const candidateTurnId = ++turnIdRef.current;
+    streamingTurnRef.current = candidateTurnId;
     setTurns((prev) => [
       ...prev,
       { id: candidateTurnId, role: "candidate", text: message },
@@ -349,14 +363,15 @@ export default function InterviewChat({
     updateStatus("starting");
 
     let conn: HubConnection | null = null;
-    let turnId = -1;
-    let invoked = false;
+    // True only when the hub returns a result, i.e. the server recorded the
+    // candidate turn. InterviewError / null result means it did not.
+    let serverRecorded = false;
     try {
       conn = getInterviewConnection();
       ensureCloseRegistered(conn);
       if (conn.state !== "Connected") await conn.start();
 
-      turnId = openInterviewerTurn();
+      openInterviewerTurn();
 
       conn.off("InterviewerMessage");
       conn.off("InterviewError");
@@ -386,7 +401,6 @@ export default function InterviewChat({
         }
       );
 
-      invoked = true;
       const result = await invokeWithTimeout<MockInterviewAnswerResult | null>(
         conn,
         "SendAnswer",
@@ -396,17 +410,17 @@ export default function InterviewChat({
       streamingTurnRef.current = null;
 
       if (!result) throw new Error("The interviewer did not respond.");
+      serverRecorded = true;
       setOngoing(result.interviewOngoing);
+      setAnswer("");
       updateStatus("ready");
     } catch (e) {
       streamingTurnRef.current = null;
-      // A stream that failed before the first token leaves an empty bubble;
-      // a SendAnswer that never fired leaves the candidate's turn too.
-      setTurns((prev) => {
-        const kept = dropEmptyTurn(prev, turnId);
-        return invoked ? kept : kept.filter((t) => t.id !== candidateTurnId);
-      });
-      if (!invoked) setAnswer(message);
+      // Roll back unless the server recorded the answer: remove the
+      // candidate turn and leave the draft in the box for a retry.
+      if (!serverRecorded) {
+        setTurns((prev) => prev.filter((t) => t.id !== candidateTurnId));
+      }
       setError(hubErrorRef.current ?? errorMessage(e));
       updateStatus("error");
       // The deadline won: the invoke keeps running server-side, so drop the

@@ -24,7 +24,11 @@ VOICE_SERVICE = ROOT / "voice-service"
 _ORIG_OTEL_ENV = {
     "OTEL_EXPORTER_OTLP_ENDPOINT": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
     "OTEL_SERVICE_NAME": os.environ.get("OTEL_SERVICE_NAME"),
+    "OTEL_SDK_DISABLED": os.environ.get("OTEL_SDK_DISABLED"),
+    "OTEL_TRACES_SAMPLER": os.environ.get("OTEL_TRACES_SAMPLER"),
+    "OTEL_TRACES_SAMPLER_ARG": os.environ.get("OTEL_TRACES_SAMPLER_ARG"),
 }
+# Clear all of them for the test run; originals are restored in tearDownModule.
 for _k in _ORIG_OTEL_ENV:
     os.environ.pop(_k, None)
 
