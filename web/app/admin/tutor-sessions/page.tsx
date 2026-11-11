@@ -67,7 +67,13 @@ export default function AdminTutorSessionsPage() {
           )}
 
           {sessionsError && (
-            <FetchError message={sessionsError} onRetry={loadSessions} />
+            <FetchError
+              message={sessionsError}
+              onRetry={() => {
+                const controller = new AbortController();
+                loadSessions(controller.signal);
+              }}
+            />
           )}
 
           {!sessionsLoading && !sessionsError && (
@@ -90,7 +96,7 @@ export default function AdminTutorSessionsPage() {
                         User
                       </th>
                       <th className="py-3 px-4 text-xs font-medium text-text-muted">
-                        Questions
+                        Status
                       </th>
                       <th className="py-3 px-4 text-xs font-medium text-text-muted">
                         Updated
@@ -119,7 +125,7 @@ export default function AdminTutorSessionsPage() {
                           {session.userEmail || session.userId}
                         </td>
                         <td className="py-3 px-4 text-sm text-text-body">
-                          {session.completedAt ? "Completed" : "In Progress"}
+                          {session.status}
                         </td>
                         <td className="py-3 px-4 text-sm text-text-muted">
                           {new Date(session.createdAt).toLocaleDateString(

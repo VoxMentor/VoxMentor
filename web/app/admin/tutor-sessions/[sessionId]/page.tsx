@@ -90,7 +90,13 @@ export default function AdminTutorSessionPage({
                 ← Back to sessions
               </Link>
             </div>
-            <FetchError message={error || "Session not found."} onRetry={loadSession} />
+            <FetchError
+              message={error || "Session not found."}
+              onRetry={() => {
+                const controller = new AbortController();
+                loadSession(controller.signal);
+              }}
+            />
           </div>
         </div>
       </ProtectedRoute>
