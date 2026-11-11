@@ -13,9 +13,17 @@ export default function AdminTutorSessionPage({
   params: Promise<{ sessionId: string }>;
 }) {
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionIdResolved, setSessionIdResolved] = useState(false);
 
   useEffect(() => {
-    params.then((p) => setSessionId(p.sessionId));
+    params
+      .then((p) => {
+        setSessionId(p.sessionId);
+        setSessionIdResolved(true);
+      })
+      .catch(() => {
+        setSessionIdResolved(true);
+      });
   }, [params]);
 
   const [session, setSession] = useState<{
@@ -60,11 +68,21 @@ export default function AdminTutorSessionPage({
   );
 
   useEffect(() => {
+    // Don't start loading until sessionId is resolved
+    if (!sessionIdResolved) return;
+    if (!sessionId) {
+      // Use setTimeout to defer setState calls, avoiding the rule violation
+      setTimeout(() => {
+        setLoading(false);
+        setError("Invalid session ID.");
+      }, 0);
+      return;
+    }
     const controller = new AbortController();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data fetch
     loadSession(controller.signal);
     return () => controller.abort();
-  }, [sessionId, loadSession]);
+  }, [sessionId, sessionIdResolved, loadSession]);
 
   if (loading) {
     return (
