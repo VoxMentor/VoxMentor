@@ -115,84 +115,81 @@ export default function AdminTutorSessionsPage() {
                   No tutor sessions yet.
                 </div>
               ) : (
-                <>
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr className="border-b border-border text-left">
-                        <th className="py-3 px-4 text-xs font-medium text-text-muted">
-                          Session
-                        </th>
-                        <th className="py-3 px-4 text-xs font-medium text-text-muted">
-                          Title
-                        </th>
-                        <th className="py-3 px-4 text-xs font-medium text-text-muted">
-                          User
-                        </th>
-                        <th className="py-3 px-4 text-xs font-medium text-text-muted">
-                          Status
-                        </th>
-                        <th className="py-3 px-4 text-xs font-medium text-text-muted">
-                          Created
-                        </th>
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="border-b border-border text-left">
+                      <th className="py-3 px-4 text-xs font-medium text-text-muted">
+                        Session
+                      </th>
+                      <th className="py-3 px-4 text-xs font-medium text-text-muted">
+                        Title
+                      </th>
+                      <th className="py-3 px-4 text-xs font-medium text-text-muted">
+                        User
+                      </th>
+                      <th className="py-3 px-4 text-xs font-medium text-text-muted">
+                        Status
+                      </th>
+                      <th className="py-3 px-4 text-xs font-medium text-text-muted">
+                        Created
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sessions.map((session) => (
+                      <tr
+                        key={session.id}
+                        className="border-b border-border transition-colors hover:bg-accent-light-blue"
+                      >
+                        <td className="py-3 px-4 text-sm text-text-body">
+                          {session.id}
+                        </td>
+                        <td className="py-3 px-4 text-sm text-text-body">
+                          <Link
+                            href={`/admin/tutor-sessions/${session.id}`}
+                            className="text-primary hover:text-primary-dark underline"
+                          >
+                            {session.question || "Untitled session"}
+                          </Link>
+                        </td>
+                        <td className="py-3 px-4 text-sm text-text-body">
+                          {session.userEmail || session.userId}
+                        </td>
+                        <td className="py-3 px-4 text-sm text-text-body">
+                          {session.status}
+                        </td>
+                        <td className="py-3 px-4 text-sm text-text-muted">
+                          {new Date(session.createdAt).toLocaleDateString(
+                            undefined,
+                            { month: "short", day: "numeric", year: "numeric" }
+                          )}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {sessions.map((session) => (
-                        <tr
-                          key={session.id}
-                          className="border-b border-border transition-colors hover:bg-accent-light-blue"
-                        >
-                          <td className="py-3 px-4 text-sm text-text-body">
-                            {session.id}
-                          </td>
-                          <td className="py-3 px-4 text-sm text-text-body">
-                            <Link
-                              href={`/admin/tutor-sessions/${session.id}`}
-                              className="text-primary hover:text-primary-dark underline"
-                            >
-                              {session.question || "Untitled session"}
-                            </Link>
-                          </td>
-                          <td className="py-3 px-4 text-sm text-text-body">
-                            {session.userEmail || session.userId}
-                          </td>
-                          <td className="py-3 px-4 text-sm text-text-body">
-                            {session.status}
-                          </td>
-                          <td className="py-3 px-4 text-sm text-text-muted">
-                            {new Date(session.createdAt).toLocaleDateString(
-                              undefined,
-                              { month: "short", day: "numeric", year: "numeric" }
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  {/* Pagination controls */}
-                  {totalPages > 1 && (
-                    <div className="flex items-center justify-center gap-2 mt-4">
-                      <button
-                        onClick={() => handlePageChange(page - 1)}
-                        disabled={page === 1}
-                        className="px-3 py-1.5 text-sm text-text-body bg-white border border-border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-accent-light-blue transition-colors"
-                      >
-                        Previous
-                      </button>
-                      <span className="text-sm text-text-muted">
-                        Page {page} of {totalPages}
-                      </span>
-                      <button
-                        onClick={() => handlePageChange(page + 1)}
-                        disabled={page === totalPages}
-                        className="px-3 py-1.5 text-sm text-text-body bg-white border border-border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-accent-light-blue transition-colors"
-                      >
-                        Next
-                      </button>
-                    </div>
-                  )}
-                </>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {/* Pagination controls — render even when empty so users can navigate back */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-4">
+                  <button
+                    onClick={() => handlePageChange(page - 1)}
+                    disabled={page === 1}
+                    className="px-3 py-1.5 text-sm text-text-body bg-white border border-border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-accent-light-blue transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-sm text-text-muted">
+                    Page {page} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => handlePageChange(page + 1)}
+                    disabled={page === totalPages}
+                    className="px-3 py-1.5 text-sm text-text-body bg-white border border-border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-accent-light-blue transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
               )}
             </div>
           )}

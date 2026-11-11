@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth";
 import { api, ApiError } from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Navbar from "@/components/Navbar";
@@ -12,8 +14,21 @@ export default function AdminTutorSessionPage({
 }: {
   params: Promise<{ sessionId: string }>;
 }) {
+  const { user } = useAuth();
+  const router = useRouter();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionIdResolved, setSessionIdResolved] = useState(false);
+
+  // Role check: only PlatformAdmin / SuperAdmin can access
+  const isPlatformAdmin =
+    !!user?.roles?.includes("PlatformAdmin") || !!user?.roles?.includes("SuperAdmin");
+
+  // Redirect non-platform admins (but still call hooks first)
+  useEffect(() => {
+    if (user && !isPlatformAdmin) {
+      router.replace("/dashboard");
+    }
+  }, [user, isPlatformAdmin, router]);
 
   useEffect(() => {
     params
@@ -83,6 +98,9 @@ export default function AdminTutorSessionPage({
     loadSession(controller.signal);
     return () => controller.abort();
   }, [sessionId, sessionIdResolved, loadSession]);
+
+  // Early return for unauthorized users (after hooks)
+  if (!user || !isPlatformAdmin) return null;
 
   if (loading) {
     return (
