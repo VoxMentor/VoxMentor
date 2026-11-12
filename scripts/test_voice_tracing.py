@@ -92,6 +92,22 @@ class VoiceTracingTests(unittest.TestCase):
         service_name = provider.resource.attributes.get("service.name")
         self.assertEqual("voxmentor-voice-service", service_name)
 
+    def test_traces_path_is_appended_to_the_path_not_the_query(self):
+        """The collector URL keeps its query string; only the path grows."""
+        self.assertEqual(
+            "http://collector:4318/v1/traces",
+            main._with_traces_path("http://collector:4318"),
+        )
+        self.assertEqual(
+            "http://collector:4318/otlp/v1/traces?tenant=a",
+            main._with_traces_path("http://collector:4318/otlp?tenant=a"),
+        )
+        # Idempotent: an endpoint that already has the path is left alone.
+        self.assertEqual(
+            "http://collector:4318/v1/traces?tenant=a",
+            main._with_traces_path("http://collector:4318/v1/traces?tenant=a"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

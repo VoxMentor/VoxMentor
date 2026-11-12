@@ -24,6 +24,7 @@ import subprocess
 import sys
 import threading
 import wave
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -175,6 +176,19 @@ app = FastAPI(title="VoxMentor Voice Service")
 app.add_middleware(MaxBodySizeMiddleware, max_bytes=MAX_UPLOAD_BYTES + _MULTIPART_OVERHEAD_BYTES)
 
 
+def _with_traces_path(endpoint: str) -> str:
+    """Appends ``/v1/traces`` to the URL path, leaving the query string intact.
+
+    Mirrors the .NET services' ``UriBuilder`` handling: plain concatenation
+    would put the path inside the query when the endpoint already carries one
+    (``http://host/otlp?tenant=a`` becoming ``...?tenant=a/v1/traces``).
+    """
+    parts = urlsplit(endpoint)
+    if parts.path.rstrip("/").endswith("/v1/traces"):
+        return endpoint
+    return urlunsplit(parts._replace(path=parts.path.rstrip("/") + "/v1/traces"))
+
+
 def configure_tracing(app: FastAPI) -> None:
     """Wire OpenTelemetry tracing (#154).
 
@@ -199,8 +213,8 @@ def configure_tracing(app: FastAPI) -> None:
         # http/protobuf so spans are not 404'd by the collector (mirrors the
         # .NET services' handling).
         protocol = (os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL") or "http/protobuf").strip()
-        if protocol == "http/protobuf" and not endpoint.endswith("/v1/traces"):
-            endpoint = endpoint.rstrip("/") + "/v1/traces"
+        if protocol == "http/protobuf":
+            endpoint = _with_traces_path(endpoint)
         provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
 
     trace.set_tracer_provider(provider)
