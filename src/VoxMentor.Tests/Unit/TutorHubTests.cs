@@ -171,6 +171,25 @@ public class TutorHubTests
     }
 
     [Fact]
+    public async Task AskTutor_ServiceThrowsUnavailableLiteral_SendsLiteralToClient()
+    {
+        // #74: the breaker/Ollama-down message is a safe literal — the client
+        // must see it instead of the generic mask.
+        var (hub, clients, db, _) = CreateHub(
+            new FakeTutorService { Throw = new InvalidOperationException("Tutor service temporarily unavailable.") });
+
+        await hub.AskTutor("", "question?");
+
+        var sent = clients.CallerProxy.Sent;
+        var error = sent.Single(s => s.Method == "TutorError").Args[0]!;
+        Assert.Equal("Tutor service temporarily unavailable.",
+            error.GetType().GetProperty("message")!.GetValue(error)!.ToString());
+
+        var session = await db.TutorSessions.SingleAsync();
+        Assert.Equal(TutorSessionStatus.Failed, session.Status);
+    }
+
+    [Fact]
     public async Task AskTutor_RateLimited_SendsError_NoSessionPersisted()
     {
         var (hub, clients, db, _) = CreateHub(

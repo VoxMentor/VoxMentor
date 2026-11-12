@@ -245,6 +245,10 @@ private async Task SendError(Guid? sessionId, string message)
         {
             // ponytail: never leak internal details to the client.
             // Log the full exception server-side; return a generic message.
-            return "An error occurred while generating the response.";
+            // TutorService throws this safe literal for breaker/Ollama-down
+            // failures (#74) — pass it through so the UI can show it.
+            return ex.Message.Contains("temporarily unavailable", StringComparison.OrdinalIgnoreCase)
+                ? ex.Message
+                : "An error occurred while generating the response.";
         }
 }

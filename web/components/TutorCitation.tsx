@@ -25,19 +25,22 @@ export default function TutorCitation({ citations }: TutorCitationProps) {
       </div>
       <div className="space-y-2">
         {citations.map((c, idx) => (
-          <div key={idx} className="p-3 rounded-[10px] bg-white border border-[1px] border-border shadow-sm">
-            <div className="flex items-center justify-between mb-2">
+          <details
+            key={idx}
+            className="p-3 rounded-[10px] bg-white border border-[1px] border-border shadow-sm"
+          >
+            <summary className="flex items-center justify-between cursor-pointer list-none">
               <span className="text-[10px] font-medium text-primary">
                 {c.source}
               </span>
               <span className="text-[10px] text-text-muted">
                 {relevancePercent(c)}% match
               </span>
-            </div>
-            <p className="text-xs text-text-body italic leading-relaxed">
+            </summary>
+            <p className="mt-2 text-xs text-text-body italic leading-relaxed">
               {c.chunkText}
             </p>
-          </div>
+          </details>
         ))}
       </div>
     </div>
