@@ -458,8 +458,9 @@ database.
 docker compose up -d judge0-db judge0 judge0-worker
 ```
 
-No local database? Skip the compose stack and point the API at a remote
-Judge0 instead — see the `Judge0:BaseUrl` note below.
+No local database? Skip the compose stack and point **VoxMentor.CodeExecService**
+at a remote Judge0 instead — it reads `Judge0:BaseUrl` (the API does not). See
+the note below.
 
 If Judge0 is running (locally or remote), verify:
 
@@ -482,7 +483,10 @@ curl http://localhost:2358/submissions/<submission-id>
 # → Should show stdout: "hello"
 ```
 
-**Using a remote Judge0 endpoint:** Set `Judge0:BaseUrl` in your configuration (appsettings.Development.json, user secrets, or environment variable) to point to your Judge0 instance.
+**Using a remote Judge0 endpoint:** Set `Judge0:BaseUrl` in **VoxMentor.CodeExecService**'s
+configuration (its `appsettings.Development.json`, user secrets, or the
+`Judge0__BaseUrl` environment variable) to point at your Judge0 instance. The API
+never reads this setting — CodeExec is the only caller.
 
 ---
 

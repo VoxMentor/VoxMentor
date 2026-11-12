@@ -172,4 +172,6 @@ volumes:
   ollama-data:
   seq-data:
   voice-models:
-  # judge0-db-data:
+  # Judge0's database volume. Declared unconditionally so enabling the
+  # commented services above needs no extra edit; unused volumes cost nothing.
+  judge0-db-data:
