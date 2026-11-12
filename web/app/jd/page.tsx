@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { api, ApiError, type JdDetail } from "@/lib/api";
 import { severityColor } from "@/lib/severity";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -110,6 +111,12 @@ function JdDetailView({ jd, onReset }: { jd: JdDetail; onReset: () => void }) {
           >
             Upload a different JD
           </button>
+          <Link
+            href={`/interview?jd=${encodeURIComponent(jd.jdId)}`}
+            className="btn-primary !py-2.5 !px-6 !text-sm"
+          >
+            Practise an interview for this role
+          </Link>
         </div>
       </div>
 

@@ -12,6 +12,7 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,6 +40,7 @@ jobs:
 
   scripts:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,9 +52,14 @@ jobs:
         run: pip install -r scripts/requirements-seed.txt
       - name: Test
         run: python -m unittest scripts.test_seed_corpus
+      - name: Install voice tracing deps
+        run: pip install -r scripts/requirements-voice-tracing.txt
+      - name: Test voice tracing
+        run: python -m unittest scripts.test_voice_tracing
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: web
@@ -89,6 +96,7 @@ jobs:
 
   docker:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:

@@ -1,3 +1,5 @@
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,6 +13,50 @@ builder.Host.UseSerilog((context, config) =>
 // YARP reverse proxy
 builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+
+// OpenTelemetry distributed tracing (#154). The gateway is the entry point
+// for the browser, so its server span is the root of a trace: YARP forwards
+// the incoming `traceparent` header and the HttpClient instrumentation
+// re-injects the proxy span's context, so the API and the voice service
+// continue the same trace. Zero-config: with no exporter configured the
+// provider records spans and drops them.
+//   OTEL_TRACES_EXPORTER=console  -> print the spans to stdout (local dev)
+//   OTEL_EXPORTER_OTLP_ENDPOINT   -> export over OTLP to the collector
+//   OTEL_SERVICE_NAME             -> service.name carried on every span
+var otelExporter = (builder.Configuration["OTEL_TRACES_EXPORTER"] ?? string.Empty).Trim().ToLowerInvariant();
+var otelEndpoint = (builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"] ?? string.Empty).Trim();
+// Trim before falling back: an OTEL_SERVICE_NAME of "" or "   " would reach
+// AddService as an empty string, which OpenTelemetry rejects at startup.
+var otelServiceName = (builder.Configuration["OTEL_SERVICE_NAME"] ?? string.Empty).Trim();
+if (otelServiceName.Length == 0) otelServiceName = "voxmentor-gateway";
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService(otelServiceName))
+    .WithTracing(tracing =>
+    {
+        tracing
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            // YARP's own proxy spans; the source name is fixed upstream.
+            .AddSource("Yarp.ReverseProxy");
+
+        if (otelExporter == "console")
+        {
+            tracing.AddConsoleExporter();
+        }
+        else if (otelExporter != "none" && otelEndpoint.Length > 0)
+        {
+            var otelProtocol = (builder.Configuration["OTEL_EXPORTER_OTLP_PROTOCOL"] ?? string.Empty).Trim().ToLowerInvariant();
+            // HTTP/protobuf requires /v1/traces path; gRPC does not.
+            // Use UriBuilder to append path correctly, preserving query params.
+            if (otelProtocol == "http/protobuf" && !otelEndpoint.EndsWith("/v1/traces", StringComparison.OrdinalIgnoreCase))
+            {
+                var builder = new UriBuilder(otelEndpoint);
+                builder.Path = builder.Path.TrimEnd('/') + "/v1/traces";
+                otelEndpoint = builder.Uri.ToString();
+            }
+            tracing.AddOtlpExporter(o => o.Endpoint = new Uri(otelEndpoint));
+        }
+    });
 
 // No Hangfire server here, deliberately (#57). The Gateway is a YARP proxy: it
 // registers no jobs and does not reference VoxMentor.Infrastructure, so it

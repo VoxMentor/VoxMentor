@@ -6,3 +6,9 @@ faster-whisper==1.2.1
 piper-tts==1.8.0
 # faster-whisper 1.2.1 calls av.open(..., metadata_errors="ignore"); av 19 removed the kwarg
 av<19
+# OpenTelemetry distributed tracing (#154). The exporter is picked from the
+# environment (OTEL_EXPORTER_OTLP_ENDPOINT); with none set the spans are dropped.
+opentelemetry-api>=1.27,<2
+opentelemetry-sdk>=1.27,<2
+opentelemetry-exporter-otlp-proto-http>=1.27,<2
+opentelemetry-instrumentation-fastapi>=0.48b0,<1
