@@ -61,7 +61,7 @@ public class TutorService : ITutorService
         // outcome recorded — short-circuits must not feed the failure count.
         if (_circuit.IsOpen)
         {
-            throw new InvalidOperationException("Tutor service temporarily unavailable.");
+            throw new InvalidOperationException("Tutor is temporarily unavailable.");
         }
 
         // The circuit records at the full-stream boundary: header failures,
@@ -156,13 +156,12 @@ public class TutorService : ITutorService
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(300));
 
-        using var response = await _http.SendAsync(
-            httpRequest, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
+        using var response = await SendOllamaAsync(httpRequest, timeoutCts.Token);
 
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogError("Ollama HTTP {StatusCode} for tutor stream: {Reason}", response.StatusCode, response.ReasonPhrase);
-            throw new InvalidOperationException("Tutor service temporarily unavailable.");
+            throw new InvalidOperationException("Tutor is temporarily unavailable.");
         }
 
         var citations = chunks
@@ -185,6 +184,27 @@ public class TutorService : ITutorService
             {
                 yield return chunk;
             }
+        }
+    }
+
+    /// <summary>
+    /// Sends the Ollama request, mapping transport failures (connection
+    /// refused, DNS, reset) to the approved unavailable message so an outage
+    /// reads the same before and after the breaker opens (#74).
+    /// </summary>
+    private async Task<HttpResponseMessage> SendOllamaAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _http.SendAsync(
+                request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Ollama transport failure for tutor stream");
+            throw new InvalidOperationException("Tutor is temporarily unavailable.", ex);
         }
     }
 
@@ -382,7 +402,7 @@ public class TutorService : ITutorService
 
         if (evt?.Error is { Length: > 0 } error)
         {
-            throw new InvalidOperationException("Tutor service temporarily unavailable.");
+            throw new InvalidOperationException("Tutor is temporarily unavailable.");
         }
 
         var text = evt?.Message?.Content;

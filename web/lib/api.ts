@@ -274,25 +274,10 @@ export interface SubmitCodeResult {
 
 // --- Tutor chat (#74): sessions, session detail, ask ---
 
-export interface TutorSession {
-  sessionId: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-  questionCount: number;
-}
-
 export interface Citation {
   source: string;
   chunkText: string;
   relevance: number;
-}
-
-export interface TutorMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  citations?: Citation[];
 }
 
 export interface TutorSessionDto {
@@ -316,10 +301,6 @@ export interface TutorAskResponse {
   answer: string;
   citations: Citation[];
   tokenCount: number;
-}
-
-export interface TutorSessionsResult {
-  sessions: TutorSession[];
 }
 
 export interface TutorSessionDetailResult {

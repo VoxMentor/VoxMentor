@@ -25,19 +25,39 @@ export default function TutorCitation({ citations }: TutorCitationProps) {
       </div>
       <div className="space-y-2">
         {citations.map((c, idx) => (
-          <div key={idx} className="p-3 rounded-[10px] bg-white border border-[1px] border-border shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-medium text-primary">
-                {c.source}
+          <details
+            key={idx}
+            className="group p-3 rounded-[10px] bg-white border border-[1px] border-border shadow-sm"
+          >
+            <summary className="flex items-center justify-between cursor-pointer list-none">
+              <span className="flex items-center gap-2">
+                {/* visible disclosure indicator: rotates open/closed (native marker hidden) */}
+                <svg
+                  width="10"
+                  height="10"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-text-muted transition-transform group-open:rotate-90"
+                  aria-hidden="true"
+                >
+                  <path d="M9 6l6 6-6 6" />
+                </svg>
+                <span className="text-[10px] font-medium text-primary">
+                  {c.source}
+                </span>
               </span>
               <span className="text-[10px] text-text-muted">
                 {relevancePercent(c)}% match
               </span>
-            </div>
-            <p className="text-xs text-text-body italic leading-relaxed">
+            </summary>
+            <p className="mt-2 text-xs text-text-body italic leading-relaxed">
               {c.chunkText}
             </p>
-          </div>
+          </details>
         ))}
       </div>
     </div>

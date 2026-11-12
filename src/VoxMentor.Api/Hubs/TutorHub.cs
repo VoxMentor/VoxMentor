@@ -245,6 +245,10 @@ private async Task SendError(Guid? sessionId, string message)
         {
             // ponytail: never leak internal details to the client.
             // Log the full exception server-side; return a generic message.
-            return "An error occurred while generating the response.";
+            // Only the exact approved TutorService literal passes through so
+            // the UI can show it (#74); anything else stays generic.
+            return ex.Message == "Tutor is temporarily unavailable."
+                ? "Tutor is temporarily unavailable."
+                : "An error occurred while generating the response.";
         }
 }

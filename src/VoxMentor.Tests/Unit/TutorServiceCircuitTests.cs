@@ -46,12 +46,17 @@ public class TutorServiceCircuitTests
         public StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond)
             => _respond = respond;
 
+        /// <summary>When set, the handler fails with this exception instead of answering.</summary>
+        public Exception? Throw { get; set; }
+
         /// <summary>Counts the call and returns the factory-built response.</summary>
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Calls++;
-            return Task.FromResult(_respond(request));
+            return Throw is null
+                ? Task.FromResult(_respond(request))
+                : Task.FromException<HttpResponseMessage>(Throw);
         }
     }
 
@@ -152,6 +157,22 @@ public class TutorServiceCircuitTests
 
         await ConsumeAsync(tutor.StreamAnswerAsync("q", null));
 
+        Assert.Equal(0, circuit.Successes);
+        Assert.Equal(1, circuit.Failures);
+    }
+
+    /// <summary>A transport failure (Ollama unreachable) throws the approved message and keeps the cause for logs.</summary>
+    [Fact]
+    public async Task Stream_TransportFailure_ThrowsApprovedUnavailableMessage()
+    {
+        var (tutor, circuit, chat) = CreateTutor(_ => NdJson(""));
+        chat.Throw = new HttpRequestException("Connection refused (127.0.0.1:11434)");
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => ConsumeAsync(tutor.StreamAnswerAsync("q", null)));
+
+        Assert.Equal("Tutor is temporarily unavailable.", ex.Message);
+        Assert.IsType<HttpRequestException>(ex.InnerException);
         Assert.Equal(0, circuit.Successes);
         Assert.Equal(1, circuit.Failures);
     }

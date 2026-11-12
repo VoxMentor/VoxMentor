@@ -280,7 +280,7 @@ export default function TutorChat({
             ask();
           }
         }}
-        placeholder="Ask a concept question… (Enter to send, Shift+Enter for newline)"
+        placeholder="Ask a question about any DSA concept… (Enter to send, Shift+Enter for newline)"
         rows={3}
         disabled={busy}
         className="w-full p-3 text-sm text-text-heading bg-white border-[1.5px] border-[var(--border)] rounded-[14px] outline-none focus:border-primary transition-all resize-none disabled:opacity-60"
