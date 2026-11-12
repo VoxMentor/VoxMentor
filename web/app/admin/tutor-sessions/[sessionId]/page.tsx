@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { api, ApiError, type TutorMessage } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { api, ApiError } from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Navbar from "@/components/Navbar";
-import TutorCitation from "@/components/TutorCitation";
 import FetchError from "@/components/FetchError";
 
 export default function AdminTutorSessionPage({
@@ -13,44 +14,93 @@ export default function AdminTutorSessionPage({
 }: {
   params: Promise<{ sessionId: string }>;
 }) {
+  const { user } = useAuth();
+  const router = useRouter();
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionIdResolved, setSessionIdResolved] = useState(false);
+
+  // Role check: only PlatformAdmin / SuperAdmin can access
+  const isPlatformAdmin =
+    !!user?.roles?.includes("PlatformAdmin") || !!user?.roles?.includes("SuperAdmin");
+
+  // Redirect non-platform admins (but still call hooks first)
+  useEffect(() => {
+    if (user && !isPlatformAdmin) {
+      router.replace("/dashboard");
+    }
+  }, [user, isPlatformAdmin, router]);
 
   useEffect(() => {
-    params.then((p) => setSessionId(p.sessionId));
+    params
+      .then((p) => {
+        setSessionId(p.sessionId);
+        setSessionIdResolved(true);
+      })
+      .catch(() => {
+        setSessionIdResolved(true);
+      });
   }, [params]);
 
   const [session, setSession] = useState<{
-    sessionId: string;
+    id: string;
     userId: string;
-    userName?: string;
-    messages: TutorMessage[];
+    userEmail: string | null;
+    conceptId: string | null;
+    question: string;
+    answer: string | null;
+    status: string;
+    totalTokens: number;
     createdAt: string;
-    updatedAt: string;
+    completedAt: string | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadSession = useCallback(async () => {
-    if (!sessionId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await api.adminTutorSession(sessionId);
-      setSession(result.session);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load session.");
-    } finally {
-      setLoading(false);
-    }
-  }, [sessionId]);
+  const loadSession = useCallback(
+    (signal?: AbortSignal) => {
+      if (!sessionId) return;
+      setLoading(true);
+      setError(null);
+      api
+        .adminTutorSession(sessionId)
+        .then((result) => {
+          if (!signal?.aborted) {
+            setSession(result);
+          }
+        })
+        .catch((e) => {
+          if (!signal?.aborted) {
+            setError(e instanceof ApiError ? e.message : "Failed to load session.");
+          }
+        })
+        .finally(() => {
+          if (!signal?.aborted) {
+            setLoading(false);
+          }
+        });
+    },
+    [sessionId]
+  );
 
   useEffect(() => {
-    setTimeout(() => {
-      loadSession();
-    }, 0);
-  }, [sessionId, loadSession]);
+    // Don't start loading until sessionId is resolved
+    if (!sessionIdResolved) return;
+    if (!sessionId) {
+      // Use setTimeout to defer setState calls, avoiding the rule violation
+      setTimeout(() => {
+        setLoading(false);
+        setError("Invalid session ID.");
+      }, 0);
+      return;
+    }
+    const controller = new AbortController();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data fetch
+    loadSession(controller.signal);
+    return () => controller.abort();
+  }, [sessionId, sessionIdResolved, loadSession]);
 
-  const router = useRouter();
+  // Early return for unauthorized users (after hooks)
+  if (!user || !isPlatformAdmin) return null;
 
   if (loading) {
     return (
@@ -65,9 +115,25 @@ export default function AdminTutorSessionPage({
   if (error || !session) {
     return (
       <ProtectedRoute>
-        <div className="max-w-6xl mx-auto px-6 py-10">
+        <div className="min-h-screen bg-bg-light">
           <Navbar />
-          <FetchError message={error || "Session not found."} onRetry={loadSession} />
+          <div className="max-w-6xl mx-auto px-6 py-10">
+            <div className="mb-4">
+              <Link
+                href="/admin/tutor-sessions"
+                className="text-xs text-primary hover:text-primary-dark underline underline-offset-4"
+              >
+                ← Back to sessions
+              </Link>
+            </div>
+            <FetchError
+              message={error || "Session not found."}
+              onRetry={() => {
+                const controller = new AbortController();
+                loadSession(controller.signal);
+              }}
+            />
+          </div>
         </div>
       </ProtectedRoute>
     );
@@ -81,49 +147,63 @@ export default function AdminTutorSessionPage({
           <div className="mb-8">
             <div className="flex items-center justify-between">
               <div>
-                <button
-                  onClick={() => router.push("/admin/tutor-sessions")}
+                <Link
+                  href="/admin/tutor-sessions"
                   className="text-xs text-primary hover:text-primary-dark underline underline-offset-4"
                 >
                   ← Back to sessions
-                </button>
+                </Link>
               </div>
               <div>
                 <h1 className="font-heading text-2xl sm:text-3xl font-bold text-navy">
                   AI Tutor
                 </h1>
                 <p className="text-text-muted mt-2">
-                  Session: {session.sessionId} &nbsp;•&nbsp; User:
-                  {session.userId}
+                  Session: {session.id} &nbsp;•&nbsp; User: {session.userEmail || session.userId}
                 </p>
               </div>
             </div>
           </div>
 
           <div className="flex flex-col gap-6">
-            {session.messages.map((msg) => (
-              <div key={msg.id} className="card p-4 mb-4">
+            {session.question && (
+              <div className="card p-4 mb-4 bg-bg-light border-l-4 border-primary">
                 <div className="flex items-start gap-3">
-                  <span
-                    className={`text-xs font-medium ${
-                      msg.role === "user"
-                        ? "text-primary"
-                        : "text-text-muted"
-                    }`}
-                  >
-                    {msg.role.charAt(0).toUpperCase() + msg.role.slice(1)}
+                  <span className="text-xs font-medium text-primary">Question</span>
+                </div>
+                <div className="p-3 rounded-lg bg-white border border-border text-text-body leading-relaxed whitespace-pre-wrap mt-2">
+                  {session.question}
+                </div>
+              </div>
+            )}
+            {session.answer && (
+              <div className="card p-4 mb-4 bg-bg-light border-l-4 border-green-500">
+                <div className="flex items-start gap-3">
+                  <span className="text-xs font-medium text-green-500">Answer</span>
+                </div>
+                <div className="p-3 rounded-lg bg-white border border-border text-text-body leading-relaxed whitespace-pre-wrap mt-2">
+                  {session.answer}
+                </div>
+              </div>
+            )}
+            <div className="card p-4">
+              <div className="flex items-center gap-3 mb-4 flex-wrap">
+                <span className="text-xs font-medium text-text-muted">
+                  Status: <span className="text-text-body capitalize">{session.status.toLowerCase()}</span>
+                </span>
+                <span className="text-xs font-medium text-text-muted">
+                  Tokens: <span className="text-text-body">{session.totalTokens}</span>
+                </span>
+                <span className="text-xs font-medium text-text-muted">
+                  Created: <span className="text-text-body">{new Date(session.createdAt).toLocaleString()}</span>
+                </span>
+                {session.completedAt && (
+                  <span className="text-xs font-medium text-text-muted">
+                    Completed: <span className="text-text-body">{new Date(session.completedAt).toLocaleString()}</span>
                   </span>
-                </div>
-                <div className="p-3 rounded-lg bg-white border border-border text-text-body leading-relaxed whitespace-pre-wrap">
-                  {msg.content}
-                </div>
-                {msg.citations && msg.citations.length > 0 && (
-                  <div className="mt-3">
-                    <TutorCitation citations={msg.citations} />
-                  </div>
                 )}
               </div>
-            ))}
+            </div>
           </div>
         </main>
       </div>

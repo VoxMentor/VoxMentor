@@ -137,6 +137,7 @@ public class TutorHub : Hub
             var answer = new StringBuilder();
             var totalTokens = 0;
             var sawFinalChunk = false;
+            Citation[]? finalCitations = null;
             try
             {
                 await foreach (var chunk in _tutor.StreamAnswerAsync(question, parsedConceptId, cancellationToken))
@@ -150,6 +151,7 @@ public class TutorHub : Hub
                     {
                         totalTokens = chunk.EvalCount ?? totalTokens;
                         sawFinalChunk = true;
+                        finalCitations = chunk.Citations;
                     }
                 }
 
@@ -179,7 +181,8 @@ public class TutorHub : Hub
                     await Clients.Caller.SendAsync("TutorComplete", new
                     {
                         sessionId = session.Id,
-                        totalTokens
+                        totalTokens,
+                        citations = finalCitations
                     });
                 }
                 catch (Exception ex)

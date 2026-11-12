@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <!-- No uri/assemblyQualifiedName here: those point at Microsoft's own
+           CodeCoverage collector, which VSTest selects before the friendly
+           name and which ignores Coverlet's Format/Exclude settings. Leaving
+           them off lets VSTest resolve "XPlat Code Coverage" to the Coverlet
+           collector from coverlet.collector. -->
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura,lcov</Format>
+          <!-- No CompilerGenerated here: it excludes async state machines, so
+               every async method body (controllers, MediatR handlers) was
+               missing from the report entirely. -->
+          <ExcludeByAttribute>Obsolete,GeneratedCode</ExcludeByAttribute>
+          <Exclude>[*]*.Migrations.*</Exclude>
+          <Exclude>[*]*.Migrations</Exclude>
+          <SingleHit>true</SingleHit>
+          <MergeWith>true</MergeWith>
+          <UseSourceLink>true</UseSourceLink>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

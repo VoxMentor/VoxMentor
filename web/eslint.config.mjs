@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // c8 writes its HTML report here; it is generated output, not source.
+    "coverage/**",
   ]),
 ]);
 

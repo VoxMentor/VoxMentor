@@ -14,6 +14,7 @@ first calls ever matter; they don't yet (Week 5 owns the voice interview flow).
 
 from __future__ import annotations
 
+import atexit
 import glob
 import io
 import logging
@@ -23,6 +24,7 @@ import subprocess
 import sys
 import threading
 import wave
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -37,6 +39,18 @@ try:  # av ships with faster-whisper; a bare local env may not have it
     _DECODE_ERRORS: tuple[type[Exception], ...] = (_av_error.FFmpegError,)
 except ImportError:  # pragma: no cover
     _DECODE_ERRORS = ()
+
+try:  # OpenTelemetry (#154); the container installs these, a bare env may not
+    from opentelemetry import trace
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+    _OTEL_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _OTEL_AVAILABLE = False
 
 log = logging.getLogger("voice-service")
 logging.basicConfig(level=logging.INFO)
@@ -160,6 +174,59 @@ class MaxBodySizeMiddleware:
 
 app = FastAPI(title="VoxMentor Voice Service")
 app.add_middleware(MaxBodySizeMiddleware, max_bytes=MAX_UPLOAD_BYTES + _MULTIPART_OVERHEAD_BYTES)
+
+
+def _with_traces_path(endpoint: str) -> str:
+    """Appends ``/v1/traces`` to the URL path, leaving the query string intact.
+
+    Mirrors the .NET services' ``UriBuilder`` handling: plain concatenation
+    would put the path inside the query when the endpoint already carries one
+    (``http://host/otlp?tenant=a`` becoming ``...?tenant=a/v1/traces``).
+    """
+    parts = urlsplit(endpoint)
+    if parts.path.rstrip("/").endswith("/v1/traces"):
+        return endpoint
+    return urlunsplit(parts._replace(path=parts.path.rstrip("/") + "/v1/traces"))
+
+
+def configure_tracing(app: FastAPI) -> None:
+    """Wire OpenTelemetry tracing (#154).
+
+    Zero-config: with no OTEL_EXPORTER_OTLP_ENDPOINT the provider records the
+    spans and drops them, so the service starts and serves traffic with no
+    collector running. With an endpoint set the spans go to the same collector
+    the .NET services export to, and the incoming ``traceparent`` header makes
+    the request part of the caller's trace (API -> gateway -> voice service).
+    A collector that is down only produces export warnings - it never fails a
+    request.
+    """
+    if not _OTEL_AVAILABLE:
+        log.warning("OpenTelemetry is not installed; tracing is disabled")
+        return
+
+    service_name = (os.environ.get("OTEL_SERVICE_NAME") or "voxmentor-voice-service").strip()
+    provider = TracerProvider(resource=Resource.create({"service.name": service_name}))
+
+    endpoint = (os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or "").strip()
+    if endpoint:
+        # OTLP HTTP receiver serves /v1/traces; append the path when using
+        # http/protobuf so spans are not 404'd by the collector (mirrors the
+        # .NET services' handling).
+        protocol = (os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL") or "http/protobuf").strip()
+        if protocol == "http/protobuf":
+            endpoint = _with_traces_path(endpoint)
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
+
+    trace.set_tracer_provider(provider)
+    FastAPIInstrumentor.instrument_app(app)
+
+    # Flush pending spans on process exit so the last request's spans are not
+    # lost when the container stops. Use shutdown() which flushes AND closes
+    # the exporter cleanly.
+    atexit.register(provider.shutdown)
+
+
+configure_tracing(app)
 
 _whisper_lock = threading.Lock()
 _whisper_model = None

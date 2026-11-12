@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getTutorConnection } from "@/lib/signalr";
-import { api, type Citation, type TutorSession } from "@/lib/api";
+import { api, type Citation } from "@/lib/api";
 import type { HubConnection } from "@microsoft/signalr";
 import TutorCitation from "@/components/TutorCitation";
 
@@ -19,13 +19,6 @@ interface TutorErrorPayload {
   message: string;
 }
 
-interface TutorMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  citations?: Citation[];
-}
-
 // ponytail: one mounted TutorChat (dashboard). The close callback must be
 // registered exactly once per cached connection — HubConnection.onclose has no
 // matching off(), so re-registering per mount would pile up handlers.
@@ -40,7 +33,7 @@ interface TutorChatProps {
 }
 
 export default function TutorChat({
-  sessionId: initialSessionId,
+  sessionId: sessionIdProp,
   onSessionChange,
 }: TutorChatProps = {}) {
   const [question, setQuestion] = useState("");
@@ -53,60 +46,95 @@ export default function TutorChat({
     citations?: Citation[];
   } | null>(null);
 
-  // Session state
-  const [sessionId, setSessionId] = useState<string | null>(initialSessionId ?? null);
-  const [messages, setMessages] = useState<TutorMessage[]>([]);
-  const [sessions, setSessions] = useState<TutorSession[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState(false);
+  // Session state — derived from the prop so selecting a session in the
+  // sidebar loads its history (prop is not read once at mount).
+  const [sessionId, setSessionId] = useState<string | null>(sessionIdProp ?? null);
+  // Sync internal sessionId with prop changes (controlled component pattern).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional sync
+    setSessionId(sessionIdProp ?? null);
+  }, [sessionIdProp]);
+
+  // Latest answer, so the TutorComplete handler (registered inside ask())
+  // doesn't close over a stale `answer` ("").
+  const answerRef = useRef("");
+  useEffect(() => {
+    answerRef.current = answer;
+  }, [answer]);
 
   // Concept selector state
   const [concepts, setConcepts] = useState<{ conceptId: string; name: string }[]>([]);
   const [selectedConcept, setSelectedConcept] = useState<string | null>(null);
 
-  const statusRef = useRef<Status>("idle");
+  // Session ID this client just created — skip the detail reload for it so the
+  // streamed answer/citations aren't wiped by a server poll. `undefined` means
+  // "none pending" so a null sessionId (sidebar New Session) doesn't match it.
+  const justCreatedRef = useRef<string | undefined>(undefined);
 
-  // Keep statusRef in sync with status for the onclose handler
+  // The sessionId the current token stream belongs to. Tokens arriving for a
+  // different session (e.g. after a mid-stream session change) are ignored so
+  // stream events stay scoped to their session (#172).
+  const streamSessionRef = useRef<string | null>(null);
+
+  const statusRef = useRef<Status>("idle");
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
 
-  // Fetch sessions on mount
+  // Fetch concepts on mount for the concept selector
   useEffect(() => {
-    setTimeout(() => {
-      setSessionsLoading(true);
-      api
-        .tutorSessions()
-        .then((result) => {
-          setSessions(result.sessions);
-          setSessionsLoading(false);
-        })
-        .catch(() => setSessionsLoading(false));
-    }, 0);
+    api
+      .mastery()
+      .then((profile) => {
+        setConcepts(
+          profile.concepts.map((c) => ({
+            conceptId: c.conceptId,
+            name: c.name,
+          }))
+        );
+      })
+      .catch(() => {});
   }, []);
 
-  // Load session detail when sessionId changes
+  // Load session detail when sessionId changes, with cancellation so an
+  // obsolete response can't overwrite a newer session's state.
   useEffect(() => {
+    // Skip reload for a session this client just created.
+    if (sessionId === justCreatedRef.current) {
+      justCreatedRef.current = undefined;
+      return;
+    }
     if (!sessionId) {
-      setTimeout(() => {
-        setMessages([]);
-        setAnswer("");
-        setError("");
-        setStats(null);
-      }, 0);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing state on session clear
+      setAnswer("");
+      setError("");
+      setStats(null);
       return;
     }
 
+    let cancelled = false;
     api
       .tutorSession(sessionId)
       .then((result) => {
-        setMessages(result.session.messages);
-        setAnswer("");
+        if (cancelled) return;
+        // Restore the stored Q&A for the selected session so clicking a session
+        // in the sidebar loads its prior question and answer (acceptance criteria).
+        setAnswer(result.answer ?? "");
         setError("");
-        setStats(null);
+        setStats({
+          sessionId,
+          totalTokens: result.totalTokens,
+          // Historical sessions don't carry per-chunk citations; they arrive via
+          // the SignalR TutorComplete event during streaming.
+          citations: undefined,
+        });
       })
       .catch(() => {
-        setError("Failed to load session.");
+        if (!cancelled) setError("Failed to load session.");
       });
+    return () => {
+      cancelled = true;
+    };
   }, [sessionId]);
 
   useEffect(() => {
@@ -137,43 +165,41 @@ export default function TutorChat({
     const q = question.trim();
     if (!q || busy) return;
 
-    // Set busy immediately to prevent double-click race
     setStatus("connecting");
     setError("");
     setAnswer("");
     setStats(null);
+    // Scope this token stream to the current session so tokens never bleed
+    // into another session's answer.
+    streamSessionRef.current = sessionId;
 
     try {
       const conn = getTutorConnection();
 
-      // Re-register handlers each ask so tokens never append twice.
       conn.off("TutorToken");
       conn.off("TutorComplete");
       conn.off("TutorError");
 
       conn.on("TutorToken", (token: string) => {
+        // Ignore tokens that don't belong to the current session. A null
+        // sessionId means a brand-new session is being created, so tokens are
+        // allowed until TutorComplete assigns the real session id.
+        if (sessionId !== null && sessionId !== streamSessionRef.current) return;
         setStatus("streaming");
         setAnswer((prev) => prev + token);
       });
       conn.on("TutorComplete", (payload: TutorCompletePayload) => {
-        setStats({ sessionId: payload.sessionId, totalTokens: payload.totalTokens });
+        setStats({
+          sessionId: payload.sessionId,
+          totalTokens: payload.totalTokens,
+          citations: payload.citations,
+        });
 
-        // Capture new session ID (for first message in a new session)
         if (payload.sessionId && payload.sessionId !== sessionId) {
+          justCreatedRef.current = payload.sessionId;
           setSessionId(payload.sessionId);
           onSessionChange?.(payload.sessionId);
         }
-
-        // Append assistant message with citations to message history
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now().toString(),
-            role: "assistant",
-            content: answer,
-            citations: payload.citations,
-          },
-        ]);
 
         setStatus("done");
       });
@@ -185,7 +211,9 @@ export default function TutorChat({
       if (conn.state !== "Connected") {
         await conn.start();
       }
-      await conn.invoke("AskTutor", sessionId ?? "", q);
+      // The hub signature is AskTutor(conceptId, question). Pass the selected
+      // concept, not the session ID (a session ID is not a valid concept Guid).
+      await conn.invoke("AskTutor", selectedConcept ?? "", q);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setStatus("error");
@@ -194,12 +222,9 @@ export default function TutorChat({
 
   const handleNewSession = () => {
     setSessionId(null);
-    setTimeout(() => {
-      setMessages([]);
-      setAnswer("");
-      setError("");
-      setStats(null);
-    }, 0);
+    setAnswer("");
+    setError("");
+    setStats(null);
     setQuestion("");
     onSessionChange?.(null);
   };

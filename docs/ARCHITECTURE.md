@@ -206,3 +206,8 @@ VoxMentor uses a **modular monolith + 3 microservices + YARP API Gateway** archi
 **Decision**: Seed four roles — `Student`, `ContentAdmin`, `PlatformAdmin`, `SuperAdmin` — and gate with named policies (`ManageContent`, `ManagePlatform`, `ManageRoles`). Only SuperAdmin may add/remove/change admin roles. Issue [#82](https://github.com/VoxMentor/VoxMentor/issues/82).
 **Rationale**: Content ops (question bank) and platform ops/support (Hangfire, health, plagiarism, audit) need separate least-privilege grants. JWT already emits multi-role claims (`JwtTokenGenerator`). SuperAdmin-only role management avoids privilege escalation.
 **Tradeoff**: More policies and seed data than a single `Admin` string; legacy `Admin` migration is out of band (requester). Permission-claim claims deferred until admin types exceed ~4–5.
+
+### ADR-012: OpenTelemetry (Not a Vendor APM SDK)
+**Decision**: Instrument the API, the gateway and the voice service with OpenTelemetry and export the spans over OTLP to a collector. Issue [#154](https://github.com/VoxMentor/VoxMentor/issues/154).
+**Rationale**: One request crosses the gateway, the API and the Python voice service; a single trace id is the only way to see where it stalled. OpenTelemetry is vendor-neutral, so the collector can feed any backend later, and the SDKs match across .NET and Python.
+**Tradeoff**: Six NuGet packages, four Python packages and a collector container in local dev. The exporter is off until an endpoint is set, so the running cost is zero until someone asks for traces. See [docs/tracing.md](tracing.md).

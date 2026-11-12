@@ -129,6 +129,18 @@ export interface ReadinessProfile {
   estimatedWeeksToReady: number;
 }
 
+export interface TutorSessionSummaryDto {
+  sessionId: string;
+  conceptId: string | null;
+  question: string;
+  status: TutorSessionStatus;
+  totalTokens: number;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export type TutorSessionStatus = "Pending" | "Streaming" | "Completed" | "Failed";
+
 // --- JD intelligence (#121): POST /v1/jd/upload, GET /v1/jd/{jdId} ---
 
 export interface JdUploadResult {
@@ -234,7 +246,7 @@ export interface DimensionScore {
 
 export interface ComplexityScore {
   bigO: string;
-  isOptimal: boolean;
+  isOptimal: boolean | null;
   feedback?: string;
 }
 
@@ -247,7 +259,7 @@ export interface CodeEvaluation {
 
 export interface SubmitCodeResult {
   submissionId: string;
-  status: string;
+  status?: string;
   isCorrect: boolean | null;
   testCasesPassed: number;
   testCasesTotal: number;
@@ -283,9 +295,15 @@ export interface TutorMessage {
   citations?: Citation[];
 }
 
-export interface TutorSessionDetail {
+export interface TutorSessionDto {
   sessionId: string;
-  messages: TutorMessage[];
+  conceptId: string | null;
+  question: string;
+  answer: string | null;
+  status: TutorSessionStatus;
+  totalTokens: number;
+  createdAt: string;
+  completedAt: string | null;
 }
 
 export interface TutorAskRequest {
@@ -305,73 +323,34 @@ export interface TutorSessionsResult {
 }
 
 export interface TutorSessionDetailResult {
-  session: TutorSessionDetail;
+  session: TutorSessionDto;
 }
 
 // --- Admin tutor sessions (#108) ---
 
 export interface AdminTutorSession {
-  sessionId: string;
+  id: string;
   userId: string;
-  userName?: string;
-  title: string;
+  userEmail: string | null;
+  conceptId: string | null;
+  question: string;
+  status: TutorSessionStatus;
+  totalTokens: number;
   createdAt: string;
-  updatedAt: string;
-  questionCount: number;
+  completedAt: string | null;
 }
 
 export interface AdminTutorSessionDetail {
-  sessionId: string;
+  id: string;
   userId: string;
-  userName?: string;
-  messages: TutorMessage[];
+  userEmail: string | null;
+  conceptId: string | null;
+  question: string;
+  answer: string | null;
+  status: TutorSessionStatus;
+  totalTokens: number;
   createdAt: string;
-  updatedAt: string;
-}
-
-export interface AdminTutorSessionsResult {
-  sessions: AdminTutorSession[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
-
-export interface AdminTutorSessionDetailResult {
-  session: AdminTutorSessionDetail;
-}
-
-// --- Admin plagiarism review (#107) ---
-
-export interface AdminPlagiarismSubmission {
-  submissionId: string;
-  userId: string;
-  userName?: string;
-  title: string;
-  similarityScore: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface AdminPlagiarismSubmissionDetail {
-  submissionId: string;
-  userId: string;
-  userName?: string;
-  title: string;
-  similarityScore: number;
-  comparison: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface AdminPlagiarismSessionsResult {
-  submissions: AdminPlagiarismSubmission[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
-
-export interface AdminPlagiarismSessionDetailResult {
-  session: AdminPlagiarismSubmissionDetail;
+  completedAt: string | null;
 }
 
 export interface AdminUser {
@@ -379,6 +358,17 @@ export interface AdminUser {
   email: string | null;
   fullName: string;
   roles: string[];
+}
+
+export interface AuditLog {
+  id: number;
+  userId: string | null;
+  action: string;
+  entity: string;
+  entityId: string | null;
+  oldValues: string | null;
+  newValues: string | null;
+  createdAt: string;
 }
 
 // --- Admin question bank (#103): GET/POST /v1/admin/questions, ManageContent policy ---
@@ -440,6 +430,70 @@ export interface TextbookJob {
   completedAt: string | null;
 }
 
+// --- Mock interviews (#129): the REST half of the page. Start/answer stream
+// over the hub; complete/review/history are plain REST calls. ---
+
+export interface MockInterviewStartResult {
+  interviewId: string;
+  questionId: string;
+  type: string;
+  status: string;
+  duration: number;
+  startedAt: string;
+  openingMessage: string;
+}
+
+export interface MockInterviewAnswerResult {
+  interviewerMessage: string;
+  turnNumber: number;
+  interviewOngoing: boolean;
+  /** The problem the interview is now on; null once the last one is answered. */
+  questionId: string | null;
+}
+
+export interface MockProblemReview {
+  solved: boolean;
+  complexity: string;
+  feedback: string;
+}
+
+export interface MockReadinessDelta {
+  before: number;
+  after: number;
+  delta: number;
+}
+
+export interface MockInterviewReview {
+  score: number;
+  type: string;
+  /** Problem id → the model's verdict on that problem. */
+  technicalReview: Record<string, MockProblemReview>;
+  readinessDelta: MockReadinessDelta;
+  nextSteps: string;
+}
+
+export interface MockInterviewReviewDetail {
+  interviewId: string;
+  status: string;
+  score: number;
+  review: MockInterviewReview;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+export interface MockInterviewHistoryItem {
+  interviewId: string;
+  type: string;
+  status: string;
+  /** Null until the interview is completed. */
+  score: number | null;
+  date: string;
+}
+
+export interface MockInterviewHistory {
+  interviews: MockInterviewHistoryItem[];
+}
+
 export const api = {
   register: (data: RegisterRequest) =>
     request<RegisterResponse>("/v1/auth/register", {
@@ -458,9 +512,15 @@ export const api = {
   logout: () =>
     request<object>("/v1/auth/logout", { method: "POST" }),
 
-  mastery: () => request<MasteryProfile>("/v1/student/mastery"),
+  mastery: (options?: { signal?: AbortSignal }) =>
+    request<MasteryProfile>("/v1/student/mastery", {
+      signal: options?.signal,
+    }),
 
   readiness: () => request<ReadinessProfile>("/v1/student/readiness"),
+
+  tutorSessions: (limit = 10) =>
+    request<TutorSessionSummaryDto[]>(`/v1/tutor/sessions?limit=${encodeURIComponent(String(limit))}`),
 
   // --- JD intelligence (#121) ---
   jdUpload: (rawText: string) =>
@@ -472,13 +532,14 @@ export const api = {
   jd: (id: string) => request<JdDetail>(`/v1/jd/${encodeURIComponent(id)}`),
 
   submissions: (limit = 10) =>
-    request<SubmissionItem[]>(`/v1/student/submissions?limit=${limit}`),
+    request<SubmissionItem[]>(`/v1/student/submissions?limit=${encodeURIComponent(String(limit))}`),
 
   questions: (params: {
     conceptId?: string;
     difficulty?: number;
     page?: number;
     pageSize?: number;
+    signal?: AbortSignal;
   } = {}) => {
     const q = new URLSearchParams();
     if (params.conceptId) q.set("conceptId", params.conceptId);
@@ -486,24 +547,24 @@ export const api = {
     if (params.page) q.set("page", String(params.page));
     if (params.pageSize) q.set("pageSize", String(params.pageSize));
     const qs = q.toString();
-    return request<QuestionListResult>(`/v1/questions${qs ? `?${qs}` : ""}`);
+    return request<QuestionListResult>(`/v1/questions${qs ? `?${qs}` : ""}`, {
+      signal: params.signal,
+    });
   },
 
   question: (id: string) => request<QuestionDetail>(`/v1/questions/${encodeURIComponent(id)}`),
 
   // --- Code submission (#33): POST /v1/student/submit-code ---
-  submitCode: (input: SubmitCodeRequest) =>
+  submitCode: (input: SubmitCodeRequest, options?: { signal?: AbortSignal }) =>
     request<SubmitCodeResult>("/v1/student/submit-code", {
       method: "POST",
       body: JSON.stringify(input),
+      signal: options?.signal,
     }),
 
   // --- Tutor chat (#74) ---
-  tutorSessions: () =>
-    request<TutorSessionsResult>("/v1/tutor/sessions", { method: "GET" }),
-
   tutorSession: (id: string) =>
-    request<TutorSessionDetailResult>(
+    request<TutorSessionDto>(
       `/v1/tutor/sessions/${encodeURIComponent(id)}`
     ),
 
@@ -515,7 +576,10 @@ export const api = {
 
   // --- admin (#105): SuperAdmin-only via ManageRoles policy; 401/403 enforced server-side ---
   adminUsers: (page = 1, pageSize = 50) =>
-    request<AdminUser[]>(`/v1/admin/users?page=${page}&pageSize=${pageSize}`),
+    request<AdminUser[]>(`/v1/admin/users?page=${encodeURIComponent(String(page))}&pageSize=${encodeURIComponent(String(pageSize))}`),
+
+  adminAuditLogs: (page = 1, pageSize = 50) =>
+    request<AuditLog[]>(`/v1/admin/audit-logs?page=${encodeURIComponent(String(page))}&pageSize=${encodeURIComponent(String(pageSize))}`),
 
   adminRoles: () => request<string[]>("/v1/admin/roles"),
 
@@ -533,7 +597,7 @@ export const api = {
 
   // --- admin questions (#103): ContentAdmin + SuperAdmin via ManageContent policy ---
   adminQuestions: (page = 1, pageSize = 20) =>
-    request<AdminQuestionListResult>(`/v1/admin/questions?page=${page}&pageSize=${pageSize}`),
+    request<AdminQuestionListResult>(`/v1/admin/questions?page=${encodeURIComponent(String(page))}&pageSize=${encodeURIComponent(String(pageSize))}`),
 
   adminCreateQuestion: (input: CreateAdminQuestionInput) =>
     request<AdminQuestionCreated>("/v1/admin/questions", {
@@ -555,24 +619,32 @@ export const api = {
 
   // --- Admin tutor sessions (#108) ---
   adminTutorSessions: (page = 1, pageSize = 20) =>
-    request<AdminTutorSessionsResult>(
+    request<AdminTutorSession[]>(
       `/v1/admin/tutor/sessions?page=${page}&pageSize=${pageSize}`
     ),
 
   adminTutorSession: (id: string) =>
-    request<AdminTutorSessionDetailResult>(
+    request<AdminTutorSessionDetail>(
       `/v1/admin/tutor/sessions/${encodeURIComponent(id)}`
     ),
 
-  // --- Admin plagiarism review (#107) ---
-  adminPlagiarismSessions: (page = 1, pageSize = 20) =>
-    request<AdminPlagiarismSessionsResult>(
-      `/v1/admin/plagiarism/submissions?page=${page}&pageSize=${pageSize}`
+  // --- Mock interviews (#129) ---
+  // Start and answer stream over the interview hub; these three are the plain
+  // REST calls the page needs on top of it.
+  mockComplete: (interviewId: string) =>
+    request<MockInterviewReview>(
+      `/v1/mock/${encodeURIComponent(interviewId)}/complete`,
+      { method: "POST", body: JSON.stringify({}) }
     ),
 
-  adminPlagiarismSession: (id: string) =>
-    request<AdminPlagiarismSessionDetailResult>(
-      `/v1/admin/plagiarism/submissions/${encodeURIComponent(id)}`
+  mockReview: (interviewId: string) =>
+    request<MockInterviewReviewDetail>(
+      `/v1/mock/${encodeURIComponent(interviewId)}/review`
+    ),
+
+  mockHistory: (page = 1, pageSize = 20) =>
+    request<MockInterviewHistory>(
+      `/v1/mock/history?page=${page}&pageSize=${pageSize}`
     ),
 };
 

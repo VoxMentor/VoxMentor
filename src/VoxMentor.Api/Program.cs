@@ -1,8 +1,11 @@
 using System.Diagnostics;
+using System.Linq;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using VoxMentor.Api.Authorization;
 using VoxMentor.Api.Hubs;
 using VoxMentor.Api.Middleware;
@@ -16,7 +19,16 @@ using VoxMentor.Infrastructure.Jobs;
 using VoxMentor.Infrastructure.Persistence.Seeders;
 using VoxMentor.Infrastructure.Services;
 
-var builder = WebApplication.CreateBuilder(args);
+// Remove --seed-demo CLI arg (bare or --seed-demo=value form) from args before
+// building configuration so it isn't misinterpreted by the command-line provider
+// (e.g. consumed as a value for --urls that follows it). We handle it ourselves
+// via ParseSeedDemoArg.
+var filteredArgs = args.Where(a =>
+    !a.Equals("--seed-demo", StringComparison.OrdinalIgnoreCase)
+    && !a.StartsWith("--seed-demo=", StringComparison.OrdinalIgnoreCase)
+).ToArray();
+
+var builder = WebApplication.CreateBuilder(filteredArgs);
 
 // Add Layer Dependencies
 builder.Services.AddApplicationServices();
@@ -79,6 +91,48 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c => c.CustomSchemaIds(x => x.FullName));
 
 builder.Services.AddSignalR();
+
+// OpenTelemetry distributed tracing (#154). Zero-config: with no exporter
+// configured the provider still records spans but drops them, so a missing
+// collector can never degrade or crash the API.
+//   OTEL_TRACES_EXPORTER=console  -> print the spans to stdout (local dev)
+//   OTEL_EXPORTER_OTLP_ENDPOINT   -> export over OTLP to the collector
+//   OTEL_SERVICE_NAME             -> service.name carried on every span
+// The OTLP exporter reads OTEL_EXPORTER_OTLP_ENDPOINT (and the protocol,
+// headers and timeout siblings) from the environment itself.
+var otelExporter = (builder.Configuration["OTEL_TRACES_EXPORTER"] ?? string.Empty).Trim().ToLowerInvariant();
+var otelEndpoint = (builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"] ?? string.Empty).Trim();
+// Trim before falling back: an OTEL_SERVICE_NAME of "" or "   " would reach
+// AddService as an empty string, which OpenTelemetry rejects at startup.
+var otelServiceName = (builder.Configuration["OTEL_SERVICE_NAME"] ?? string.Empty).Trim();
+if (otelServiceName.Length == 0) otelServiceName = "voxmentor-api";
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService(otelServiceName))
+    .WithTracing(tracing =>
+    {
+        tracing
+            .AddAspNetCoreInstrumentation()
+            .AddEntityFrameworkCoreInstrumentation()
+            .AddHttpClientInstrumentation();
+
+        if (otelExporter == "console")
+        {
+            tracing.AddConsoleExporter();
+        }
+        else if (otelExporter != "none" && otelEndpoint.Length > 0)
+        {
+            var otelProtocol = (builder.Configuration["OTEL_EXPORTER_OTLP_PROTOCOL"] ?? string.Empty).Trim().ToLowerInvariant();
+            // HTTP/protobuf requires /v1/traces path; gRPC does not.
+            // Use UriBuilder to append path correctly, preserving query params.
+            if (otelProtocol == "http/protobuf" && !otelEndpoint.EndsWith("/v1/traces", StringComparison.OrdinalIgnoreCase))
+            {
+                var builder = new UriBuilder(otelEndpoint);
+                builder.Path = builder.Path.TrimEnd('/') + "/v1/traces";
+                otelEndpoint = builder.Uri.ToString();
+            }
+            tracing.AddOtlpExporter(o => o.Endpoint = new Uri(otelEndpoint));
+        }
+    });
 
 // Overrides the NullMasteryEventPublisher from Infrastructure so BKT updates
 // reach /hubs/mastery (#73).
@@ -161,6 +215,19 @@ using (var scope = app.Services.CreateScope())
         }
     }
     await RoleSeeder.SeedRolesAsync(services);
+    // Demo seed runs only in Development — prod safety can't rely on config
+    // discipline alone (Seed:Demo could leak into production env vars).
+    if (builder.Environment.IsDevelopment())
+    {
+        // Parse --seed-demo CLI arg only in Development; ignored in Production.
+        // Accepts bare --seed-demo, --seed-demo=true/1/yes/on, --seed-demo=false/0/no/off.
+        var seedDemoValue = ParseSeedDemoArg(args);
+        if (seedDemoValue.HasValue)
+        {
+            builder.Configuration["Seed:Demo"] = seedDemoValue.Value ? "true" : "false";
+        }
+        await DemoSeeder.SeedDemoDataAsync(services, builder.Configuration);
+    }
 }
 
 // Configure HTTP request pipeline
@@ -247,5 +314,30 @@ app.MapHub<MasteryHub>("/hubs/mastery");
 app.MapHub<InterviewHub>("/hubs/interview");
 
 app.Run();
+
+/// <summary>
+/// Parses the --seed-demo CLI argument.
+/// Accepts bare --seed-demo (true), --seed-demo=true/1/yes/on (true),
+/// --seed-demo=false/0/no/off (false). Returns null when not present.
+/// </summary>
+static bool? ParseSeedDemoArg(string[] args)
+{
+    for (var i = 0; i < args.Length; i++)
+    {
+        var arg = args[i];
+        if (!arg.StartsWith("--seed-demo", StringComparison.OrdinalIgnoreCase))
+            continue;
+        if (arg.Length == "--seed-demo".Length)
+            return true; // bare flag
+        if (arg["--seed-demo".Length] != '=')
+            continue; // not a value form
+        var value = arg.AsSpan("--seed-demo".Length + 1).Trim();
+        return value.Equals("true", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("1", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("yes", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("on", StringComparison.OrdinalIgnoreCase);
+    }
+    return null;
+}
 
 public partial class Program { }

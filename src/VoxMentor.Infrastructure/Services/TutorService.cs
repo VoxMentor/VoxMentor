@@ -165,10 +165,26 @@ public class TutorService : ITutorService
             throw new InvalidOperationException("Tutor service temporarily unavailable.");
         }
 
+        var citations = chunks
+            .Select((c, i) => new Citation(
+                c.Source,
+                c.Content,
+                Math.Clamp(1.0 - (c.Distance ?? 0), 0, 1)))
+            .ToArray();
+
         await using var body = await response.Content.ReadAsStreamAsync(timeoutCts.Token);
         await foreach (var chunk in ReadStreamAsync(body, timeoutCts.Token))
         {
-            yield return chunk;
+            // Attach the retrieved sources to the final chunk so the hub can
+            // forward them to the client as citations.
+            if (chunk.IsFinal)
+            {
+                yield return chunk with { Citations = citations };
+            }
+            else
+            {
+                yield return chunk;
+            }
         }
     }
 

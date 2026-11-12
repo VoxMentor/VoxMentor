@@ -10,6 +10,17 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <!-- OpenTelemetry distributed tracing (#154). The exporter is picked from
+         the environment (OTEL_TRACES_EXPORTER / OTEL_EXPORTER_OTLP_ENDPOINT);
+         with none set the provider records spans and drops them. -->
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.20.1" />
+    <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.20.1" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.20.1" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.20.2" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.20.2" />
+    <!-- EF Core instrumentation is still prerelease upstream; it is the only
+         EF Core tracer the OTel project ships. -->
+    <PackageReference Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.20.2-beta.1" />
   </ItemGroup>
 
   <ItemGroup>

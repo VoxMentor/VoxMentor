@@ -71,7 +71,7 @@ public class InterviewHub : Hub
         {
             if (!Guid.TryParse(jdId, out var id))
             {
-                await SendError(null, $"Invalid jdId '{jdId}'.");
+                await SendError(null, $"Invalid jdId '{jdId}'.", includeId: true);
                 return null;
             }
             parsedJdId = id;
@@ -134,7 +134,7 @@ public class InterviewHub : Hub
 
         if (!Guid.TryParse(interviewId, out var id))
         {
-            await SendError(null, $"Invalid interviewId '{interviewId}'.");
+            await SendError(null, $"Invalid interviewId '{interviewId}'.", includeId: true);
             return null;
         }
 
@@ -147,7 +147,7 @@ public class InterviewHub : Hub
         var validation = await _answerValidator.ValidateAsync(command, cancellationToken);
         if (!validation.IsValid)
         {
-            await SendError(id, string.Join(" ", validation.Errors.Select(e => e.ErrorMessage)));
+            await SendError(id, string.Join(" ", validation.Errors.Select(e => e.ErrorMessage)), includeId: true);
             return null;
         }
 
@@ -191,7 +191,7 @@ public class InterviewHub : Hub
 
         if (!Guid.TryParse(interviewId, out var id))
         {
-            await SendError(null, $"Invalid interviewId '{interviewId}'.");
+            await SendError(null, $"Invalid interviewId '{interviewId}'.", includeId: true);
             return;
         }
 
@@ -237,12 +237,17 @@ public class InterviewHub : Hub
         }
     }
 
-    /// <summary>Sends an InterviewError event to the caller, ignoring a disconnected client.</summary>
-    private async Task SendError(Guid? interviewId, string message)
+    /// <summary>Sends an InterviewError event to the caller, ignoring a disconnected client.
+    /// Does not include interviewId for not-found/unauthorized errors to prevent enumeration.
+    /// </summary>
+    private async Task SendError(Guid? interviewId, string message, bool includeId = false)
     {
         try
         {
-            await Clients.Caller.SendAsync("InterviewError", new { interviewId, message });
+            if (includeId && interviewId.HasValue)
+                await Clients.Caller.SendAsync("InterviewError", new { interviewId, message });
+            else
+                await Clients.Caller.SendAsync("InterviewError", new { message });
         }
         catch
         {

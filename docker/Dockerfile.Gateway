@@ -4,6 +4,10 @@ EXPOSE 8080
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
+# Directory.Build.props carries TargetFramework/ImplicitUsings/Nullable for
+# every project outside the slnx. It has to sit above the project directory
+# for MSBuild to pick it up, so copy it before the restore.
+COPY Directory.Build.props ./
 COPY src/VoxMentor.Gateway/VoxMentor.Gateway.csproj src/VoxMentor.Gateway/
 RUN dotnet restore src/VoxMentor.Gateway/VoxMentor.Gateway.csproj
 COPY src/VoxMentor.Gateway/ src/VoxMentor.Gateway/
