@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenTelemetry;
 using OpenTelemetry.Trace;
@@ -27,49 +28,22 @@ public class TracingWebApplicationFactory : CustomWebApplicationFactory
 
     public TracingWebApplicationFactory()
     {
-        // Test-only OTEL settings (#154): a developer's exported
-        // OTEL_SERVICE_NAME would break the fixed service-name assertion, and
-        // an exported endpoint/exporter would make these tests depend on a
-        // running collector. Clearing them before the host starts keeps the
-        // zero-config path under test regardless of the shell (CodeRabbit #176).
-        // OTEL_SDK_DISABLED / OTEL_TRACES_SAMPLER also stop spans being
-        // recorded, so a shell that sets either would fail the assertions.
-        // The originals are saved below and restored in Dispose so this
-        // fixture never leaks cleared variables into the rest of the process.
-        _originalOtelEnv = new Dictionary<string, string?>();
-        foreach (var v in OtelEnvVars)
-        {
-            _originalOtelEnv[v] = Environment.GetEnvironmentVariable(v);
-            Environment.SetEnvironmentVariable(v, null);
-        }
-
         Exporter = new LockingExporter(Exported, ExportedLock);
-    }
-
-    private static readonly string[] OtelEnvVars = {
-        "OTEL_SERVICE_NAME",
-        "OTEL_TRACES_EXPORTER",
-        "OTEL_EXPORTER_OTLP_ENDPOINT",
-        "OTEL_SDK_DISABLED",
-        "OTEL_TRACES_SAMPLER",
-        "OTEL_TRACES_SAMPLER_ARG",
-    };
-    private readonly Dictionary<string, string?> _originalOtelEnv;
-
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing)
-        {
-            // Restore the process environment exactly as we found it.
-            foreach (var kv in _originalOtelEnv)
-                Environment.SetEnvironmentVariable(kv.Key, kv.Value);
-        }
-        base.Dispose(disposing);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
+        // Override OTEL_SERVICE_NAME in config so the service-name assertion
+        // passes regardless of shell env (env vars are process-global, so
+        // clearing them here would leak into parallel test collections).
+        builder.ConfigureAppConfiguration((context, config) =>
+        {
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["OTEL_SERVICE_NAME"] = "voxmentor-api",
+            });
+        });
         builder.ConfigureTestServices(services =>
         {
             // SimpleActivityExportProcessor exports on span end, so a test does
