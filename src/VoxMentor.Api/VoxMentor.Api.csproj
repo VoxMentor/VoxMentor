@@ -29,6 +29,8 @@
   </ItemGroup>
 
   <PropertyGroup>
+    <!-- Enables `dotnet user-secrets` on a fresh checkout (SETUP.md Step 4). -->
+    <UserSecretsId>1f3b6e0a-6c1d-4d3e-9b52-3c3f1a6c9e11</UserSecretsId>
     <!-- Opt in to the shared worker copy targets (see Directory.Build.targets). -->
     <CopyPdfExtractorWorker>true</CopyPdfExtractorWorker>
     <CopyPdfExtractorWorkerToPublish>true</CopyPdfExtractorWorkerToPublish>

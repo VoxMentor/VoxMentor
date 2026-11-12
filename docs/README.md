@@ -107,8 +107,7 @@ docker compose up -d
 docker compose exec ollama ollama pull llama3.2:3b
 docker compose exec ollama ollama pull nomic-embed-text
 
-# 3. Initialize database
-bash scripts/init-db.sh
+# 3. Configure Supabase, enable pgvector and run migrations (SETUP.md Step 4)
 
 # 4. Run backend
 dotnet run --project src/VoxMentor.Api
