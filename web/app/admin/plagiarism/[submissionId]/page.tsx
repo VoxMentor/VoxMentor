@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -47,6 +47,13 @@ export default function AdminPlagiarismSubmissionPage({
     useState<AdminPlagiarismSubmissionDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Retry requests are not tied to the effect's controller, so track them
+  // separately: abort on unmount so a late me() can't overwrite shared auth.
+  const retryController = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => retryController.current?.abort();
+  }, []);
 
   const loadSubmission = useCallback(
     (signal?: AbortSignal) => {
@@ -138,7 +145,9 @@ export default function AdminPlagiarismSubmissionPage({
         <FetchError
           message={error || "Submission not found."}
           onRetry={() => {
+            retryController.current?.abort();
             const controller = new AbortController();
+            retryController.current = controller;
             loadSubmission(controller.signal);
           }}
         />
