@@ -41,6 +41,9 @@ export default function InterviewHistory({
   // Bumped whenever the first page reloads, so a Load more response that
   // straddles a refresh cannot append a stale page (duplicate rows).
   const generationRef = useRef(0);
+  // True while the component is mounted; guards setState after unmount in
+  // the async loadMore flow.
+  const isMountedRef = useRef(true);
 
   // First page (or a refresh after a new interview): replace the list and
   // work out whether more pages exist - a full page means there probably is.
@@ -67,6 +70,13 @@ export default function InterviewHistory({
     };
   }, [attempt, refreshKey]);
 
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   /**
    * Appends the next page to the list; without it everything past the
    * newest 20 interviews would be unreachable (CodeRabbit #176).
@@ -78,15 +88,17 @@ export default function InterviewHistory({
     setLoadMoreError(null);
     try {
       const res = await api.mockHistory(page + 1, PAGE_SIZE);
-      if (generation !== generationRef.current) return;
+      if (!isMountedRef.current || generation !== generationRef.current) return;
       const rows = res.interviews ?? [];
       setItems((prev) => [...(prev ?? []), ...rows]);
       setPage((p) => p + 1);
       setHasMore(rows.length === PAGE_SIZE);
     } catch {
+      if (!isMountedRef.current) return;
       setLoadMoreError("Could not load more interviews.");
       // keep what is already listed; the button stays for a retry
     } finally {
+      if (!isMountedRef.current) return;
       setLoadingMore(false);
     }
   };

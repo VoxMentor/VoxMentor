@@ -14,6 +14,7 @@ first calls ever matter; they don't yet (Week 5 owns the voice interview flow).
 
 from __future__ import annotations
 
+import atexit
 import glob
 import io
 import logging
@@ -194,12 +195,20 @@ def configure_tracing(app: FastAPI) -> None:
 
     endpoint = (os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or "").strip()
     if endpoint:
-        # The exporter reads OTEL_EXPORTER_OTLP_* (endpoint, protocol, headers)
-        # from the environment itself.
-        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+        # OTLP HTTP receiver serves /v1/traces; append the path when using
+        # http/protobuf so spans are not 404'd by the collector (mirrors the
+        # .NET services' handling).
+        protocol = (os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL") or "http/protobuf").strip()
+        if protocol == "http/protobuf" and not endpoint.endswith("/v1/traces"):
+            endpoint = endpoint.rstrip("/") + "/v1/traces"
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
 
     trace.set_tracer_provider(provider)
     FastAPIInstrumentor.instrument_app(app)
+
+    # Flush pending spans on process exit so the last request's spans are not
+    # lost when the container stops.
+    atexit.register(lambda: provider.force_flush(timeout_millis=5_000))
 
 
 configure_tracing(app)

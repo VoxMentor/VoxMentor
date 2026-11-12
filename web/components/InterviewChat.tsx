@@ -290,6 +290,10 @@ export default function InterviewChat({
       return;
     }
 
+    // A resume request made while a previous action was busy must not clobber
+    // the interview we are about to start (CodeRabbit #176).
+    pendingResumeRef.current = null;
+
     setError(null);
     hubErrorRef.current = null;
     // Increment action ID to correlate this action's InterviewError handler
@@ -386,6 +390,9 @@ export default function InterviewChat({
     setError(null);
     hubErrorRef.current = null;
     const thisActionId = ++actionIdRef.current;
+    // A resume request made while answering must not clobber the interview
+    // we are actively answering (CodeRabbit #176).
+    pendingResumeRef.current = null;
     // Optimistic candidate turn; rolled back unless the server records it.
     const candidateTurnId = ++turnIdRef.current;
     streamingTurnRef.current = candidateTurnId;
@@ -401,6 +408,8 @@ export default function InterviewChat({
     let serverRecorded = false;
     // Interviewer turn opened for this answer; rolled back on failure.
     let interviewerTurnId = -1;
+    // Whether any interviewer token arrived for the interviewer turn.
+    let interviewerTurnGotToken = false;
     try {
       conn = getInterviewConnection();
       ensureCloseRegistered(conn);
@@ -413,6 +422,7 @@ export default function InterviewChat({
       conn.on("InterviewerMessage", (token: string) => {
         const target = streamingTurnRef.current;
         if (target === null) return;
+        if (target === interviewerTurnId) interviewerTurnGotToken = true;
         setTurns((prev) => appendToken(prev, target, token));
         if (statusRef.current !== "streaming") updateStatus("streaming");
       });
@@ -450,6 +460,11 @@ export default function InterviewChat({
       serverRecorded = true;
       setOngoing(result.interviewOngoing);
       setAnswer("");
+      // The interviewer turn opened optimistically stays only if tokens
+      // streamed into it; otherwise drop the empty bubble.
+      if (!interviewerTurnGotToken && interviewerTurnId !== -1) {
+        setTurns((prev) => dropEmptyTurn(prev, interviewerTurnId));
+      }
       updateStatus("ready");
     } catch (e) {
       const isCurrent = actionIdRef.current === thisActionId;
