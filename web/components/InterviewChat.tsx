@@ -337,6 +337,8 @@ export default function InterviewChat({
             return;
           }
           const message = payload.message || "The interview failed.";
+          // Late tokens from a dead stream must not land in the next turn.
+          streamingTurnRef.current = null;
           hubErrorRef.current = message;
           setError(message);
           updateStatus("error");
@@ -442,6 +444,8 @@ export default function InterviewChat({
           // into an interview the server refuses to extend.
           const message = payload.message || "The interview failed.";
           if (/already ended/i.test(message)) setOngoing(false);
+          // Late tokens from a dead stream must not land in the next turn.
+          streamingTurnRef.current = null;
           hubErrorRef.current = message;
           setError(message);
           updateStatus("error");

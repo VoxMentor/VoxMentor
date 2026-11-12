@@ -207,8 +207,9 @@ def configure_tracing(app: FastAPI) -> None:
     FastAPIInstrumentor.instrument_app(app)
 
     # Flush pending spans on process exit so the last request's spans are not
-    # lost when the container stops.
-    atexit.register(lambda: provider.force_flush(timeout_millis=5_000))
+    # lost when the container stops. Use shutdown() which flushes AND closes
+    # the exporter cleanly.
+    atexit.register(provider.shutdown)
 
 
 configure_tracing(app)
