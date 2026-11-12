@@ -247,8 +247,8 @@ private async Task SendError(Guid? sessionId, string message)
             // Log the full exception server-side; return a generic message.
             // Only the exact approved TutorService literal passes through so
             // the UI can show it (#74); anything else stays generic.
-            return ex.Message == "Tutor service temporarily unavailable."
-                ? "Tutor service temporarily unavailable."
+            return ex.Message == "Tutor is temporarily unavailable."
+                ? "Tutor is temporarily unavailable."
                 : "An error occurred while generating the response.";
         }
 }

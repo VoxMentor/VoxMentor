@@ -47,7 +47,7 @@ public class TutorServiceStreamTests
     {
         var ex = Assert.Throws<InvalidOperationException>(
             () => TutorService.ParseLine("""{"error":"model not found"}"""));
-        Assert.Equal("Tutor service temporarily unavailable.", ex.Message);
+        Assert.Equal("Tutor is temporarily unavailable.", ex.Message);
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public class TutorServiceStreamTests
             {
             }
         });
-        Assert.Equal("Tutor service temporarily unavailable.", ex.Message);
+        Assert.Equal("Tutor is temporarily unavailable.", ex.Message);
     }
 
     [Fact]

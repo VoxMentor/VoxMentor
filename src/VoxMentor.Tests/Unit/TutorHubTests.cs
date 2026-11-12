@@ -176,13 +176,13 @@ public class TutorHubTests
         // #74: the breaker/Ollama-down message is a safe literal — the client
         // must see it instead of the generic mask.
         var (hub, clients, db, _) = CreateHub(
-            new FakeTutorService { Throw = new InvalidOperationException("Tutor service temporarily unavailable.") });
+            new FakeTutorService { Throw = new InvalidOperationException("Tutor is temporarily unavailable.") });
 
         await hub.AskTutor("", "question?");
 
         var sent = clients.CallerProxy.Sent;
         var error = sent.Single(s => s.Method == "TutorError").Args[0]!;
-        Assert.Equal("Tutor service temporarily unavailable.",
+        Assert.Equal("Tutor is temporarily unavailable.",
             error.GetType().GetProperty("message")!.GetValue(error)!.ToString());
 
         var session = await db.TutorSessions.SingleAsync();

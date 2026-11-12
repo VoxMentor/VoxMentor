@@ -103,12 +103,12 @@ public class TutorSessionJobTests
 
         await CreateJob(db, new FakeTutorService
         {
-            Throw = new InvalidOperationException("Tutor service temporarily unavailable.")
+            Throw = new InvalidOperationException("Tutor is temporarily unavailable.")
         }).Execute(seeded.Id, CancellationToken.None);
 
         var session = await db.TutorSessions.IgnoreQueryFilters().SingleAsync(s => s.Id == seeded.Id);
         Assert.Equal(TutorSessionStatus.Failed, session.Status);
-        Assert.Equal("Tutor service temporarily unavailable.", session.Error);
+        Assert.Equal("Tutor is temporarily unavailable.", session.Error);
         Assert.NotNull(session.CompletedAt);
     }
 
