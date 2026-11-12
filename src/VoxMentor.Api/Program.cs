@@ -123,10 +123,12 @@ builder.Services.AddOpenTelemetry()
         {
             var otelProtocol = (builder.Configuration["OTEL_EXPORTER_OTLP_PROTOCOL"] ?? string.Empty).Trim().ToLowerInvariant();
             // HTTP/protobuf requires /v1/traces path; gRPC does not.
-            // If user provided HTTP endpoint without path, append it.
+            // Use UriBuilder to append path correctly, preserving query params.
             if (otelProtocol == "http/protobuf" && !otelEndpoint.EndsWith("/v1/traces", StringComparison.OrdinalIgnoreCase))
             {
-                otelEndpoint = otelEndpoint.TrimEnd('/') + "/v1/traces";
+                var builder = new UriBuilder(otelEndpoint);
+                builder.Path = builder.Path.TrimEnd('/') + "/v1/traces";
+                otelEndpoint = builder.Uri.ToString();
             }
             tracing.AddOtlpExporter(o => o.Endpoint = new Uri(otelEndpoint));
         }

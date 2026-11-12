@@ -41,7 +41,7 @@ const INVOKE_TIMEOUT_MS = 120_000;
  * starts fresh here.
  */
 const RESUMED_NOTE =
-  "Interview resumed. Earlier turns aren't shown here, so the transcript starts fresh — answer to continue with the next question, or finish the interview for your review.";
+  "Interview resumed. The previous question isn't shown here — if you remember it, answer to continue. Otherwise, finish the interview for your review.";
 
 /** Unwraps an ApiError/Error into user-facing text, with a generic fallback. */
 function errorMessage(e: unknown): string {
@@ -223,7 +223,7 @@ export default function InterviewChat({
     if (
       resumeRequest &&
       (!lastResumeRequestRef.current ||
-        resumeRequest.id !== lastResumeRequestRef.current.id)
+        resumeRequest !== lastResumeRequestRef.current)
     ) {
       pendingResumeRef.current = resumeRequest.id;
     }
@@ -357,11 +357,14 @@ export default function InterviewChat({
       setTurns((prev) => openingTurns(prev, openingId, result.openingMessage));
       updateStatus("ready");
     } catch (e) {
+      const isCurrent = actionIdRef.current === thisActionId;
       streamingTurnRef.current = null;
       // A stream that failed before the first token leaves an empty bubble.
       setTurns((prev) => dropEmptyTurn(prev, turnId));
-      setError(hubErrorRef.current ?? errorMessage(e));
-      updateStatus("error");
+      if (isCurrent) {
+        setError(hubErrorRef.current ?? errorMessage(e));
+        updateStatus("error");
+      }
       // The deadline won: the invoke keeps running server-side, so drop the
       // connection to stop its tokens reaching a later turn.
       if (e instanceof InvokeTimeoutError && conn) await stopAfterTimeout(conn);
@@ -449,14 +452,18 @@ export default function InterviewChat({
       setAnswer("");
       updateStatus("ready");
     } catch (e) {
+      const isCurrent = actionIdRef.current === thisActionId;
       streamingTurnRef.current = null;
       // Roll back unless the server recorded the answer: remove the
       // candidate turn and interviewer turn, leave the draft in the box for a retry.
       if (!serverRecorded) {
         setTurns((prev) => prev.filter((t) => t.id !== candidateTurnId && t.id !== interviewerTurnId));
+        setAnswer(message);
       }
-      setError(hubErrorRef.current ?? errorMessage(e));
-      updateStatus("error");
+      if (isCurrent) {
+        setError(hubErrorRef.current ?? errorMessage(e));
+        updateStatus("error");
+      }
       // The deadline won: the invoke keeps running server-side, so drop the
       // connection to stop its tokens reaching a later turn.
       if (e instanceof InvokeTimeoutError && conn) await stopAfterTimeout(conn);
