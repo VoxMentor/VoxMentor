@@ -45,7 +45,14 @@ builder.Services.AddOpenTelemetry()
         }
         else if (otelExporter != "none" && otelEndpoint.Length > 0)
         {
-            tracing.AddOtlpExporter();
+            var otelProtocol = (builder.Configuration["OTEL_EXPORTER_OTLP_PROTOCOL"] ?? string.Empty).Trim().ToLowerInvariant();
+            // HTTP/protobuf requires /v1/traces path; gRPC does not.
+            // If user provided HTTP endpoint without path, append it.
+            if (otelProtocol == "http/protobuf" && !otelEndpoint.EndsWith("/v1/traces", StringComparison.OrdinalIgnoreCase))
+            {
+                otelEndpoint = otelEndpoint.TrimEnd('/') + "/v1/traces";
+            }
+            tracing.AddOtlpExporter(o => o.Endpoint = new Uri(otelEndpoint));
         }
     });
 

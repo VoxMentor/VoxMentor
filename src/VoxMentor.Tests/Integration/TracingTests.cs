@@ -95,7 +95,9 @@ public class TracingWebApplicationFactory : CustomWebApplicationFactory
             _gate = gate;
         }
 
-        /// <summary>Appends one batch under the gate the readers also take.</summary>
+        /// <summary>Appends one batch under the gate the readers also take.
+        /// The lock protects both the enumeration and the list mutation.
+        /// </summary>
         public override ExportResult Export(in Batch<Activity> batch)
         {
             lock (_gate)

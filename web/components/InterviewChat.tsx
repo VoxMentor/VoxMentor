@@ -159,6 +159,9 @@ export default function InterviewChat({
   // the real reason and then returns null, so the generic "could not be
   // started" fallback must not replace it.
   const hubErrorRef = useRef<string | null>(null);
+  // Correlation ID for the action in flight; prevents a stale InterviewError
+  // from overwriting a newer action's error (CodeRabbit #176).
+  const actionIdRef = useRef(0);
   const turnIdRef = useRef(0);
   const statusRef = useRef<Status>("idle");
   const transcriptRef = useRef<HTMLDivElement | null>(null);
@@ -182,8 +185,10 @@ export default function InterviewChat({
   // current turn/interview via refs so they never close over stale state.
   // The disconnect handler is registered once per cached connection via
   // ensureCloseRegistered(); HubConnection.onclose has no off(), so
-  // re-registering per mount would pile up handlers.
+  // re-registering per mount would pile up handlers. Clean up per-action
+  // handlers on unmount to avoid leaking the handler to the next mount.
   useEffect(() => {
+    const conn = getInterviewConnection();
     closeHandler = (err) => {
       if (
         statusRef.current === "streaming" ||
@@ -193,8 +198,12 @@ export default function InterviewChat({
         updateStatus("error");
       }
     };
-    ensureCloseRegistered(getInterviewConnection());
-    // Handlers are registered per action below; nothing to clean here.
+    ensureCloseRegistered(conn);
+    return () => {
+      closeHandler = null;
+      conn.off("InterviewerMessage");
+      conn.off("InterviewError");
+    };
     // updateStatus is stable (useCallback [], []) and the module-level
     // helpers need no dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -277,12 +286,15 @@ export default function InterviewChat({
    * history list where it can be picked back up.
    */
   const startInterview = useCallback(async () => {
-    if (statusRef.current !== "idle" && statusRef.current !== "error" && statusRef.current !== "done") {
+    if (statusRef.current !== "idle" && statusRef.current !== "error" && statusRef.current !== "done" && statusRef.current !== "ready") {
       return;
     }
 
     setError(null);
     hubErrorRef.current = null;
+    // Increment action ID to correlate this action's InterviewError handler
+    // with its catch block, preventing a stale error from overwriting a newer action.
+    const thisActionId = ++actionIdRef.current;
     setReview(null);
     setTurns([]);
     setAnswer("");
@@ -312,6 +324,8 @@ export default function InterviewChat({
       conn.on(
         "InterviewError",
         (payload: { interviewId: string | null; message: string }) => {
+          // Only handle error if this action is still the current one
+          if (actionIdRef.current !== thisActionId) return;
           if (
             payload.interviewId &&
             payload.interviewId !== interviewIdRef.current
@@ -350,7 +364,7 @@ export default function InterviewChat({
       updateStatus("error");
       // The deadline won: the invoke keeps running server-side, so drop the
       // connection to stop its tokens reaching a later turn.
-      if (e instanceof InvokeTimeoutError && conn) void stopAfterTimeout(conn);
+      if (e instanceof InvokeTimeoutError && conn) await stopAfterTimeout(conn);
     }
   }, [jdId, type, openInterviewerTurn, updateStatus]);
 
@@ -368,6 +382,7 @@ export default function InterviewChat({
 
     setError(null);
     hubErrorRef.current = null;
+    const thisActionId = ++actionIdRef.current;
     // Optimistic candidate turn; rolled back unless the server records it.
     const candidateTurnId = ++turnIdRef.current;
     streamingTurnRef.current = candidateTurnId;
@@ -381,12 +396,14 @@ export default function InterviewChat({
     // True only when the hub returns a result, i.e. the server recorded the
     // candidate turn. InterviewError / null result means it did not.
     let serverRecorded = false;
+    // Interviewer turn opened for this answer; rolled back on failure.
+    let interviewerTurnId = -1;
     try {
       conn = getInterviewConnection();
       ensureCloseRegistered(conn);
       if (conn.state !== "Connected") await conn.start();
 
-      openInterviewerTurn();
+      interviewerTurnId = openInterviewerTurn();
 
       conn.off("InterviewerMessage");
       conn.off("InterviewError");
@@ -399,6 +416,8 @@ export default function InterviewChat({
       conn.on(
         "InterviewError",
         (payload: { interviewId: string | null; message: string }) => {
+          // Only handle error if this action is still the current one
+          if (actionIdRef.current !== thisActionId) return;
           if (
             payload.interviewId &&
             payload.interviewId !== interviewIdRef.current
@@ -432,15 +451,15 @@ export default function InterviewChat({
     } catch (e) {
       streamingTurnRef.current = null;
       // Roll back unless the server recorded the answer: remove the
-      // candidate turn and leave the draft in the box for a retry.
+      // candidate turn and interviewer turn, leave the draft in the box for a retry.
       if (!serverRecorded) {
-        setTurns((prev) => prev.filter((t) => t.id !== candidateTurnId));
+        setTurns((prev) => prev.filter((t) => t.id !== candidateTurnId && t.id !== interviewerTurnId));
       }
       setError(hubErrorRef.current ?? errorMessage(e));
       updateStatus("error");
       // The deadline won: the invoke keeps running server-side, so drop the
       // connection to stop its tokens reaching a later turn.
-      if (e instanceof InvokeTimeoutError && conn) void stopAfterTimeout(conn);
+      if (e instanceof InvokeTimeoutError && conn) await stopAfterTimeout(conn);
     }
   }, [answer, openInterviewerTurn, updateStatus]);
 

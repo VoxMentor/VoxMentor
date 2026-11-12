@@ -23,7 +23,7 @@ The exporter is chosen from the environment - nothing is enabled by default.
 | Variable | Meaning |
 |---|---|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Where to send the spans. Set it and the services export over OTLP. |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` (port 4318) or `grpc` (port 4317). The .NET services default to `grpc`; the voice service only speaks `http/protobuf` — it builds the HTTP exporter and ignores a `grpc` setting, so always point it at 4318. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` (port 4318) or `grpc` (port 4317). The .NET services default to `grpc`; the voice service only speaks `http/protobuf` — it builds the HTTP exporter and ignores a `grpc` setting, so always point it at 4318. When using `http/protobuf`, the endpoint must include the `/v1/traces` path (e.g., `http://localhost:4318/v1/traces`). The .NET services auto-append this path if missing. |
 | `OTEL_TRACES_EXPORTER` | `console` prints the spans to stdout instead of exporting them. |
 | `OTEL_SERVICE_NAME` | Overrides the `service.name` on the spans. |
 
@@ -64,9 +64,13 @@ It listens on `4317` (gRPC) and `4318` (http/protobuf) on `127.0.0.1`.
 Point the host-run services at it:
 
 ```bash
-# bash
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+# bash — HTTP/protobuf (requires /v1/traces path)
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
 export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+
+# Or use gRPC (no path needed; default for .NET services)
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 
 dotnet run --project src/VoxMentor.Api
 dotnet run --project src/VoxMentor.Gateway
