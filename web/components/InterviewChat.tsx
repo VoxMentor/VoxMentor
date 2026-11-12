@@ -152,6 +152,9 @@ export default function InterviewChat({
   // A resume request that arrived while the chat was busy; applied once the
   // current action finishes so it is never lost (CodeRabbit #176).
   const pendingResumeRef = useRef<string | null>(null);
+  // The resume request we last consumed, so a prop that stays set does not
+  // re-queue after the user has moved on to a different interview.
+  const lastResumeRequestRef = useRef<{ id: string } | null>(null);
   // The last InterviewError message for the action in flight. The hub sends
   // the real reason and then returns null, so the generic "could not be
   // started" fallback must not replace it.
@@ -202,12 +205,22 @@ export default function InterviewChat({
   // of dead-ending on "not completed". Skipped while a stream is in flight -
   // clobbering mid-turn would orphan the running invoke - and when the chat
   // is already on that interview, so a double-click cannot wipe the draft.
-  // A request made while busy is remembered in pendingResumeRef and applied
-  // as soon as the current action finishes (status change re-runs this effect).
+  //
+  // The request is queued only when its identity changes (queue effect), and
+  // applied only on status changes (apply effect). Tracking the last consumed
+  // request separately prevents a prop that stays set from re-queuing after
+  // the user has moved on to a different interview (CodeRabbit #176).
   useEffect(() => {
-    if (resumeRequest) {
+    if (
+      resumeRequest &&
+      (!lastResumeRequestRef.current ||
+        resumeRequest.id !== lastResumeRequestRef.current.id)
+    ) {
       pendingResumeRef.current = resumeRequest.id;
     }
+  }, [resumeRequest]);
+
+  useEffect(() => {
     const id = pendingResumeRef.current;
     if (!id) return;
     if (
@@ -219,9 +232,11 @@ export default function InterviewChat({
     }
     if (interviewIdRef.current === id) {
       pendingResumeRef.current = null;
+      lastResumeRequestRef.current = resumeRequest ?? null;
       return;
     }
     pendingResumeRef.current = null;
+    lastResumeRequestRef.current = resumeRequest ?? null;
 
     interviewIdRef.current = id;
     setInterviewId(id);
@@ -238,7 +253,7 @@ export default function InterviewChat({
       },
     ]);
     updateStatus("ready");
-  }, [resumeRequest, status, updateStatus]);
+  }, [status, resumeRequest, updateStatus]);
 
   // Keep the newest line in view while the interviewer talks.
   useEffect(() => {
