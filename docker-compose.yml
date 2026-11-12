@@ -103,24 +103,44 @@ services:
   #   depends_on:
   #     - seq
 
-  # Judge0 (opt-in) — uncomment to run the local code-execution stack.
-  # Without this, VoxMentor.CodeExecService defaults to http://localhost:2358
-  # and you must provision Judge0 separately (or set Judge0:BaseUrl to a remote endpoint).
+  # Judge0 (opt-in) — uncomment judge0-db, judge0 and judge0-worker to run the
+  # local code-execution stack. Judge0 needs its own PostgreSQL; judge0-db is
+  # that database and is NOT the API's Supabase database. Without this stack,
+  # VoxMentor.CodeExecService defaults to http://localhost:2358 and you must
+  # provision Judge0 separately (or set Judge0:BaseUrl to a remote endpoint).
+  # judge0-db:
+  #   image: postgres:16-alpine
+  #   container_name: voxmentor-judge0-db
+  #   environment:
+  #     - POSTGRES_USER=judge0
+  #     - POSTGRES_DB=judge0
+  #     - POSTGRES_PASSWORD=${JUDGE0_DB_PASSWORD:?JUDGE0_DB_PASSWORD not set - copy .env.example to .env}
+  #   volumes:
+  #     - judge0-db-data:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U judge0"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #
   # judge0:
   #   image: judge0/judge0:latest
   #   container_name: voxmentor-judge0
   #   environment:
   #     - SECRET_KEY=${JUDGE0_SECRET_KEY:?JUDGE0_SECRET_KEY not set - copy .env.example to .env}
-  #     - POSTGRES_HOST=db
+  #     - POSTGRES_HOST=judge0-db
   #     - POSTGRES_PORT=5432
-  #     - POSTGRES_USER=voxmentor
-  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set - copy .env.example to .env}
+  #     - POSTGRES_USER=judge0
+  #     - POSTGRES_PASSWORD=${JUDGE0_DB_PASSWORD:?JUDGE0_DB_PASSWORD not set - copy .env.example to .env}
   #     - POSTGRES_DB=judge0
   #     - REDIS_HOST=redis
   #   ports:
   #     - "127.0.0.1:2358:2358"
   #   depends_on:
-  #     - redis
+  #     judge0-db:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
   #   healthcheck:
   #     test: ["CMD-SHELL", "curl -sf http://localhost:2358/configs || exit 1"]
   #     interval: 10s
@@ -135,17 +155,21 @@ services:
   #   command: ["./scripts/workers"]
   #   environment:
   #     - SECRET_KEY=${JUDGE0_SECRET_KEY:?JUDGE0_SECRET_KEY not set - copy .env.example to .env}
-  #     - POSTGRES_HOST=db
+  #     - POSTGRES_HOST=judge0-db
   #     - POSTGRES_PORT=5432
-  #     - POSTGRES_USER=voxmentor
-  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set - copy .env.example to .env}
+  #     - POSTGRES_USER=judge0
+  #     - POSTGRES_PASSWORD=${JUDGE0_DB_PASSWORD:?JUDGE0_DB_PASSWORD not set - copy .env.example to .env}
   #     - POSTGRES_DB=judge0
   #     - REDIS_HOST=redis
   #   depends_on:
-  #     - redis
+  #     judge0-db:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
 
 volumes:
   redis-data:
   ollama-data:
   seq-data:
   voice-models:
+  # judge0-db-data:

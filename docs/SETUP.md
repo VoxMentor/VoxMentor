@@ -95,55 +95,54 @@ docker compose exec ollama ollama list
 ```bash
 # 1. Create a Supabase project at https://supabase.com
 # 2. Get the connection string from Project Settings → Database
-# 3. Copy .env.example to .env and set ConnectionStrings__DefaultConnection:
-#    ConnectionStrings__DefaultConnection=Host=<supabase-host>;Port=5432;Database=postgres;Username=postgres;Password=<supabase-password>;SslMode=Require;
-#    (For IPv4-only networks, use the session pooler example in .env.example)
+# 3. Set the password and connection string for this shell. The .NET host does
+#    NOT read .env, so `dotnet ef` and `dotnet run` only see exported variables
+#    (user secrets and appsettings.Development.json work too - see .env.example).
+#    Prompting keeps the password out of shell history and process arguments.
+read -rsp "Supabase password: " PGPASSWORD && export PGPASSWORD
+export ConnectionStrings__DefaultConnection="Host=<supabase-host>;Port=5432;Database=postgres;Username=postgres;Password=${PGPASSWORD};SslMode=Require;"
+#    For IPv4-only networks without the Supabase IPv4 add-on, copy the session
+#    pooler host from Project Settings → Database (region-based, e.g.
+#    aws-0-eu-central-1.pooler.supabase.com) and keep port 5432; 6543 is
+#    transaction mode. Username becomes postgres.<project-ref>.
+export PSQL_URI="postgresql://postgres@<supabase-host>:5432/postgres?sslmode=require"
 
-# 4. Run EF Core migrations against Supabase:
+# 4. Enable pgvector BEFORE migrating. No EF migration runs CREATE EXTENSION,
+#    and the first vector(768) column needs it. `-e PGPASSWORD` with no value
+#    passes the exported variable into the container instead of the argv.
+docker run --rm -i -e PGPASSWORD postgres:16 \
+  psql "$PSQL_URI" -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+
+# 5. Run EF Core migrations against Supabase (reads the exported connection string):
 dotnet ef database update --project src/VoxMentor.Infrastructure --startup-project src/VoxMentor.Api
 
-# 5. Seed reference data (DSA concepts, questions, BKT parameters):
+# 6. Seed reference data (DSA concepts, questions, BKT parameters):
 #    These SQL scripts are idempotent and safe to re-run.
-docker run --rm -i \
-  -e PGPASSWORD="<supabase-password>" \
-  postgres:15 \
-  psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" \
-  -f /dev/stdin < scripts/seed-dsa-concepts.sql
+docker run --rm -i -e PGPASSWORD postgres:16 \
+  psql "$PSQL_URI" -f /dev/stdin < scripts/seed-dsa-concepts.sql
 
-docker run --rm -i \
-  -e PGPASSWORD="<supabase-password>" \
-  postgres:15 \
-  psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" \
-  -f /dev/stdin < scripts/seed-questions.sql
+docker run --rm -i -e PGPASSWORD postgres:16 \
+  psql "$PSQL_URI" -f /dev/stdin < scripts/seed-questions.sql
 
-docker run --rm -i \
-  -e PGPASSWORD="<supabase-password>" \
-  postgres:15 \
-  psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" \
-  -f /dev/stdin < scripts/seed-bkt-parameters.sql
+docker run --rm -i -e PGPASSWORD postgres:16 \
+  psql "$PSQL_URI" -f /dev/stdin < scripts/seed-bkt-parameters.sql
 
-# 6. Verify seed data
-docker run --rm -i \
-  -e PGPASSWORD="<supabase-password>" \
-  postgres:15 \
-  psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" \
-  -c 'SELECT COUNT(*) FROM "Concepts";'
+# 7. Verify seed data
+docker run --rm -i -e PGPASSWORD postgres:16 \
+  psql "$PSQL_URI" -c 'SELECT COUNT(*) FROM "Concepts";'
 # Should return: 50
 
-docker run --rm -i \
-  -e PGPASSWORD="<supabase-password>" \
-  postgres:15 \
-  psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" \
-  -c 'SELECT COUNT(*) FROM "Questions";'
+docker run --rm -i -e PGPASSWORD postgres:16 \
+  psql "$PSQL_URI" -c 'SELECT COUNT(*) FROM "Questions";'
 # Should return: 100
 ```
 
-> **Alternative (psql locally):** If you have `psql` installed, you can run the SQL files directly:
+> **Alternative (psql locally):** If you have `psql` installed, you can run the SQL files directly
+> in the same shell (the exported `PGPASSWORD` is used, nothing goes in the argument list):
 > ```bash
-> export PGPASSWORD="<supabase-password>"
-> psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" -f scripts/seed-dsa-concepts.sql
-> psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" -f scripts/seed-questions.sql
-> psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" -f scripts/seed-bkt-parameters.sql
+> psql "$PSQL_URI" -f scripts/seed-dsa-concepts.sql
+> psql "$PSQL_URI" -f scripts/seed-questions.sql
+> psql "$PSQL_URI" -f scripts/seed-bkt-parameters.sql
 > ```
 
 ### Nightly background jobs
@@ -224,10 +223,10 @@ python -m unittest scripts.test_seed_corpus
 
 Populate a fresh stack with a realistic demo user, two job descriptions, mastery/readiness values, two completed mock interviews with AI reviews, and three tutor sessions — so the dashboard is never empty on first login.
 
-**Prerequisite:** Steps 2–4 must have run first (Postgres up, migrations applied, 50 DSA concepts + 100 questions seeded via `scripts/seed-*.sql`). The seeder fails fast with a clear message if concepts are missing.
+**Prerequisite:** Step 4 must have run first (Supabase reachable, pgvector enabled, migrations applied, 50 DSA concepts + 100 questions seeded via `scripts/seed-*.sql`). The seeder fails fast with a clear message if concepts are missing.
 
 ```bash
-# One-liner (requires Postgres running from Step 2; runs migrations if needed)
+# One-liner (uses the Supabase connection exported in Step 4; runs migrations if needed)
 dotnet run --project src/VoxMentor.Api -- --seed-demo
 
 # Or enable via config for hands-off dev boots (set in appsettings.Development.json or env)
@@ -448,14 +447,19 @@ npm run dev
 
 ### Judge0 not executing code
 
-Judge0 is now **opt-in** in `docker-compose.yml`. To enable it:
+Judge0 is **opt-in** in `docker-compose.yml`. The local stack ships its own
+PostgreSQL (`judge0-db`) because Judge0 cannot share the API's Supabase
+database.
 
 ```bash
-# 1. Uncomment the judge0 and judge0-worker services in docker-compose.yml
-# 2. Set JUDGE0_SECRET_KEY in .env (generate a random 32+ char string)
-# 3. Restart compose
-docker compose up -d judge0 judge0-worker
+# 1. Uncomment the judge0-db, judge0 and judge0-worker services in docker-compose.yml
+# 2. In .env set JUDGE0_SECRET_KEY (random 32+ chars) and JUDGE0_DB_PASSWORD
+# 3. Start the stack (judge0-db is started first as a dependency)
+docker compose up -d judge0-db judge0 judge0-worker
 ```
+
+No local database? Skip the compose stack and point the API at a remote
+Judge0 instead — see the `Judge0:BaseUrl` note below.
 
 If Judge0 is running (locally or remote), verify:
 
@@ -529,6 +533,7 @@ git pull origin main
 > | Service | Port | URL |
 > |---|---|---|
 > | Judge0 | 2358 | http://localhost:2358 |
-> | PostgreSQL (local) | 5432 | localhost:5432 |
 
-> **Database:** PostgreSQL is now hosted on Supabase (cloud). No local PostgreSQL port by default.
+> **Database:** PostgreSQL is hosted on Supabase (cloud); no local PostgreSQL
+> port by default. The optional Judge0 stack's `judge0-db` stays on the compose
+> network only and publishes no port.
