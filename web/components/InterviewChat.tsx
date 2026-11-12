@@ -364,7 +364,9 @@ export default function InterviewChat({
       updateStatus("ready");
     } catch (e) {
       const isCurrent = actionIdRef.current === thisActionId;
-      streamingTurnRef.current = null;
+      // Only the action that still owns the turn may stop the stream; a
+      // superseded one would otherwise mute the tokens of the running action.
+      if (isCurrent) streamingTurnRef.current = null;
       // A stream that failed before the first token leaves an empty bubble.
       setTurns((prev) => dropEmptyTurn(prev, turnId));
       if (isCurrent) {
@@ -472,12 +474,14 @@ export default function InterviewChat({
       updateStatus("ready");
     } catch (e) {
       const isCurrent = actionIdRef.current === thisActionId;
-      streamingTurnRef.current = null;
+      // Only the action that still owns the turn may stop the stream; a
+      // superseded one would otherwise mute the tokens of the running action.
+      if (isCurrent) streamingTurnRef.current = null;
       // Roll back unless the server recorded the answer: remove the
       // candidate turn and interviewer turn, leave the draft in the box for a retry.
       if (!serverRecorded) {
         setTurns((prev) => prev.filter((t) => t.id !== candidateTurnId && t.id !== interviewerTurnId));
-        setAnswer(message);
+        if (isCurrent) setAnswer(message);
       }
       if (isCurrent) {
         setError(hubErrorRef.current ?? errorMessage(e));
