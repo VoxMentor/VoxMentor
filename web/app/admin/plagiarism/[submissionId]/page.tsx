@@ -18,7 +18,7 @@ export default function AdminPlagiarismSubmissionPage({
 }: {
   params: Promise<{ submissionId: string }>;
 }) {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const router = useRouter();
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [submissionIdResolved, setSubmissionIdResolved] = useState(false);
@@ -59,17 +59,38 @@ export default function AdminPlagiarismSubmissionPage({
           if (!signal?.aborted) setSubmission(result);
         })
         .catch((e) => {
-          if (!signal?.aborted) {
-            setError(
-              e instanceof ApiError ? e.message : "Failed to load submission."
-            );
+          if (signal?.aborted) return;
+          // stale local auth (expired session or server-side demotion): re-verify
+          // instead of a dead-end retry — me() 401s -> setUser(null) -> AuthProvider
+          // routes to /login; a demoted caller gets refreshed roles and the guard reroutes.
+          if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+            return api
+              .me()
+              .then((me) => {
+                if (signal?.aborted) return;
+                setUser(me);
+                if (me.roles.some((role) => PLATFORM_ADMINS.includes(role))) {
+                  setError(e.message);
+                }
+              })
+              .catch((meErr) => {
+                if (signal?.aborted) return;
+                if (meErr instanceof ApiError && meErr.status === 401) {
+                  setUser(null);
+                } else {
+                  setError(e.message);
+                }
+              });
           }
+          setError(
+            e instanceof ApiError ? e.message : "Failed to load submission."
+          );
         })
         .finally(() => {
           if (!signal?.aborted) setLoading(false);
         });
     },
-    [submissionId]
+    [submissionId, setUser]
   );
 
   useEffect(() => {

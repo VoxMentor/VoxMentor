@@ -82,8 +82,15 @@ function PlagiarismContent() {
                 setList({ key, ok: false, message: e.message });
               }
             })
-            .catch(() => {
-              if (!cancelled) setUser(null);
+            .catch((meErr) => {
+              if (cancelled) return;
+              // Only a confirmed 401 means the session is gone. A transient
+              // network/5xx failure must not sign an authenticated admin out.
+              if (meErr instanceof ApiError && meErr.status === 401) {
+                setUser(null);
+              } else {
+                setList({ key, ok: false, message: e.message });
+              }
             });
           return;
         }
