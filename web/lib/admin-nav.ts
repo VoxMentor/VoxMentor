@@ -8,7 +8,7 @@ export function hasAdminRole(roles?: string[]): boolean {
 }
 
 const CONTENT_ADMINS = ["SuperAdmin", "ContentAdmin"];
-const PLATFORM_ADMINS = ["SuperAdmin", "PlatformAdmin"];
+export const PLATFORM_ADMINS = ["SuperAdmin", "PlatformAdmin"];
 
 export interface AdminNavItem {
   href: string;

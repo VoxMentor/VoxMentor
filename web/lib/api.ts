@@ -352,6 +352,40 @@ export interface AuditLog {
   createdAt: string;
 }
 
+// --- Admin plagiarism review (#107): GET /v1/admin/plagiarism/submissions,
+// PlatformAdmin/SuperAdmin via ManagePlatform policy. The list endpoint
+// returns a bare array (no total); the detail endpoint returns the DTO directly.
+
+export interface AdminPlagiarismQueueItem {
+  id: string;
+  userId: string;
+  userEmail: string | null;
+  questionId: string;
+  language: string;
+  isCorrect: boolean;
+  plagiarismScore: number | null;
+  /** SubmissionStatus serialized numerically: 0 Pending, 1 Accepted, 2 WrongAnswer, 3 Timeout, 4 RuntimeError. */
+  status: number;
+  createdAt: string;
+}
+
+export interface AdminPlagiarismSubmissionDetail
+  extends AdminPlagiarismQueueItem {
+  questionTitle: string | null;
+  code: string;
+  testCasesPassed: number;
+  testCasesTotal: number;
+  aiEvaluation: string | null;
+}
+
+export const SUBMISSION_STATUS_LABELS: Partial<Record<number, string>> = {
+  0: "Pending",
+  1: "Accepted",
+  2: "Wrong answer",
+  3: "Timeout",
+  4: "Runtime error",
+};
+
 // --- Admin question bank (#103): GET/POST /v1/admin/questions, ManageContent policy ---
 
 export interface AdminQuestion {
@@ -607,6 +641,17 @@ export const api = {
   adminTutorSession: (id: string) =>
     request<AdminTutorSessionDetail>(
       `/v1/admin/tutor/sessions/${encodeURIComponent(id)}`
+    ),
+
+  // --- Admin plagiarism review (#107): PlatformAdmin + SuperAdmin via ManagePlatform policy ---
+  adminPlagiarismSubmissions: (page = 1, pageSize = 20, minScore = 0.7) =>
+    request<AdminPlagiarismQueueItem[]>(
+      `/v1/admin/plagiarism/submissions?minScore=${minScore}&page=${page}&pageSize=${pageSize}`
+    ),
+
+  adminPlagiarismSubmission: (id: string) =>
+    request<AdminPlagiarismSubmissionDetail>(
+      `/v1/admin/plagiarism/submissions/${encodeURIComponent(id)}`
     ),
 
   // --- Mock interviews (#129) ---
