@@ -92,7 +92,7 @@ services:
   #     context: .
   #     dockerfile: docker/Dockerfile.Gateway
   #   environment:
-  #     - ConnectionStrings__Hangfire=Host=<supabase-host>;Port=5432;Database=voxmentor;Username=voxmentor;Password=${SUPABASE_PASSWORD}
+  #     - ConnectionStrings__Hangfire=Host=<supabase-host>;Port=5432;Database=postgres;Username=postgres;Password=${SUPABASE_PASSWORD}
   #     - ReverseProxy__Clusters__core-api__Destinations__d1__Address=http://api:5000/
   #     - ReverseProxy__Clusters__tutor-service__Destinations__d1__Address=http://tutor:5001/
   #     - ReverseProxy__Clusters__codeexec-service__Destinations__d1__Address=http://codeexec:5002/
@@ -102,6 +102,47 @@ services:
   #     - "127.0.0.1:8080:8080"
   #   depends_on:
   #     - seq
+
+  # Judge0 (opt-in) — uncomment to run the local code-execution stack.
+  # Without this, VoxMentor.CodeExecService defaults to http://localhost:2358
+  # and you must provision Judge0 separately (or set Judge0:BaseUrl to a remote endpoint).
+  # judge0:
+  #   image: judge0/judge0:latest
+  #   container_name: voxmentor-judge0
+  #   environment:
+  #     - SECRET_KEY=${JUDGE0_SECRET_KEY:?JUDGE0_SECRET_KEY not set - copy .env.example to .env}
+  #     - POSTGRES_HOST=db
+  #     - POSTGRES_PORT=5432
+  #     - POSTGRES_USER=voxmentor
+  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set - copy .env.example to .env}
+  #     - POSTGRES_DB=judge0
+  #     - REDIS_HOST=redis
+  #   ports:
+  #     - "127.0.0.1:2358:2358"
+  #   depends_on:
+  #     - redis
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -sf http://localhost:2358/configs || exit 1"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 10
+  #     start_period: 30s
+  #
+  # judge0-worker:
+  #   image: judge0/judge0:latest
+  #   container_name: voxmentor-judge0-worker
+  #   privileged: true
+  #   command: ["./scripts/workers"]
+  #   environment:
+  #     - SECRET_KEY=${JUDGE0_SECRET_KEY:?JUDGE0_SECRET_KEY not set - copy .env.example to .env}
+  #     - POSTGRES_HOST=db
+  #     - POSTGRES_PORT=5432
+  #     - POSTGRES_USER=voxmentor
+  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set - copy .env.example to .env}
+  #     - POSTGRES_DB=judge0
+  #     - REDIS_HOST=redis
+  #   depends_on:
+  #     - redis
 
 volumes:
   redis-data:

@@ -4,7 +4,7 @@
 
 | Tool | Version | Why |
 |---|---|---|
-| **Docker Desktop** | Latest | Runs Postgres, Redis, Ollama, Judge0, Seq |
+| **Docker Desktop** | Latest | Runs Redis, Ollama, Seq (PostgreSQL is now Supabase) |
 | **.NET 8 SDK** | 8.0.x | Backend (.NET 8) |
 | **Node.js** | 20.x | Frontend (Next.js 16) |
 | **Python** | 3.12+ | Voice service (Whisper + Piper) |
@@ -48,7 +48,7 @@ cd voxmentor
 ## Step 2: Start Infrastructure
 
 ```bash
-# Start all infrastructure services
+# Start infrastructure services (Redis, Ollama, Seq, OTEL collector, Voice)
 docker compose up -d
 
 # Verify all containers are running
@@ -56,12 +56,14 @@ docker compose ps
 
 # Expected output:
 # NAME                STATUS         PORTS
-# voxmentor-postgres  Up (healthy)   5432
 # voxmentor-redis     Up             6379
 # voxmentor-ollama    Up             11434
-# voxmentor-judge0    Up             2358
 # voxmentor-seq       Up             8081
+# voxmentor-otel-collector Up       4317, 4318
+# voxmentor-voice     Up             8001
 ```
+
+> **Database:** PostgreSQL is now hosted on Supabase. Create a project at https://supabase.com, then copy the connection string into `.env` (see `.env.example`). The API runs migrations automatically on startup.
 
 ---
 
@@ -88,34 +90,61 @@ docker compose exec ollama ollama list
 
 ---
 
-## Step 4: Initialize Database
+## Step 4: Configure Supabase & Run Migrations
 
 ```bash
-# Run the init script (creates DB, runs migrations, seeds data)
-bash scripts/init-db.sh
+# 1. Create a Supabase project at https://supabase.com
+# 2. Get the connection string from Project Settings → Database
+# 3. Copy .env.example to .env and set ConnectionStrings__DefaultConnection:
+#    ConnectionStrings__DefaultConnection=Host=<supabase-host>;Port=5432;Database=postgres;Username=postgres;Password=<supabase-password>;SslMode=Require;
+#    (For IPv4-only networks, use the session pooler example in .env.example)
 
-# What this does:
-# 1. Creates the voxmentor database in PostgreSQL
-# 2. Enables pgvector extension
-# 3. Runs EF Core migrations (creates all tables)
-# 4. Seeds 50 DSA concepts + prerequisites
-# 5. Seeds 100 practice questions
-# 6. Seeds BKT parameters per concept
-# 7. Embeds the DSA corpus into TextbookChunks (via Ollama nomic-embed-text)
-#    - see "Step 4b: Seed the RAG corpus" below; this step is a separate
-#      manual run, not part of init-db.sh
+# 4. Run EF Core migrations against Supabase:
+dotnet ef database update --project src/VoxMentor.Infrastructure --startup-project src/VoxMentor.Api
 
-# Verify database
-docker compose exec db psql -U voxmentor -d voxmentor -c "\dt"
-# Should list all tables: AspNetUsers, Concepts, Prerequisites, Questions, etc.
+# 5. Seed reference data (DSA concepts, questions, BKT parameters):
+#    These SQL scripts are idempotent and safe to re-run.
+docker run --rm -i \
+  -e PGPASSWORD="<supabase-password>" \
+  postgres:15 \
+  psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" \
+  -f /dev/stdin < scripts/seed-dsa-concepts.sql
 
-# Verify seed data
-docker compose exec db psql -U voxmentor -d voxmentor -c 'SELECT COUNT(*) FROM "Concepts";'
+docker run --rm -i \
+  -e PGPASSWORD="<supabase-password>" \
+  postgres:15 \
+  psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" \
+  -f /dev/stdin < scripts/seed-questions.sql
+
+docker run --rm -i \
+  -e PGPASSWORD="<supabase-password>" \
+  postgres:15 \
+  psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" \
+  -f /dev/stdin < scripts/seed-bkt-parameters.sql
+
+# 6. Verify seed data
+docker run --rm -i \
+  -e PGPASSWORD="<supabase-password>" \
+  postgres:15 \
+  psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" \
+  -c 'SELECT COUNT(*) FROM "Concepts";'
 # Should return: 50
 
-docker compose exec db psql -U voxmentor -d voxmentor -c 'SELECT COUNT(*) FROM "Questions";'
+docker run --rm -i \
+  -e PGPASSWORD="<supabase-password>" \
+  postgres:15 \
+  psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" \
+  -c 'SELECT COUNT(*) FROM "Questions";'
 # Should return: 100
 ```
+
+> **Alternative (psql locally):** If you have `psql` installed, you can run the SQL files directly:
+> ```bash
+> export PGPASSWORD="<supabase-password>"
+> psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" -f scripts/seed-dsa-concepts.sql
+> psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" -f scripts/seed-questions.sql
+> psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" -f scripts/seed-bkt-parameters.sql
+> ```
 
 ### Nightly background jobs
 
@@ -353,7 +382,6 @@ curl http://localhost:5000/api/v1/student/next-question \
 docker info
 
 # Check available ports
-lsof -i :5432  # PostgreSQL
 lsof -i :6379  # Redis
 lsof -i :11434 # Ollama
 
@@ -384,8 +412,8 @@ docker compose restart ollama
 ### Database migration fails
 
 ```bash
-# Connect to Postgres
-docker compose exec -it db psql -U voxmentor -d voxmentor
+# Connect to Supabase (requires psql)
+psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require"
 
 # Check tables
 \dt
@@ -394,8 +422,8 @@ docker compose exec -it db psql -U voxmentor -d voxmentor
 dotnet ef database update --project src/VoxMentor.Infrastructure --startup-project src/VoxMentor.Api
 
 # Re-seed data
-docker compose exec db psql -U voxmentor -d voxmentor -f scripts/seed-dsa-concepts.sql
-docker compose exec db psql -U voxmentor -d voxmentor -f scripts/seed-questions.sql
+psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" -f scripts/seed-dsa-concepts.sql
+psql "postgres://postgres:<supabase-password>@<supabase-host>:5432/postgres?sslmode=require" -f scripts/seed-questions.sql
 
 # Re-run demo seed (idempotent, Development only)
 dotnet run --project src/VoxMentor.Api -- --seed-demo
@@ -420,8 +448,19 @@ npm run dev
 
 ### Judge0 not executing code
 
+Judge0 is now **opt-in** in `docker-compose.yml`. To enable it:
+
 ```bash
-# Check Judge0 is running
+# 1. Uncomment the judge0 and judge0-worker services in docker-compose.yml
+# 2. Set JUDGE0_SECRET_KEY in .env (generate a random 32+ char string)
+# 3. Restart compose
+docker compose up -d judge0 judge0-worker
+```
+
+If Judge0 is running (locally or remote), verify:
+
+```bash
+# Check Judge0 is running (adjust URL if using remote endpoint)
 curl http://localhost:2358/system_info
 # → Should return JSON with version info
 
@@ -438,6 +477,8 @@ curl -X POST http://localhost:2358/submissions \
 curl http://localhost:2358/submissions/<submission-id>
 # → Should show stdout: "hello"
 ```
+
+**Using a remote Judge0 endpoint:** Set `Judge0:BaseUrl` in your configuration (appsettings.Development.json, user secrets, or environment variable) to point to your Judge0 instance.
 
 ---
 
@@ -478,8 +519,16 @@ git pull origin main
 | Code Exec Service | 5002 | http://localhost:5002 |
 | YARP Gateway | 8080 | http://localhost:8080 |
 | Seq (Logs) | 8081 | http://localhost:8081 |
-| PostgreSQL | 5432 | localhost:5432 |
 | Redis | 6379 | localhost:6379 |
 | Ollama | 11434 | http://localhost:11434 |
-| Judge0 | 2358 | http://localhost:2358 |
 | Voice Service | 8001 | http://localhost:8001 |
+| OTEL Collector (gRPC) | 4317 | localhost:4317 |
+| OTEL Collector (HTTP) | 4318 | http://localhost:4318 |
+
+> **Opt-in services (uncomment in docker-compose.yml):**
+> | Service | Port | URL |
+> |---|---|---|
+> | Judge0 | 2358 | http://localhost:2358 |
+> | PostgreSQL (local) | 5432 | localhost:5432 |
+
+> **Database:** PostgreSQL is now hosted on Supabase (cloud). No local PostgreSQL port by default.
