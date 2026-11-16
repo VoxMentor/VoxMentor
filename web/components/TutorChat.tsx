@@ -230,16 +230,23 @@ export default function TutorChat({
   };
 
   return (
-    <div className="card flex flex-col h-full">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="font-heading font-semibold text-navy">Ask the AI Tutor</h2>
-        <div className="flex items-center gap-2">
+    <div className="panel">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-heading text-base font-semibold text-navy">
+            AI tutor
+          </h2>
+          <p className="mt-1 text-sm text-text-muted">
+            Ask about any concept in your curriculum.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
           {sessionId && (
             <button
               onClick={handleNewSession}
-              className="text-xs text-text-muted hover:text-primary transition-colors"
+              className="text-sm font-medium text-text-muted transition-colors hover:text-navy"
             >
-              New Session
+              New session
             </button>
           )}
           {status === "done" && stats && (
@@ -250,62 +257,98 @@ export default function TutorChat({
         </div>
       </div>
 
-      {/* Concept selector */}
-      <div className="mb-3">
-        <label htmlFor="concept-selector" className="block text-xs font-medium text-text-muted mb-1">
-          Concept
-        </label>
-        <select
-          id="concept-selector"
-          value={selectedConcept ?? ""}
-          onChange={(e) => setSelectedConcept(e.target.value || null)}
-          className="w-full text-sm rounded-[14px] border-[1.5px] border-border bg-white px-4 py-3 text-text-body focus:border-primary focus:shadow-[0_0_0_3px_rgba(74,173,219,0.12)] focus:outline-none cursor-pointer disabled:opacity-60"
-          disabled={busy}
-        >
-          <option value="">All concepts</option>
-          {concepts.map((c) => (
-            <option key={c.conceptId} value={c.conceptId}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      <div className="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Form */}
+        <div>
+          <label
+            htmlFor="concept-selector"
+            className="mb-1.5 block text-xs font-medium text-text-muted"
+          >
+            Concept
+          </label>
+          <select
+            id="concept-selector"
+            value={selectedConcept ?? ""}
+            onChange={(e) => setSelectedConcept(e.target.value || null)}
+            className="w-full cursor-pointer rounded-[10px] border border-border bg-white px-3 py-2 text-sm text-text-body focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15 disabled:opacity-60"
+            disabled={busy}
+          >
+            <option value="">All concepts</option>
+            {concepts.map((c) => (
+              <option key={c.conceptId} value={c.conceptId}>
+                {c.name}
+              </option>
+            ))}
+          </select>
 
-      <textarea
-        value={question}
-        onChange={(e) => setQuestion(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            ask();
-          }
-        }}
-        placeholder="Ask a question about any DSA concept… (Enter to send, Shift+Enter for newline)"
-        rows={3}
-        disabled={busy}
-        className="w-full p-3 text-sm text-text-heading bg-white border-[1.5px] border-[var(--border)] rounded-[14px] outline-none focus:border-primary transition-all resize-none disabled:opacity-60"
-      />
+          <label
+            htmlFor="tutor-question"
+            className="mt-4 mb-1.5 block text-xs font-medium text-text-muted"
+          >
+            Question
+          </label>
+          <textarea
+            id="tutor-question"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                ask();
+              }
+            }}
+            placeholder="Ask about a DSA concept"
+            rows={4}
+            disabled={busy}
+            className="w-full resize-none rounded-[10px] border border-border bg-white px-3 py-2 text-sm text-text-heading placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15 disabled:opacity-60"
+          />
+          <p className="mt-1.5 text-xs text-text-muted">
+            Enter to send, Shift+Enter for a new line.
+          </p>
 
-      <div className="flex items-center gap-3 mt-3">
-        <button onClick={ask} disabled={busy || question.trim().length === 0} className="btn-primary">
-          {busy ? (status === "connecting" ? "Connecting…" : "Thinking…") : "Ask"}
-        </button>
-        {status === "streaming" && (
-          <span className="text-xs text-primary animate-pulse">streaming…</span>
-        )}
-        {error && <span className="text-xs text-red-500">{error}</span>}
-      </div>
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              onClick={ask}
+              disabled={busy || question.trim().length === 0}
+              className="btn-solid"
+            >
+              {busy ? (status === "connecting" ? "Connecting" : "Thinking") : "Ask"}
+            </button>
+            {status === "streaming" && (
+              <span className="text-xs text-text-muted">Streaming</span>
+            )}
+          </div>
 
-      {(answer || status === "streaming") && (
-        <div className="mt-4 p-4 rounded-2xl bg-bg-light text-sm leading-relaxed text-text-heading whitespace-pre-wrap min-h-[3rem]">
-          {answer}
-          {status === "streaming" && <span className="animate-pulse">▍</span>}
+          {error && (
+            <p role="alert" className="error-banner mt-3 !mb-0">
+              {error}
+            </p>
+          )}
         </div>
-      )}
 
-      {stats?.citations && stats.citations.length > 0 && (
-        <TutorCitation citations={stats.citations} />
-      )}
+        {/* Answer */}
+        <div className="flex flex-col">
+          <p className="mb-1.5 text-xs font-medium text-text-muted">Answer</p>
+          <div className="min-h-[12rem] flex-1 whitespace-pre-wrap rounded-[10px] border border-border bg-bg-light p-4 text-sm leading-relaxed text-text-heading">
+            {answer || status === "streaming" ? (
+              <>
+                {answer}
+                {status === "streaming" && (
+                  <span aria-hidden="true" className="text-primary">
+                    ▍
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="text-text-muted">Answers appear here.</span>
+            )}
+          </div>
+
+          {stats?.citations && stats.citations.length > 0 && (
+            <TutorCitation citations={stats.citations} />
+          )}
+        </div>
+      </div>
     </div>
   );
 }

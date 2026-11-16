@@ -79,19 +79,18 @@ function InterviewRoute() {
     <ProtectedRoute>
       <div className="min-h-screen bg-bg-light">
         <Navbar />
-        <main className="max-w-6xl mx-auto px-6 py-10">
-          <div className="mb-8">
-            <h1 className="font-heading text-2xl sm:text-3xl font-bold text-navy">
+        <main className="mx-auto w-full max-w-[1400px] px-8 py-10">
+          <header className="mb-8">
+            <h1 className="font-heading text-2xl font-semibold text-navy">
               Mock interview
             </h1>
-            <p className="text-text-muted mt-2 max-w-2xl">
-              Practise against an AI interviewer. Answers stream in live and you
-              get a scored review at the end.
+            <p className="mt-1 text-sm text-text-muted">
+              Answer the interviewer, then review your score and feedback.
             </p>
-          </div>
+          </header>
 
-          <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-6 items-start">
-            <div className="flex flex-col gap-6 min-w-0">
+          <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="flex min-w-0 flex-col gap-5">
               <InterviewChat
                 initialJdId={jdId}
                 onCompleted={refreshHistory}
@@ -99,37 +98,77 @@ function InterviewRoute() {
               />
 
               {pastError && (
-                <div className="error-banner !mb-0" role="alert">
-                  <span aria-hidden="true">⚠️</span>
-                  <span>{pastError}</span>
-                </div>
+                <p role="alert" className="error-banner !mb-0">
+                  {pastError}
+                </p>
               )}
 
               {pastReview && (
-                <div className="card !p-5">
-                  <h2 className="font-heading font-semibold text-navy text-lg mb-4">
-                    Review from{" "}
-                    {new Date(pastReview.completedAt ?? pastReview.startedAt)
-                      .toLocaleDateString(undefined, {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })}
-                  </h2>
-                  <InterviewReviewCard review={pastReview.review} />
-                </div>
+                <section className="panel">
+                  <div className="flex flex-wrap items-baseline justify-between gap-3">
+                    <h2 className="text-sm font-medium text-navy">Past review</h2>
+                    <span className="font-mono text-xs text-text-muted">
+                      {new Date(pastReview.completedAt ?? pastReview.startedAt)
+                        .toLocaleDateString(undefined, {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        })}
+                    </span>
+                  </div>
+                  <div className="mt-4">
+                    <InterviewReviewCard review={pastReview.review} />
+                  </div>
+                </section>
               )}
             </div>
 
-            <aside className="flex flex-col gap-3 min-w-0">
-              <h2 className="font-heading font-semibold text-navy text-base">
-                Interview history
-              </h2>
-              <InterviewHistory
-                refreshKey={historyKey}
-                selectedId={selectedId}
-                onSelect={openHistoryItem}
-              />
+            <aside className="flex min-w-0 flex-col gap-5">
+              <div className="panel">
+                <h2 className="text-sm font-medium text-navy">History</h2>
+                <div className="mt-4">
+                  <InterviewHistory
+                    refreshKey={historyKey}
+                    selectedId={selectedId}
+                    onSelect={openHistoryItem}
+                  />
+                </div>
+              </div>
+
+              <div className="panel">
+                <h2 className="text-sm font-medium text-navy">How it works</h2>
+              <ol className="mt-4 flex flex-col gap-4">
+                {[
+                  [
+                    "01",
+                    "Read the question",
+                    "The interviewer streams each question into the transcript.",
+                  ],
+                  [
+                    "02",
+                    "Send your answer",
+                    "Your reply is recorded and the interviewer responds.",
+                  ],
+                  [
+                    "03",
+                    "Finish for a review",
+                    "Get a score, per-problem feedback, and next steps.",
+                  ],
+                ].map(([n, title, description]) => (
+                  <li key={n} className="flex gap-3">
+                    <span className="font-mono text-xs tabular-nums text-text-muted">
+                      {n}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm text-navy">{title}</p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-text-muted">
+                        {description}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              </div>
             </aside>
           </div>
         </main>

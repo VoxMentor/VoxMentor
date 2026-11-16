@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { api, ApiError, type SubmissionItem } from "@/lib/api";
 import FetchError from "@/components/FetchError";
 
@@ -18,11 +19,17 @@ function timeAgo(iso: string): string {
 
 function Skeleton() {
   return (
-    <div className="card">
-      <div className="h-5 w-40 bg-border rounded animate-pulse mb-4" />
-      <div className="space-y-3">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-12 bg-border rounded-xl animate-pulse" />
+    <div className="panel">
+      <div className="mb-4 h-5 w-32 animate-pulse rounded bg-border" />
+      <div className="space-y-3.5">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3">
+            <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-border" />
+            <div className="flex-1 space-y-1.5">
+              <div className="h-3 w-40 animate-pulse rounded bg-border" />
+              <div className="h-3 w-24 animate-pulse rounded bg-border" />
+            </div>
+          </div>
         ))}
       </div>
     </div>
@@ -30,9 +37,8 @@ function Skeleton() {
 }
 
 /**
- * Recent activity feed — lists the 10 most recent practice submissions.
- * Shows question title, concept, pass/fail status, mastery delta, and relative timestamp.
- * Hover a row for question title and exact relative time.
+ * Recent activity feed, newest first. Each row is a submission: question,
+ * concept and relative time, with a pass/fail dot and the mastery change.
  */
 export default function RecentActivity() {
   const [items, setItems] = useState<SubmissionItem[] | null>(null);
@@ -40,8 +46,9 @@ export default function RecentActivity() {
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
+    // ponytail: 6 rows fits the sidebar column; raise it if this becomes a feed page.
     api
-      .submissions(10)
+      .submissions(6)
       .then(setItems)
       .catch((e) =>
         setError(e instanceof ApiError ? e.message : "Failed to load activity.")
@@ -64,64 +71,57 @@ export default function RecentActivity() {
   if (!items) return null;
 
   return (
-    <div className="card">
-      <h2 className="font-heading font-semibold text-navy text-lg mb-4">
-        Recent Activity
+    <div className="panel">
+      <h2 className="font-heading text-base font-semibold text-navy">
+        Recent activity
       </h2>
 
       {items.length === 0 ? (
-        <p className="text-sm text-text-muted">
-          Start practicing to see your activity here
-        </p>
-      ) : (
-        <div className="divide-y divide-border">
-          {items.map((item) => (
-            <div
-              key={item.submissionId}
-              className="flex items-center gap-3 py-3"
-              title={`${item.questionTitle} — ${timeAgo(item.createdAt)}`}
-            >
-              <span
-                className={`shrink-0 w-2 h-2 rounded-full ${
-                  item.isCorrect ? "bg-success" : "bg-danger"
-                }`}
-              />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-navy truncate">
-                  {item.questionTitle}
-                </p>
-                <p className="text-xs text-text-muted truncate">
-                  {item.conceptName}
-                </p>
-              </div>
-              <span
-                className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
-                  item.isCorrect
-                    ? "bg-success/10 text-success"
-                    : "bg-danger/10 text-danger"
-                }`}
-              >
-                {item.isCorrect ? "Pass" : "Fail"}
-              </span>
-              <span
-                className={`shrink-0 text-xs font-medium w-12 text-right ${
-                  item.masteryDelta === null
-                    ? "text-text-muted"
-                    : item.masteryDelta >= 0
-                      ? "text-success"
-                      : "text-danger"
-                }`}
-              >
-                {item.masteryDelta === null
-                  ? "—"
-                  : `${item.masteryDelta >= 0 ? "+" : ""}${Math.round(item.masteryDelta * 100)}%`}
-              </span>
-              <span className="shrink-0 text-xs text-text-muted w-20 text-right">
-                {timeAgo(item.createdAt)}
-              </span>
-            </div>
-          ))}
+        <div className="mt-4">
+          <p className="text-sm leading-relaxed text-text-body">
+            No submissions yet. Your practice results will show up here.
+          </p>
+          <Link
+            href="/practice"
+            className="mt-2 inline-block text-sm font-medium text-primary hover:text-primary-dark"
+          >
+            Start a practice session
+          </Link>
         </div>
+      ) : (
+        <ul className="mt-4 space-y-3.5">
+          {items.map((item) => {
+            const delta =
+              item.masteryDelta === null
+                ? null
+                : `${item.masteryDelta >= 0 ? "+" : ""}${Math.round(
+                    item.masteryDelta * 100
+                  )}%`;
+
+            return (
+              <li key={item.submissionId} className="flex items-start gap-3">
+                <span
+                  aria-hidden="true"
+                  className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                    item.isCorrect ? "bg-success" : "bg-danger"
+                  }`}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-navy">
+                    {item.questionTitle}
+                  </p>
+                  <p className="truncate text-xs text-text-muted">
+                    {item.conceptName} · {timeAgo(item.createdAt)}
+                  </p>
+                </div>
+                <span className="shrink-0 text-right text-xs leading-relaxed text-text-muted">
+                  {item.isCorrect ? "Pass" : "Fail"}
+                  {delta && ` · ${delta}`}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </div>
   );

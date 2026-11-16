@@ -17,13 +17,13 @@ export default function QuestionList({
 }) {
   if (questions.length === 0) {
     return (
-      <div className="card !p-6 text-center">
-        <p className="text-sm text-text-muted mb-3">{emptyMessage}</p>
+      <div className="panel-sm">
+        <p className="text-sm leading-relaxed text-text-body">{emptyMessage}</p>
         {onClearFilters && (
           <button
             type="button"
             onClick={onClearFilters}
-            className="text-sm font-medium text-primary hover:underline cursor-pointer"
+            className="mt-2 text-sm font-medium text-navy underline underline-offset-2 cursor-pointer"
           >
             Clear filters
           </button>
@@ -33,8 +33,8 @@ export default function QuestionList({
   }
 
   return (
-    <ul className="flex flex-col gap-1 overflow-y-auto max-h-64 lg:max-h-[calc(100vh-14rem)] -mx-1 px-1">
-      {questions.map((q) => {
+    <ul className="-mx-1 flex max-h-72 flex-col gap-1 overflow-y-auto px-1">
+      {questions.map((q, i) => {
         const selected = q.id === selectedId;
         return (
           <li key={q.id}>
@@ -42,24 +42,27 @@ export default function QuestionList({
               type="button"
               onClick={() => onSelect(q.id)}
               aria-current={selected ? "true" : undefined}
-              className={`w-full text-left rounded-xl px-3 py-2.5 transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+              className={`flex w-full gap-2 rounded-[10px] border-l-2 px-3 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy ${
                 selected
-                  ? "bg-accent-light-blue ring-1 ring-primary/30"
-                  : "hover:bg-accent-light-blue/60"
+                  ? "border-primary bg-accent-light-blue/50"
+                  : "border-transparent hover:bg-bg-light"
               }`}
             >
-              <span
-                className={`block text-sm font-medium leading-snug ${
-                  selected ? "text-navy" : "text-text-body"
-                }`}
-              >
-                {q.title}
+              <span className="w-6 shrink-0 pt-0.5 font-mono text-xs tabular-nums text-text-muted">
+                {String(i + 1).padStart(2, "0")}
               </span>
-              <span className="mt-1 flex flex-wrap items-center gap-1.5">
-                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent-light-blue text-primary">
-                  {q.conceptName}
+              <span className="min-w-0 flex-1">
+                <span
+                  className={`block text-sm font-medium leading-snug ${
+                    selected ? "text-navy" : "text-text-body"
+                  }`}
+                >
+                  {q.title}
                 </span>
-                <span className="text-xs text-text-muted">Difficulty {q.difficulty}/10</span>
+                <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-text-muted">
+                  <span>{q.conceptName}</span>
+                  <span>{q.difficulty}/10</span>
+                </span>
               </span>
             </button>
           </li>

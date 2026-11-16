@@ -20,11 +20,8 @@ import QuestionList from "@/components/QuestionList";
 import ResultPanel from "@/components/ResultPanel";
 import MasteryProgressBar from "@/components/MasteryProgressBar";
 import ConceptCard from "@/components/ConceptCard";
+import { formatMemory, statusLabel } from "@/lib/result-panel";
 
-/**
- * Rendered while question data is loading. Mirrors the 60% question / 40%
- * editor layout so the page doesn't shift when content arrives.
- */
 /** Sanitize server error messages before surfacing to the client UI. */
 function sanitizeError(err: unknown): string {
   if (err instanceof ApiError) {
@@ -33,18 +30,31 @@ function sanitizeError(err: unknown): string {
   return "Something went wrong. Please try again.";
 }
 
+// ponytail: the tested result helpers use an em dash for unavailable values.
+// Normalize it at the edge so screen text stays in one plain register.
+function show(value: string): string {
+  return value === "—" ? "n/a" : value;
+}
+
 function PageSkeleton() {
   return (
-    <div className="grid lg:grid-cols-[60%_40%] gap-6 min-w-0">
-      <div className="card">
-        <div className="h-6 w-48 bg-border rounded animate-pulse mb-4" />
-        <div className="h-12 w-full bg-border rounded animate-pulse mb-3" />
-        <div className="h-3 w-3/4 bg-border rounded-full animate-pulse" />
-        <div className="h-40 w-full bg-border rounded-xl animate-pulse mt-4" />
+    <div className="flex min-w-0 flex-col gap-5">
+      <div className="flex items-end justify-between border-b border-border pb-5">
+        <div className="h-8 w-32 rounded bg-border animate-pulse" />
+        <div className="h-9 w-48 rounded-[10px] bg-border animate-pulse" />
       </div>
-      <div className="card">
-        <div className="h-10 w-32 bg-border rounded animate-pulse mb-4" />
-        <div className="h-full bg-border rounded-xl animate-pulse" />
+      <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-2">
+        <div className="panel flex flex-col gap-4">
+          <div className="h-4 w-32 rounded bg-border animate-pulse" />
+          <div className="h-7 w-3/4 rounded bg-border animate-pulse" />
+          <div className="h-4 w-full rounded bg-border animate-pulse" />
+          <div className="h-32 rounded-[10px] bg-border animate-pulse" />
+        </div>
+        <div className="panel flex flex-col gap-4">
+          <div className="h-5 w-28 rounded bg-border animate-pulse" />
+          <div className="min-h-[18rem] rounded-[10px] bg-border animate-pulse" />
+          <div className="h-9 rounded-[10px] bg-border animate-pulse" />
+        </div>
       </div>
     </div>
   );
@@ -98,9 +108,18 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     c: "#include <stdio.h>\n\nint main() {\n    // Write your solution here\n    return 0;\n}",
   };
 
+  const FILE_EXTENSIONS: Record<string, string> = {
+    python: "py",
+    java: "java",
+    cpp: "cpp",
+    javascript: "js",
+    csharp: "cs",
+    c: "c",
+  };
+
   // --- Editor state (per-question, per-language drafts) ---
   const [language, setLanguage] = useState<string>("javascript");
-  // Key: `${questionId}|${language}` — keeps drafts isolated per question.
+  // Key: `${questionId}|${language}` keeps drafts isolated per question.
   const [codeDrafts, setCodeDrafts] = useState<Record<string, string>>({});
   const draftKey = selectedId ? `${selectedId}|${language}` : "";
   const code = draftKey ? codeDrafts[draftKey] ?? LANGUAGE_TEMPLATES[language] ?? "" : "";
@@ -111,6 +130,8 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     result: SubmitCodeResult;
   } | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [editorTab, setEditorTab] = useState("testcase-0");
+  const [navigatorOpen, setNavigatorOpen] = useState(false);
 
   // Identity of the in-flight submission. A monotonically increasing counter
   // ensures we only surface results for the most recent submission; edits or
@@ -137,6 +158,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
     setSubmitResult(null);
     setSubmitError(null);
     setSubmitting(false);
+    setEditorTab("testcase-0");
     // Invalidate any in-flight submission so it cannot surface a result or
     // error on the newly navigated question.
     submitIdentity.current++;
@@ -219,6 +241,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
       // Only surface the result if this is still the latest submission.
       if (submitIdentity.current === submissionId) {
         setSubmitResult({ questionId: detail.id, result });
+        setEditorTab("result");
         // Refresh mastery so the readiness bar and concept cards reflect
         // the new values after a successful submission.
         // Fire-and-forget: mastery errors should not mask successful submission.
@@ -398,60 +421,86 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
 
   const retryList = () => setListReload((n) => n + 1);
 
-  return (
-    <div className="grid lg:grid-cols-[60%_40%] lg:grid-rows-[minmax(0,1fr)] gap-6 min-w-0 lg:flex-1 lg:min-h-0">
-      {/* Left: question (60%) */}
-      <section className="flex flex-col gap-4 min-w-0">
-        <div className="card !p-4 flex flex-col gap-3">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-medium text-text-heading">
-              Readiness
-            </h2>
-            <span className="text-sm font-medium text-navy">
-              {Math.round(overallReadiness * 100)}%
-            </span>
-          </div>
-          <MasteryProgressBar
-            mastery={overallReadiness}
-            label="Overall readiness"
-          />
-          <details>
-            <summary className="cursor-pointer text-sm">Concept mastery</summary>
-            <div className="grid gap-2">
-              {concepts
-                .slice()
-                .sort(
-                  (a, b) =>
-                    (a.masteryProbability ?? 0) -
-                    (b.masteryProbability ?? 0)
-                )
-                .map((c) => (
-                  <ConceptCard key={c.conceptId} concept={c} />
-                ))}
-            </div>
-          </details>
-          {conceptsError && !conceptsLoading && (
-            <div className="p-3 rounded-[12px] text-sm bg-red-50 border border-red-200 text-red-800 flex items-center justify-between">
-              <span>{conceptsError}</span>
-              <button
-                onClick={fetchMastery}
-                className="text-sm font-medium text-primary hover:underline cursor-pointer ml-4"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-        </div>
+  // ponytail: derived from the same state the submit button uses, so the
+  // readout can never disagree with the submission it describes.
+  const runStatus = submitting
+    ? { dot: "bg-navy-light", text: "Running tests" }
+    : submitError
+      ? { dot: "bg-danger", text: "Submission failed" }
+      : submitResult && detail && submitResult.questionId === detail.id
+        ? {
+            dot:
+              submitResult.result.isCorrect === true
+                ? "bg-success"
+                : submitResult.result.isCorrect === false
+                  ? "bg-danger"
+                  : "bg-navy-light",
+            text: `${submitResult.result.testCasesPassed} of ${submitResult.result.testCasesTotal} tests passed`,
+          }
+        : { dot: "bg-border", text: "Ready to run" };
 
-        {detail ? (
-          <QuestionCard detail={detail} />
-        ) : (
-          <>
-            <div className="card !p-4 flex flex-col gap-3">
+  const selectedIndex = questions.findIndex((q) => q.id === selectedId);
+  const position = selectedIndex >= 0 ? selectedIndex + 1 : 0;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const goToQuestion = (offset: number) => {
+    const target = questions[selectedIndex + offset];
+    if (target) updateParams({ question: target.id });
+  };
+
+  return (
+    <div className="flex min-w-0 flex-col gap-5">
+      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border pb-5">
+        <div>
+          <h1 className="font-heading text-2xl font-semibold text-navy">Practice</h1>
+          <p className="mt-1 text-sm text-text-muted">
+            Solve a question, then run it against its tests.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setNavigatorOpen((open) => !open)}
+            aria-expanded={navigatorOpen}
+            className="cursor-pointer rounded-[10px] border border-border bg-bg-card px-3 py-2 text-sm font-medium text-text-body transition-colors hover:bg-bg-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy"
+          >
+            Questions
+          </button>
+          <div className="text-right">
+            <p className="text-xs font-medium text-text-muted">Question</p>
+            <p className="mt-0.5 font-mono text-sm tabular-nums text-navy">
+              {position ? `${pad(position)} / ${pad(questions.length)}` : "-- / --"}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => goToQuestion(-1)}
+              disabled={selectedIndex <= 0}
+              className="cursor-pointer rounded-[10px] border border-border bg-bg-card px-3 py-2 text-sm font-medium text-text-body transition-colors hover:bg-bg-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => goToQuestion(1)}
+              disabled={selectedIndex < 0 || selectedIndex >= questions.length - 1}
+              className="cursor-pointer rounded-[10px] border border-border bg-bg-card px-3 py-2 text-sm font-medium text-text-body transition-colors hover:bg-bg-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Question navigator, opened from the header. All values come from the API. */}
+      {navigatorOpen && (
+        <section className="panel-sm grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
               <div>
                 <label
                   htmlFor="concept-filter"
-                  className="block text-xs font-medium text-text-muted mb-1"
+                  className="mb-1 block text-xs font-medium text-text-muted"
                 >
                   Concept
                 </label>
@@ -464,11 +513,11 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
                       difficulty: filters.difficulty,
                     })}
                   disabled={conceptsLoading || concepts.length === 0}
-                  className="w-full text-sm rounded-[14px] border-[1.5px] border-border bg-white px-4 py-3 text-text-body focus:border-primary focus:shadow-[0_0_0_3px_rgba(74,173,219,0.12)] focus:outline-none cursor-pointer"
+                  className="field"
                 >
                   <option value="">All concepts</option>
                   {conceptsLoading ? (
-                    <option disabled>Loading concepts…</option>
+                    <option disabled>Loading concepts</option>
                   ) : (
                     concepts.map((c) => (
                       <option key={c.conceptId} value={c.conceptId}>
@@ -481,7 +530,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
               <div>
                 <label
                   htmlFor="difficulty-filter"
-                  className="block text-xs font-medium text-text-muted mb-1"
+                  className="mb-1 block text-xs font-medium text-text-muted"
                 >
                   Difficulty
                 </label>
@@ -493,22 +542,61 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
                       conceptId: filters.conceptId,
                       difficulty: e.target.value ? Number(e.target.value) : undefined,
                     })}
-                  className="w-full text-sm rounded-[14px] border-[1.5px] border-border bg-white px-4 py-3 text-text-body focus:border-primary focus:shadow-[0_0_0_3px_rgba(74,173,219,0.12)] focus:outline-none cursor-pointer"
+                  className="field"
                 >
                   <option value="">All difficulties</option>
                   {Array.from({ length: 10 }, (_, i) => i + 1).map((d) => (
                     <option key={d} value={d}>
-                      Difficulty {d}/10
+                      {d} / 10
                     </option>
                   ))}
                 </select>
               </div>
             </div>
-
+            <div className="border-t border-border pt-4">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="text-xs font-medium text-text-muted">Overall readiness</p>
+                <span className="font-mono text-xs tabular-nums text-navy">
+                  {Math.round(overallReadiness * 100)}%
+                </span>
+              </div>
+              <div className="mt-2">
+                <MasteryProgressBar mastery={overallReadiness} label="Overall readiness" />
+              </div>
+              <details className="mt-3">
+                <summary className="cursor-pointer text-xs text-text-muted hover:text-navy">
+                  Concept mastery
+                </summary>
+                <div className="mt-3 grid gap-2">
+                  {concepts
+                    .slice()
+                    .sort(
+                      (a, b) =>
+                        (a.masteryProbability ?? 0) - (b.masteryProbability ?? 0)
+                    )
+                    .map((c) => (
+                      <ConceptCard key={c.conceptId} concept={c} />
+                    ))}
+                </div>
+              </details>
+              {conceptsError && !conceptsLoading && (
+                <div className="error-banner mt-3 !mb-0">
+                  <span>{conceptsError}</span>
+                  <button
+                    onClick={fetchMastery}
+                    className="ml-auto font-medium hover:underline cursor-pointer"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+          <div>
             {listLoading ? (
-              <div className="card !p-4 flex flex-col gap-2">
-                {Array.from({ length: 5 }, (_, i) => (
-                  <div key={i} className="h-10 bg-border rounded-xl animate-pulse" />
+              <div className="flex flex-col gap-2">
+                {Array.from({ length: 6 }, (_, i) => (
+                  <div key={i} className="h-10 rounded-md bg-border animate-pulse" />
                 ))}
               </div>
             ) : listError ? (
@@ -530,89 +618,238 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
                 }
               />
             )}
-          </>
-        )}
-      </section>
+          </div>
+        </section>
+      )}
 
-      {/* Right: code editor + language selector + submit (40%) */}
-      <section className="flex flex-col gap-4 min-w-0 h-full min-h-0">
-        {detailLoading && !detail ? (
-          <div className="card h-full flex flex-col">
-            <div className="h-10 w-32 bg-border rounded animate-pulse mb-4" />
-            <div className="h-full bg-border rounded-xl animate-pulse" />
-          </div>
-        ) : detailNotFound ? (
-          <div className="card text-center py-10 flex-1">
-            <p className="text-sm text-text-muted mb-4">
-              This question is no longer available.
-            </p>
-            <button
-              onClick={() => updateParams({ question: undefined })}
-              className="text-sm font-medium text-primary hover:underline cursor-pointer"
-            >
-              Pick another question
-            </button>
-          </div>
-        ) : detailError ? (
-          <FetchError message={detailError} onRetry={retryDetail} />
-        ) : detail ? (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3 h-full min-h-0">
-            <div>
-              <label
-                htmlFor="language-selector"
-                className="block text-xs font-medium text-text-muted mb-1"
-              >
-                Language
-              </label>
-              <LanguageSelector value={language} onChange={handleLanguageChange} />
+      {/* LeetCode problem page: description left, editor right */}
+      <div className="grid min-w-0 grid-cols-1 items-start gap-5 lg:grid-cols-2">
+        <section className="min-w-0">
+          {detailLoading && !detail ? (
+            <div className="panel flex flex-col gap-4">
+              <div className="h-4 w-32 rounded bg-border animate-pulse" />
+              <div className="h-7 w-3/4 rounded bg-border animate-pulse" />
+              <div className="h-4 w-full rounded bg-border animate-pulse" />
+              <div className="h-32 rounded-[10px] bg-border animate-pulse" />
             </div>
-            <CodeEditor
-              language={language}
-              value={code}
-              onChange={(newValue) => {
-                updateCodeDraft(newValue ?? "");
-                setSubmitResult(null);
-                setSubmitError(null);
-                // Invalidate any in-flight submission: an edit makes its
-                // identity stale, so its result must not surface later.
-                submitIdentity.current++;
-              }}
-            />
-            {detail?.id &&
-              submitResult?.questionId === detail.id && (
-                <ResultPanel result={submitResult.result} />
-              )}
-            {submitError && (
-              <div
-                className="p-3 rounded-[12px] text-sm bg-red-50 border border-red-200 text-red-800"
+          ) : detailNotFound ? (
+            <div className="panel flex flex-col items-start gap-3">
+              <p className="text-sm text-text-body">
+                This question is no longer available.
+              </p>
+              <button
+                onClick={() => updateParams({ question: undefined })}
+                className="cursor-pointer text-sm font-medium text-navy underline underline-offset-2"
               >
-                {submitError}
-              </div>
-            )}
-            <button
-              type="submit"
-              disabled={submitting || !detail?.id}
-              className="btn-primary"
-            >
-              {submitting ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Submitting...
+                Pick another question
+              </button>
+            </div>
+          ) : detailError ? (
+            <FetchError message={detailError} onRetry={retryDetail} />
+          ) : detail ? (
+            <QuestionCard key={detail.id} detail={detail} position={position} />
+          ) : (
+            <div className="panel flex flex-col items-start">
+              <p className="text-sm text-text-muted">Select a question to see it here.</p>
+            </div>
+          )}
+        </section>
+
+        <section className="flex min-w-0 flex-col lg:h-[calc(100vh-13rem)] lg:min-h-[520px]">
+          {detailLoading && !detail ? (
+            <div className="panel flex h-full flex-col gap-4">
+              <div className="h-5 w-28 rounded bg-border animate-pulse" />
+              <div className="min-h-0 flex-1 rounded-[10px] bg-border animate-pulse" />
+              <div className="h-9 rounded-[10px] bg-border animate-pulse" />
+            </div>
+          ) : detailNotFound ? (
+            <div className="panel flex h-full flex-col items-center justify-center gap-3 text-center">
+              <p className="text-sm text-text-body">
+                This question is no longer available.
+              </p>
+              <button
+                onClick={() => updateParams({ question: undefined })}
+                className="cursor-pointer text-sm font-medium text-navy underline underline-offset-2"
+              >
+                Pick another question
+              </button>
+            </div>
+          ) : detailError ? (
+            <FetchError message={detailError} onRetry={retryDetail} />
+          ) : detail ? (
+            <form onSubmit={handleSubmit} className="panel flex h-full min-h-0 flex-col gap-3">
+              {/* One toolbar strip: active file on the left, language on the right. */}
+              <div className="flex items-center justify-between gap-4">
+                <span className="font-mono text-xs text-text-body">
+                  solution.{FILE_EXTENSIONS[language] ?? language}
                 </span>
-              ) : (
-                "Submit Code"
+                <div className="w-32">
+                  <label htmlFor="language-selector" className="sr-only">
+                    Language
+                  </label>
+                  <LanguageSelector value={language} onChange={handleLanguageChange} />
+                </div>
+              </div>
+
+              {/* The editor is the one rich surface in the pane. */}
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[10px] border border-border">
+                <CodeEditor
+                  language={language}
+                  value={code}
+                  onChange={(newValue) => {
+                    updateCodeDraft(newValue ?? "");
+                    setSubmitResult(null);
+                    setSubmitError(null);
+                    // Invalidate any in-flight submission: an edit makes its
+                    // identity stale, so its result must not surface later.
+                    submitIdentity.current++;
+                  }}
+                />
+              </div>
+
+              {/* Verdict console: real testcase inputs and real submission fields. */}
+              <div className="overflow-hidden rounded-[10px] border border-border">
+                <div className="flex items-center justify-between gap-3 border-b border-border bg-bg-light pl-3">
+                  <div role="tablist" className="flex gap-4">
+                    {[
+                      ...detail.exampleInputs.map((_, i) => `testcase-${i}`),
+                      "result",
+                    ].map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        role="tab"
+                        aria-selected={editorTab === value}
+                        onClick={() => setEditorTab(value)}
+                        className={`-mb-px cursor-pointer border-b-2 py-2 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy ${
+                          editorTab === value
+                            ? "border-navy text-navy"
+                            : "border-transparent text-text-muted hover:text-navy"
+                        }`}
+                      >
+                        {value === "result"
+                          ? "Result"
+                          : `Testcase ${Number(value.split("-")[1]) + 1}`}
+                      </button>
+                    ))}
+                  </div>
+                  {submitResult?.questionId === detail.id && (
+                    <span className="pr-3 font-mono text-xs tabular-nums text-text-muted">
+                      {submitResult.result.testCasesPassed}/
+                      {submitResult.result.testCasesTotal}
+                    </span>
+                  )}
+                </div>
+
+                {editorTab === "result" ? (
+                  submitResult?.questionId === detail.id ? (
+                    (() => {
+                      const r = submitResult.result;
+                      const verdictColor =
+                        r.isCorrect === true
+                          ? "text-[#15803d]"
+                          : r.isCorrect === false
+                            ? "text-[#b91c1c]"
+                            : "text-text-body";
+                      return (
+                        <div className="px-3 py-3">
+                          <p className={`text-sm font-medium ${verdictColor}`}>
+                            {statusLabel(r, r.isCorrect)}
+                          </p>
+                          <div className="mt-3 grid grid-cols-3 gap-4">
+                            <div>
+                              <p className="text-xs text-text-muted">Test cases</p>
+                              <p className="font-mono text-sm tabular-nums text-navy">
+                                {r.testCasesPassed} / {r.testCasesTotal}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-text-muted">Runtime</p>
+                              <p className="font-mono text-sm tabular-nums text-navy">
+                                {r.executionTimeMs == null
+                                  ? "n/a"
+                                  : `${r.executionTimeMs} ms`}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-text-muted">Memory</p>
+                              <p className="font-mono text-sm tabular-nums text-navy">
+                                {show(formatMemory(r.memoryUsageKb))}
+                              </p>
+                            </div>
+                          </div>
+                          <details className="mt-3 border-t border-border pt-2">
+                            <summary className="cursor-pointer text-xs text-text-muted hover:text-navy">
+                              Full result
+                            </summary>
+                            <div className="mt-2">
+                              <ResultPanel result={r} />
+                            </div>
+                          </details>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <p className="px-3 py-4 text-xs text-text-muted">
+                      {submitError
+                        ? "No result for this submission."
+                        : "Submit your code to see the result."}
+                    </p>
+                  )
+                ) : (
+                  <div className="px-3 py-3">
+                    <p className="mb-1 text-xs text-text-muted">Input</p>
+                    <pre className="max-h-24 overflow-auto whitespace-pre-wrap font-mono text-xs leading-relaxed text-text-body">
+                      {detail.exampleInputs[
+                        Number(editorTab.split("-")[1])
+                      ] ?? "No sample input"}
+                    </pre>
+                  </div>
+                )}
+              </div>
+
+              {submitError && (
+                <p role="alert" className="error-banner !mb-0">
+                  {submitError}
+                </p>
               )}
-            </button>
-          </form>
-        ) : (
-          <div className="card h-full flex flex-col items-center justify-center text-text-muted">
-            <p className="text-sm">Select a question to open the editor.</p>
-          </div>
-        )}
-      </section>
+
+              <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
+                <span className="flex items-center gap-2 text-xs text-text-muted">
+                  <span
+                    aria-hidden="true"
+                    className={`h-1.5 w-1.5 rounded-full ${runStatus.dot}`}
+                  />
+                  <span className="font-mono tabular-nums">{runStatus.text}</span>
+                </span>
+                <button
+                  type="submit"
+                  disabled={submitting || !detail?.id}
+                  className="btn-solid"
+                >
+                  {submitting ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Submitting
+                    </span>
+                  ) : (
+                    "Submit code"
+                  )}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="panel flex h-full flex-col items-center justify-center">
+              <p className="text-sm text-text-muted">
+                Select a question to open the editor.
+              </p>
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
@@ -630,16 +867,7 @@ function PracticeRoute() {
     <ProtectedRoute>
       <div className="min-h-screen flex flex-col bg-bg-light">
         <Navbar />
-        <main className="w-full max-w-6xl mx-auto px-6 py-10 flex-1 flex flex-col min-h-0">
-          <div className="mb-8">
-            <h1 className="font-heading text-2xl sm:text-3xl font-bold text-navy">
-              Practice
-            </h1>
-            <p className="text-text-muted mt-2 max-w-2xl">
-              Work through questions and write your solution in the editor.
-            </p>
-          </div>
-
+        <main className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col px-8 py-10">
           <Suspense fallback={<PageSkeleton />}>
             <PracticeContent selectedId={questionId} />
           </Suspense>
