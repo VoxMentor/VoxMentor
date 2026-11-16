@@ -399,7 +399,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
   const retryList = () => setListReload((n) => n + 1);
 
   return (
-    <div className="grid lg:grid-cols-[60%_40%] gap-6 min-w-0">
+    <div className="grid lg:grid-cols-[60%_40%] lg:grid-rows-[minmax(0,1fr)] gap-6 min-w-0 lg:flex-1 lg:min-h-0">
       {/* Left: question (60%) */}
       <section className="flex flex-col gap-4 min-w-0">
         <div className="card !p-4 flex flex-col gap-3">
@@ -535,7 +535,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
       </section>
 
       {/* Right: code editor + language selector + submit (40%) */}
-      <section className="flex flex-col gap-4 min-w-0 h-full">
+      <section className="flex flex-col gap-4 min-w-0 h-full min-h-0">
         {detailLoading && !detail ? (
           <div className="card h-full flex flex-col">
             <div className="h-10 w-32 bg-border rounded animate-pulse mb-4" />
@@ -556,7 +556,7 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
         ) : detailError ? (
           <FetchError message={detailError} onRetry={retryDetail} />
         ) : detail ? (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3 h-full">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3 h-full min-h-0">
             <div>
               <label
                 htmlFor="language-selector"
@@ -577,7 +577,6 @@ function PracticeContent({ selectedId }: PracticeContentProps) {
                 // identity stale, so its result must not surface later.
                 submitIdentity.current++;
               }}
-              height="100%"
             />
             {detail?.id &&
               submitResult?.questionId === detail.id && (
@@ -629,9 +628,9 @@ function PracticeRoute() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-bg-light">
+      <div className="min-h-screen flex flex-col bg-bg-light">
         <Navbar />
-        <main className="max-w-6xl mx-auto px-6 py-10">
+        <main className="w-full max-w-6xl mx-auto px-6 py-10 flex-1 flex flex-col min-h-0">
           <div className="mb-8">
             <h1 className="font-heading text-2xl sm:text-3xl font-bold text-navy">
               Practice

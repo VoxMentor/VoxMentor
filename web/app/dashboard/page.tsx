@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/lib/auth";
+import Link from "next/link";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import TutorChat from "@/components/TutorChat";
 import Navbar from "@/components/Navbar";
@@ -43,6 +44,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {[
               {
+                href: "/interview",
                 icon: (
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
@@ -55,6 +57,7 @@ export default function DashboardPage() {
                 iconBg: "bg-primary/10 text-primary",
               },
               {
+                href: "/interview",
                 icon: (
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
@@ -68,6 +71,7 @@ export default function DashboardPage() {
                 iconBg: "bg-accent-gold/10 text-accent-gold",
               },
               {
+                href: "/settings",
                 icon: (
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
@@ -79,9 +83,10 @@ export default function DashboardPage() {
                 iconBg: "bg-accent-teal/10 text-accent-teal",
               },
             ].map((card) => (
-              <button
+              <Link
                 key={card.title}
-                className="card group text-left cursor-pointer"
+                href={card.href}
+                className="card group text-left cursor-pointer block"
               >
                 <div className={`icon-circle-sm ${card.iconBg} mb-4`}>
                   {card.icon}
@@ -92,7 +97,7 @@ export default function DashboardPage() {
                 <p className="text-sm text-text-muted leading-relaxed">
                   {card.desc}
                 </p>
-              </button>
+              </Link>
             ))}
           </div>
 
