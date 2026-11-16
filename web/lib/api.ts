@@ -25,14 +25,38 @@ class ApiError extends Error {
   }
 }
 
-async function request<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const url = `${API_BASE}${path}`;
+// Auth endpoints must never trigger a refresh: /refresh would recurse, a login
+// or register 401 is the caller's own answer, and logout must not resurrect
+// the session it is ending.
+const AUTH_PATHS = [
+  "/v1/auth/login",
+  "/v1/auth/register",
+  "/v1/auth/refresh",
+  "/v1/auth/logout",
+];
+
+// Refreshing rotates the refresh token and revokes the old one server-side, so
+// two of them in flight at once means the loser 401s and signs the user out.
+// One shared promise per burst of 401s: everyone waits on the same rotation.
+let refreshInFlight: Promise<boolean> | null = null;
+
+function refreshSession(): Promise<boolean> {
+  refreshInFlight ??= fetch(`${API_BASE}/v1/auth/refresh`, {
+    method: "POST",
+    credentials: "include",
+  })
+    .then((res) => res.ok)
+    .catch(() => false)
+    .finally(() => {
+      refreshInFlight = null;
+    });
+  return refreshInFlight;
+}
+
+async function send(path: string, options: RequestInit): Promise<Response> {
   // FormData must keep the browser-generated multipart boundary: no JSON header.
   const isFormData = options.body instanceof FormData;
-  const res = await fetch(url, {
+  return fetch(`${API_BASE}${path}`, {
     credentials: "include",
     ...options,
     headers: {
@@ -40,6 +64,20 @@ async function request<T>(
       ...options.headers,
     },
   });
+}
+
+async function request<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  let res = await send(path, options);
+
+  if (res.status === 401 && !AUTH_PATHS.some((p) => path.startsWith(p))) {
+    await refreshSession();
+    // Replay even if the refresh lost a race with another tab: that tab may
+    // have rotated the cookies, so only the server can say this 401 is real.
+    res = await send(path, options);
+  }
 
   if (res.status === 401) {
     throw new ApiError("Unauthorized", 401);
