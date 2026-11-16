@@ -26,7 +26,7 @@ export default function AdminTutorSessionPage({
   // Redirect non-platform admins (but still call hooks first)
   useEffect(() => {
     if (user && !isPlatformAdmin) {
-      router.replace("/dashboard");
+      router.replace("/admin");
     }
   }, [user, isPlatformAdmin, router]);
 

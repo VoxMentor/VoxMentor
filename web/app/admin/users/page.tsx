@@ -49,7 +49,7 @@ function UsersContent() {
   // server 403s everyone else, this redirect just keeps the UI honest.
   // Anonymous routing is AdminRoute's + AuthProvider's job.
   useEffect(() => {
-    if (user && !isSuperAdmin) router.replace("/dashboard");
+    if (user && !isSuperAdmin) router.replace("/admin");
   }, [user, isSuperAdmin, router]);
 
   useEffect(() => {
@@ -113,7 +113,7 @@ function UsersContent() {
         try {
           const me = await api.me();
           setUser(me);
-          if (!me.roles.includes("SuperAdmin")) router.replace("/dashboard");
+          if (!me.roles.includes("SuperAdmin")) router.replace("/admin");
         } catch (e) {
           // the role change already succeeded; only a 401 ends the session.
           // anything else (network blip, 5xx) is transient, so stay put and warn.

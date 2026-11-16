@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
 import { useAuth, invalidateAuthCheck } from "@/lib/auth";
+import { landingPath, loadView, resolveView } from "@/lib/view";
 import AuthFormShell from "@/components/AuthFormShell";
 
 export default function LoginPage() {
@@ -23,7 +24,7 @@ export default function LoginPage() {
       const user = await api.login({ email, password });
       invalidateAuthCheck();
       setUser(user);
-      router.push("/dashboard");
+      router.push(landingPath(resolveView(loadView(user.id), user.roles)));
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);

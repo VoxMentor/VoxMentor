@@ -53,7 +53,7 @@ function CorpusContent() {
   // maps the ManageContent policy (ContentAdmin, SuperAdmin) — the server 403s
   // everyone else, this redirect just keeps the UI honest.
   useEffect(() => {
-    if (user && !isContentAdmin) router.replace("/dashboard");
+    if (user && !isContentAdmin) router.replace("/admin");
   }, [user, isContentAdmin, router]);
 
   // Stale identity (expired session or server-side demotion): re-verify instead of a
@@ -67,7 +67,7 @@ function CorpusContent() {
         .then((me) => {
           setUser(me);
           if (!isContentAdminRoles(me.roles)) {
-            router.replace("/dashboard");
+            router.replace("/admin");
             return;
           }
           onStillAuthorized?.();

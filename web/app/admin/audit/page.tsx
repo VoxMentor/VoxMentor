@@ -39,7 +39,7 @@ function AuditContent() {
     !!user?.roles?.includes("SuperAdmin");
 
   useEffect(() => {
-    if (user && !isPlatformAdmin) router.replace("/dashboard");
+    if (user && !isPlatformAdmin) router.replace("/admin");
   }, [user, isPlatformAdmin, router]);
 
   const key = `${page}|${reload}`;

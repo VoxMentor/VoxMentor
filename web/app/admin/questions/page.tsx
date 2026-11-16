@@ -79,7 +79,7 @@ function QuestionsContent() {
   // 403s everyone else, this redirect just keeps the UI honest. Anonymous
   // routing is AdminRoute's + AuthProvider's job.
   useEffect(() => {
-    if (user && !isContentAdmin) router.replace("/dashboard");
+    if (user && !isContentAdmin) router.replace("/admin");
   }, [user, isContentAdmin, router]);
 
   useEffect(() => {
@@ -419,7 +419,7 @@ function CreateQuestionForm({
           .then((me) => {
             setUser(me);
             if (!isContentAdminRoles(me.roles)) {
-              router.replace("/dashboard");
+              router.replace("/admin");
               return;
             }
             // refresh didn't explain the failure: show it

@@ -45,7 +45,7 @@ function PlagiarismContent() {
     !!user && user.roles.some((role) => PLATFORM_ADMINS.includes(role));
 
   useEffect(() => {
-    if (user && !isPlatformAdmin) router.replace("/dashboard");
+    if (user && !isPlatformAdmin) router.replace("/admin");
   }, [user, isPlatformAdmin, router]);
 
   // keyed results: only the request for the current page/reload can update
