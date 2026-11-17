@@ -49,7 +49,7 @@ function UsersContent() {
   // server 403s everyone else, this redirect just keeps the UI honest.
   // Anonymous routing is AdminRoute's + AuthProvider's job.
   useEffect(() => {
-    if (user && !isSuperAdmin) router.replace("/dashboard");
+    if (user && !isSuperAdmin) router.replace("/admin");
   }, [user, isSuperAdmin, router]);
 
   useEffect(() => {
@@ -113,7 +113,7 @@ function UsersContent() {
         try {
           const me = await api.me();
           setUser(me);
-          if (!me.roles.includes("SuperAdmin")) router.replace("/dashboard");
+          if (!me.roles.includes("SuperAdmin")) router.replace("/admin");
         } catch (e) {
           // the role change already succeeded; only a 401 ends the session.
           // anything else (network blip, 5xx) is transient, so stay put and warn.
@@ -149,14 +149,16 @@ function UsersContent() {
 
   return (
     <>
-      <div className="mb-6">
-        <h1 className="text-2xl font-heading font-bold text-text-heading">Users &amp; Roles</h1>
+      <header className="mb-8">
+        <h1 className="font-heading text-2xl font-semibold text-navy">
+          Users and roles
+        </h1>
         {state?.ok && (
-          <p className="text-sm text-text-muted mt-1">
+          <p className="mt-1 max-w-2xl text-sm text-text-muted">
             Showing {users.length} user{users.length === 1 ? "" : "s"}, page {page}
           </p>
         )}
-      </div>
+      </header>
 
       {banner && (
         <div className="error-banner" role="alert">
@@ -171,9 +173,9 @@ function UsersContent() {
 
       {state?.ok && (
         <>
-          <div className="card">
+          <div className="panel">
             {users.length === 0 ? (
-              <p className="text-center text-sm text-text-muted">No users found.</p>
+              <p className="text-sm text-text-muted">No users found.</p>
             ) : (
               <ul className="divide-y divide-border">
                 {users.map((u) => (
@@ -190,21 +192,23 @@ function UsersContent() {
             )}
           </div>
 
-          <nav className="flex items-center justify-between mt-4" aria-label="Pagination">
+          <nav className="flex items-center justify-between mt-4 px-1" aria-label="Pagination">
             <button
               onClick={() => goToPage(page - 1)}
               disabled={page === 1}
-              className="px-3 py-1.5 text-sm font-medium text-primary hover:bg-accent-light-blue rounded-xl transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              className="px-3 py-1.5 text-sm text-navy rounded-[10px] border border-border cursor-pointer transition-colors hover:bg-bg-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             >
               Previous
             </button>
-            <span className="text-sm text-text-muted">Page {page}</span>
-            {/* ponytail: API has no totalCount — Next is a full-page heuristic; an exact
+            <span className="font-mono text-xs tabular-nums text-text-muted">
+              Page {page}
+            </span>
+            {/* ponytail: API has no totalCount -- Next is a full-page heuristic; an exact
                 multiple of PAGE_SIZE can land on one empty page. Add totals if needed. */}
             <button
               onClick={() => goToPage(page + 1)}
               disabled={users.length < PAGE_SIZE}
-              className="px-3 py-1.5 text-sm font-medium text-primary hover:bg-accent-light-blue rounded-xl transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              className="px-3 py-1.5 text-sm text-navy rounded-[10px] border border-border cursor-pointer transition-colors hover:bg-bg-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             >
               Next
             </button>
@@ -243,7 +247,7 @@ function UserRow({
             confirming === role ? (
               <span
                 key={role}
-                className="inline-flex items-center gap-2 rounded-full bg-[#FEF2F2] border border-[#FECACA] px-2.5 py-1 text-xs font-medium text-[#B91C1C]"
+                className="inline-flex items-center gap-2 rounded-[6px] border border-border px-2 py-1 text-xs text-navy"
               >
                 Remove {role}?
                 <button
@@ -252,13 +256,13 @@ function UserRow({
                     onRemove(role);
                   }}
                   disabled={busy}
-                  className="font-semibold underline underline-offset-2 hover:no-underline cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="underline underline-offset-2 cursor-pointer transition-colors hover:text-primary-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Yes
                 </button>
                 <button
                   onClick={() => setConfirming(null)}
-                  className="text-text-muted hover:text-text-heading cursor-pointer"
+                  className="text-text-muted cursor-pointer transition-colors hover:text-text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy"
                 >
                   Cancel
                 </button>
@@ -266,14 +270,14 @@ function UserRow({
             ) : (
               <span
                 key={role}
-                className="inline-flex items-center gap-1 rounded-full bg-accent-light-blue text-primary px-2.5 py-1 text-xs font-medium"
+                className="inline-flex items-center gap-1 rounded-[6px] border border-border px-2 py-1 font-mono text-xs text-navy"
               >
                 {role}
                 <button
                   onClick={() => setConfirming(role)}
                   disabled={busy}
                   aria-label={`Remove ${role} from ${u.fullName}`}
-                  className="hover:text-primary-dark cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="text-text-muted cursor-pointer transition-colors hover:text-text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <XIcon />
                 </button>
@@ -291,7 +295,7 @@ function UserRow({
               value={selected}
               onChange={(e) => setSelected(e.target.value)}
               disabled={busy}
-              className="rounded-xl border border-border bg-bg-card px-3 py-1.5 text-sm text-text-body outline-none focus:border-primary disabled:opacity-50"
+              className="rounded-[10px] border border-border bg-bg-card px-3 py-1.5 text-sm text-text-body focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <option value="">Add role&hellip;</option>
               {assignable.map((r) => (
@@ -307,7 +311,7 @@ function UserRow({
                 if (role) onAssign(role);
               }}
               disabled={busy || !selected}
-              className="px-3 py-1.5 text-sm font-semibold text-white bg-primary hover:bg-primary-dark rounded-xl transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1.5 text-sm font-medium text-white bg-navy border border-navy rounded-[10px] cursor-pointer transition-colors hover:bg-navy-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Assign
             </button>
@@ -337,7 +341,7 @@ function XIcon() {
 
 function UsersSkeleton() {
   return (
-    <div className="card" aria-hidden="true">
+    <div className="panel" aria-hidden="true">
       <div className="space-y-5">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="space-y-2">

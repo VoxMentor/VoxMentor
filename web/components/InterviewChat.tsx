@@ -41,7 +41,7 @@ const INVOKE_TIMEOUT_MS = 120_000;
  * starts fresh here.
  */
 const RESUMED_NOTE =
-  "Interview resumed. The previous question isn't shown here — if you remember it, answer to continue. Otherwise, finish the interview for your review.";
+  "Interview resumed. The previous question isn't shown here. If you remember it, answer to continue. Otherwise, finish the interview for your review.";
 
 /** Unwraps an ApiError/Error into user-facing text, with a generic fallback. */
 function errorMessage(e: unknown): string {
@@ -179,6 +179,7 @@ export default function InterviewChat({
   const locked = busy || (hasInterview && status !== "done");
   // The interviewer has no problems left - only /complete may close the run.
   const canAnswer = !busy && ongoing;
+  const showSetup = !hasInterview || status === "done";
 
   // Streamed tokens land in the turn opened just before the invoke. Handlers
   // are registered per action (mirroring TutorChat's ask()), scoped to the
@@ -349,7 +350,7 @@ export default function InterviewChat({
         conn,
         "StartMock",
         [jdId.trim(), type, false],
-        " If the interview did start anyway, it is listed under Interview history — open it there to continue."
+        " If the interview did start anyway, it is listed under Interview history. Open it there to continue."
       );
       streamingTurnRef.current = null;
 
@@ -458,7 +459,7 @@ export default function InterviewChat({
         conn,
         "SendAnswer",
         [interviewId, message],
-        " Your answer may already have been recorded — reopen the interview from Interview history to continue."
+        " Your answer may already have been recorded. Reopen the interview from Interview history to continue."
       );
       streamingTurnRef.current = null;
 
@@ -516,159 +517,192 @@ export default function InterviewChat({
   }, [onCompleted, updateStatus]);
 
   return (
-    <div className="card !p-5 flex flex-col gap-5 min-w-0">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label
-            htmlFor="interview-jd"
-            className="block text-xs font-medium text-text-muted mb-1"
-          >
-            Job description id (optional)
-          </label>
-          <input
-            id="interview-jd"
-            type="text"
-            value={jdId}
-            onChange={(e) => setJdId(e.target.value)}
-            disabled={locked}
-            placeholder="e.g. 0f3c…"
-            className="w-full text-sm rounded-[14px] border-[1.5px] border-border bg-white px-4 py-3 text-text-body focus:border-primary focus:shadow-[0_0_0_3px_rgba(74,173,219,0.12)] focus:outline-none disabled:opacity-60"
-          />
-          <p className="text-xs text-text-muted mt-1">
-            <Link
-              href="/jd"
-              className="text-primary hover:underline font-medium"
-            >
-              Upload a job description
-            </Link>{" "}
-            to get an id.
-          </p>
-        </div>
-        <div>
-          <label
-            htmlFor="interview-type"
-            className="block text-xs font-medium text-text-muted mb-1"
-          >
-            Format
-          </label>
-          <select
-            id="interview-type"
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-            disabled={locked}
-            className="w-full text-sm rounded-[14px] border-[1.5px] border-border bg-white px-4 py-3 text-text-body focus:border-primary focus:shadow-[0_0_0_3px_rgba(74,173,219,0.12)] focus:outline-none cursor-pointer disabled:opacity-60"
-          >
-            <option value="Technical">Technical</option>
-            <option value="Behavioral">Behavioral</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          onClick={startInterview}
-          disabled={busy || (hasInterview && status !== "done")}
-          className="btn-primary !py-2.5 !px-6 !text-sm"
-        >
-          {status === "done" ? "Start another interview" : "Start interview"}
-        </button>
-        {status === "streaming" && (
-          <span className="text-xs text-primary animate-pulse">
-            Interviewer is speaking…
+    <div className="flex min-w-0 flex-col gap-5">
+      {/* Setup, or a thin context strip while the run is active */}
+      <section className="panel">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="text-sm font-medium text-navy">
+            {showSetup ? "New interview" : "Interview"}
+          </h2>
+          <span className="font-mono text-xs tabular-nums text-text-muted">
+            {type}
+            {hasInterview && ` · ${interviewId?.slice(0, 8)}`}
           </span>
-        )}
-        {status === "ready" && !ongoing && (
-          <span className="text-xs text-text-muted">
-            That was the last problem — finish the interview for your review.
-          </span>
-        )}
-        {status === "done" && (
-          <span className="text-xs text-success">Interview complete.</span>
-        )}
-      </div>
-
-      {error && (
-        <div className="error-banner !mb-0" role="alert">
-          <span aria-hidden="true">⚠️</span>
-          <span>{error}</span>
         </div>
-      )}
 
-      {turns.length > 0 && (
-        <div
-          ref={transcriptRef}
-          className="flex flex-col gap-3 max-h-[26rem] overflow-y-auto pr-1 min-w-0"
-        >
-          {turns.map((turn) => (
-            <div
-              key={turn.id}
-              className={turn.role === "candidate" ? "flex justify-end" : ""}
-            >
-              <div
-                className={`max-w-[92%] rounded-[14px] px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${
-                  turn.role === "candidate"
-                    ? "rounded-br-sm bg-accent-light-blue text-text-heading"
-                    : "rounded-bl-sm bg-bg-light text-text-heading"
-                }`}
-              >
-                {turn.text}
+        {showSetup ? (
+          <>
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label
+                  htmlFor="interview-jd"
+                  className="mb-1.5 block text-xs font-medium text-text-muted"
+                >
+                  Job description id
+                </label>
+                <input
+                  id="interview-jd"
+                  type="text"
+                  value={jdId}
+                  onChange={(e) => setJdId(e.target.value)}
+                  disabled={locked}
+                  placeholder="Optional"
+                  className="field"
+                />
+                <p className="mt-1.5 text-xs text-text-muted">
+                  <Link
+                    href="/jd"
+                    className="font-medium text-navy underline underline-offset-2"
+                  >
+                    Upload a job description
+                  </Link>{" "}
+                  to get an id
+                </p>
+              </div>
+              <div>
+                <label
+                  htmlFor="interview-type"
+                  className="mb-1.5 block text-xs font-medium text-text-muted"
+                >
+                  Format
+                </label>
+                <select
+                  id="interview-type"
+                  value={type}
+                  onChange={(e) => setType(e.target.value)}
+                  disabled={locked}
+                  className="field cursor-pointer"
+                >
+                  <option value="Technical">Technical</option>
+                  <option value="Behavioral">Behavioral</option>
+                </select>
               </div>
             </div>
-          ))}
-        </div>
-      )}
-
-      {hasInterview && status !== "done" && (
-        <div className="flex flex-col gap-3">
-          <div>
-            <label
-              htmlFor="interview-answer"
-              className="block text-xs font-medium text-text-muted mb-1"
-            >
-              Your answer
-            </label>
-            <textarea
-              id="interview-answer"
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  answerInterview();
-                }
-              }}
-              rows={3}
-              disabled={!canAnswer}
-              placeholder="Type your answer… (Enter to send, Shift+Enter for newline)"
-              className="w-full p-3 text-sm text-text-heading bg-white border-[1.5px] border-[var(--border)] rounded-[14px] outline-none focus:border-primary transition-all resize-none disabled:opacity-60"
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={answerInterview}
-              disabled={!canAnswer || answer.trim().length === 0}
-              className="btn-primary !py-2.5 !px-6 !text-sm"
-            >
-              {busy ? "Waiting…" : "Send answer"}
-            </button>
+            <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
+              <button
+                onClick={startInterview}
+                disabled={busy || (hasInterview && status !== "done")}
+                className="btn-solid"
+              >
+                {status === "done" ? "Start another interview" : "Start interview"}
+              </button>
+              {status === "done" && (
+                <span className="text-xs text-text-muted">Interview complete</span>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+            <span className="text-xs text-text-muted">
+              {status === "streaming"
+                ? "Interviewer is speaking"
+                : status === "ready" && !ongoing
+                  ? "That was the last problem. Finish the interview for your review"
+                  : "Answer each question to continue"}
+            </span>
             <button
               onClick={completeInterview}
               disabled={busy}
-              className="px-4 py-2 text-sm font-medium text-primary border border-border rounded-xl hover:bg-accent-light-blue transition-colors cursor-pointer disabled:opacity-60"
+              className="cursor-pointer rounded-[10px] border border-border px-3 py-2 text-sm font-medium text-navy transition-colors hover:bg-bg-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy disabled:opacity-60"
             >
               Finish and get review
             </button>
           </div>
-        </div>
+        )}
+      </section>
+
+      {error && (
+        <p role="alert" className="error-banner !mb-0">
+          {error}
+        </p>
+      )}
+
+      {/* Transcript ledger */}
+      {turns.length > 0 && (
+        <section className="panel">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className="text-sm font-medium text-navy">Transcript</h2>
+            <span className="font-mono text-xs tabular-nums text-text-muted">
+              {String(turns.length).padStart(2, "0")} turns
+            </span>
+          </div>
+          <div
+            ref={transcriptRef}
+            className="mt-4 flex max-h-[26rem] min-w-0 flex-col gap-4 overflow-y-auto pr-1"
+          >
+            {turns.map((turn, i) => {
+              const candidate = turn.role === "candidate";
+              return (
+                <div key={turn.id} className="min-w-0">
+                  <p
+                    className={`mb-1 font-mono text-xs text-text-muted ${
+                      candidate ? "text-right" : ""
+                    }`}
+                  >
+                    {String(i + 1).padStart(2, "0")} {candidate ? "You" : "Interviewer"}
+                  </p>
+                  <div
+                    className={`max-w-[92%] rounded-[10px] px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words ${
+                      candidate
+                        ? "ml-auto bg-accent-light-blue/50 text-navy"
+                        : "bg-bg-light text-text-body"
+                    }`}
+                  >
+                    {turn.text}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Answer desk */}
+      {hasInterview && status !== "done" && (
+        <section className="panel">
+          <label
+            htmlFor="interview-answer"
+            className="mb-1.5 block text-xs font-medium text-text-muted"
+          >
+            Your answer
+          </label>
+          <textarea
+            id="interview-answer"
+            value={answer}
+            onChange={(e) => setAnswer(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                answerInterview();
+              }
+            }}
+            rows={4}
+            disabled={!canAnswer}
+            placeholder="Type your answer"
+            className="field min-h-24 resize-none"
+          />
+          <p className="mt-1.5 text-xs text-text-muted">
+            Enter to send, Shift+Enter for a new line
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border pt-3">
+            <button
+              onClick={answerInterview}
+              disabled={!canAnswer || answer.trim().length === 0}
+              className="btn-solid"
+            >
+              {busy ? "Waiting" : "Send answer"}
+            </button>
+          </div>
+        </section>
       )}
 
       {review && (
-        <div className="border-t border-border pt-5">
-          <h2 className="font-heading font-semibold text-navy text-lg mb-4">
-            Interview review
-          </h2>
-          <InterviewReviewCard review={review} />
-        </div>
+        <section className="panel">
+          <h2 className="text-sm font-medium text-navy">Interview review</h2>
+          <div className="mt-4 border-t border-border pt-4">
+            <InterviewReviewCard review={review} />
+          </div>
+        </section>
       )}
     </div>
   );

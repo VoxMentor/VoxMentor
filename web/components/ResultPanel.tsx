@@ -4,7 +4,6 @@ import { motion } from "motion/react";
 import { type SubmitCodeResult, type CodeTestCaseResult } from "@/lib/api";
 import {
   borderColor,
-  badgeColor,
   formatMemory,
   formatMasteryDelta,
   masteryColor,
@@ -14,6 +13,12 @@ import {
 
 interface ResultPanelProps {
   result: SubmitCodeResult;
+}
+
+// ponytail: the tested lib helpers use an em dash for "unavailable"; normalize
+// it at the edge so no decorative dashes reach the screen.
+function display(value: string): string {
+  return value === "—" ? "n/a" : value;
 }
 
 /**
@@ -29,19 +34,31 @@ export default function ResultPanel({ result }: ResultPanelProps) {
   const status = statusLabel(result, isCorrect);
 
   return (
-    <div className="card animate-fade-in flex flex-col gap-3 border-l-4">
-      <div className={`border-l-3 px-2.5 py-2 ${borderColor(isCorrect)}`}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-text-heading">Submission result</h3>
-          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${badgeColor(isCorrect)}`}>
-            {status}
-          </span>
-        </div>
+    <div className="animate-fade-in relative flex flex-col gap-3 overflow-hidden rounded-[10px] border border-border">
+      <div
+        aria-hidden="true"
+        className={`absolute left-0 top-0 h-full w-0.5 ${
+          isCorrect === true
+            ? "bg-success"
+            : isCorrect === false
+              ? "bg-danger"
+              : "bg-border"
+        }`}
+      />
+      <div className="flex items-center justify-between gap-3 px-3 pt-3">
+        <h3 className="text-sm font-medium text-navy">Submission result</h3>
+        <span className="flex shrink-0 items-center gap-2 text-xs font-medium text-navy">
+          <span
+            aria-hidden="true"
+            className={`h-2 w-2 rounded-full border-2 ${borderColor(isCorrect)}`}
+          />
+          {status}
+        </span>
       </div>
 
       <div className="px-4 py-3 grid grid-cols-2 gap-2 border-b border-border">
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+          <span className="text-xs text-text-muted">
             Test cases
           </span>
           <span className="text-sm font-medium text-text-body">
@@ -49,23 +66,23 @@ export default function ResultPanel({ result }: ResultPanelProps) {
           </span>
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+          <span className="text-xs text-text-muted">
             Execution time
           </span>
           <span className="text-sm font-medium text-text-body">
-            {result.executionTimeMs == null ? "—" : `${result.executionTimeMs} ms`}
+            {result.executionTimeMs == null ? "n/a" : `${result.executionTimeMs} ms`}
           </span>
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+          <span className="text-xs text-text-muted">
             Memory usage
           </span>
           <span className="text-sm font-medium text-text-body">
-            {formatMemory(result.memoryUsageKb)}
+            {display(formatMemory(result.memoryUsageKb))}
           </span>
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+          <span className="text-xs text-text-muted">
             Mastery change
           </span>
           <motion.span
@@ -75,14 +92,14 @@ export default function ResultPanel({ result }: ResultPanelProps) {
             transition={{ duration: 0.3 }}
             style={{ color: masteryColor(masteryDelta) }}
           >
-            {formatMasteryDelta(masteryDelta)}
+            {display(formatMasteryDelta(masteryDelta))}
           </motion.span>
         </div>
       </div>
 
       {result.testCaseResults && result.testCaseResults.length > 0 && (
         <div className="px-4 py-3 border-b border-border">
-          <h4 className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-2">
+          <h4 className="mb-2 text-xs text-text-muted">
             Test case results
           </h4>
           <div className="space-y-2 max-h-60 overflow-y-auto">
@@ -96,10 +113,8 @@ export default function ResultPanel({ result }: ResultPanelProps) {
                 <div className="flex items-center justify-between text-xs mb-1">
                   <span className="font-medium text-text-muted">Test case #{tc.testCaseIndex + 1}</span>
                   <span
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                      tc.passed
-                        ? "bg-success/10 text-success"
-                        : "bg-danger/10 text-danger"
+                    className={`rounded px-1.5 py-0.5 text-[11px] font-medium text-navy ${
+                      tc.passed ? "bg-success/10" : "bg-danger/10"
                     }`}
                   >
                     {tc.passed ? "Passed" : "Failed"}
@@ -108,17 +123,17 @@ export default function ResultPanel({ result }: ResultPanelProps) {
                 <div className="grid grid-cols-2 gap-2 text-[11px] text-text-body">
                   <div>
                     <span className="text-text-muted">Input:</span>
-                    <pre className="whitespace-pre-wrap font-mono mt-0.5">{tc.stdin || "—"}</pre>
+                    <pre className="whitespace-pre-wrap font-mono mt-0.5">{tc.stdin || "n/a"}</pre>
                   </div>
                   <div>
                     <span className="text-text-muted">Expected:</span>
-                    <pre className="whitespace-pre-wrap font-mono mt-0.5">{tc.expected || "—"}</pre>
+                    <pre className="whitespace-pre-wrap font-mono mt-0.5">{tc.expected || "n/a"}</pre>
                   </div>
                   {!tc.passed && (
                     <>
                       <div>
                         <span className="text-text-muted">Actual:</span>
-                        <pre className="whitespace-pre-wrap font-mono mt-0.5">{tc.actual || "—"}</pre>
+                        <pre className="whitespace-pre-wrap font-mono mt-0.5">{tc.actual || "n/a"}</pre>
                       </div>
                       <div />
                     </>
@@ -132,17 +147,17 @@ export default function ResultPanel({ result }: ResultPanelProps) {
 
       {result.aiEvaluation && (
         <div className="px-4 py-3 border-b border-border">
-          <h4 className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-2">
+          <h4 className="mb-2 text-xs text-text-muted">
             AI evaluation
           </h4>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+              <span className="text-xs text-text-muted">
                 Correctness
               </span>
               <span className="text-sm font-medium text-text-body">
-                {result.aiEvaluation.correctness.score ?? "—"} /{" "}
-                {result.aiEvaluation.correctness.maxScore ?? "—"}
+                {result.aiEvaluation.correctness.score ?? "n/a"} /{" "}
+                {result.aiEvaluation.correctness.maxScore ?? "n/a"}
               </span>
               {result.aiEvaluation.correctness.feedback && (
                 <p className="text-[11px] text-text-muted mt-1">
@@ -151,12 +166,12 @@ export default function ResultPanel({ result }: ResultPanelProps) {
               )}
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+              <span className="text-xs text-text-muted">
                 Code style
               </span>
               <span className="text-sm font-medium text-text-body">
-                {result.aiEvaluation.codeStyle.score ?? "—"} /{" "}
-                {result.aiEvaluation.codeStyle.maxScore ?? "—"}
+                {result.aiEvaluation.codeStyle.score ?? "n/a"} /{" "}
+                {result.aiEvaluation.codeStyle.maxScore ?? "n/a"}
               </span>
               {result.aiEvaluation.codeStyle.feedback && (
                 <p className="text-[11px] text-text-muted mt-1">
@@ -165,7 +180,7 @@ export default function ResultPanel({ result }: ResultPanelProps) {
               )}
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+              <span className="text-xs text-text-muted">
                 Time complexity
               </span>
               <span className="text-sm font-medium text-text-body">
@@ -182,7 +197,7 @@ export default function ResultPanel({ result }: ResultPanelProps) {
               )}
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+              <span className="text-xs text-text-muted">
                 Space complexity
               </span>
               <span className="text-sm font-medium text-text-body">

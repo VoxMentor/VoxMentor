@@ -52,14 +52,14 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const items = visibleNavItems(user?.roles);
 
   return (
-    <div className="flex w-full max-w-7xl mx-auto px-6">
-      <aside className="hidden lg:block w-56 shrink-0 pt-10">
+    <div className="mx-auto flex w-full max-w-[1400px] gap-10 px-8">
+      <aside className="hidden w-60 shrink-0 pt-10 lg:block">
         <nav aria-label="Admin sections">
           <NavLinks items={items} pathname={pathname} />
         </nav>
       </aside>
 
-      <main className="flex-1 min-w-0 py-10">
+      <main className="min-w-0 flex-1 py-10">
         {/* Sidebar collapses below lg: a menu button takes over */}
         <div className="lg:hidden pb-6">
           <button
@@ -67,7 +67,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             onClick={() => setMenuOpen(true)}
             aria-expanded={menuOpen}
             aria-controls="admin-mobile-nav"
-            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-text-muted hover:text-text-heading hover:bg-accent-light-blue rounded-xl transition-colors cursor-pointer"
+            className="inline-flex cursor-pointer items-center gap-2 rounded-[10px] border border-border px-3 py-2 text-sm font-medium text-navy transition-colors hover:bg-bg-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy"
           >
             <MenuIcon />
             Admin sections
@@ -111,7 +111,9 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             }}
           >
             <div className="flex items-center justify-between mb-6">
-              <span className="font-heading font-bold text-text-heading">Admin</span>
+              <span className="font-heading text-base font-semibold text-navy">
+                Admin
+              </span>
               <button
                 onClick={() => setMenuOpen(false)}
                 autoFocus
@@ -139,7 +141,7 @@ function NavLinks({
   onNavigate?: () => void;
 }) {
   return (
-    <ul className="flex flex-col gap-1">
+    <ul className="flex flex-col">
       {items.map((item) => {
         // Exact match only: at most one sidebar item gets aria-current="page",
         // so /admin/users no longer highlights both Overview and Users & roles.
@@ -150,10 +152,10 @@ function NavLinks({
               href={item.href}
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
-              className={`block px-3 py-2 text-sm font-medium rounded-xl transition-colors ${
+              className={`flex h-10 items-center border-b-2 px-1 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy ${
                 active
-                  ? "text-primary bg-accent-light-blue"
-                  : "text-text-muted hover:text-text-heading hover:bg-accent-light-blue"
+                  ? "border-navy text-navy"
+                  : "border-transparent text-text-muted hover:text-navy"
               }`}
             >
               {item.label}

@@ -46,7 +46,7 @@ export default function TutorCitation({ citations }: TutorCitationProps) {
                 >
                   <path d="M9 6l6 6-6 6" />
                 </svg>
-                <span className="text-[10px] font-medium text-primary">
+                <span className="text-[11px] font-medium text-navy">
                   {c.source}
                 </span>
               </span>

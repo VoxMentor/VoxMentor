@@ -5,8 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { api, ApiError } from "@/lib/api";
-import ProtectedRoute from "@/components/ProtectedRoute";
-import Navbar from "@/components/Navbar";
 import FetchError from "@/components/FetchError";
 
 export default function AdminTutorSessionPage({
@@ -26,7 +24,7 @@ export default function AdminTutorSessionPage({
   // Redirect non-platform admins (but still call hooks first)
   useEffect(() => {
     if (user && !isPlatformAdmin) {
-      router.replace("/dashboard");
+      router.replace("/admin");
     }
   }, [user, isPlatformAdmin, router]);
 
@@ -102,111 +100,100 @@ export default function AdminTutorSessionPage({
   // Early return for unauthorized users (after hooks)
   if (!user || !isPlatformAdmin) return null;
 
+  const backLink = (
+    <Link
+      href="/admin/tutor-sessions"
+      className="inline-block text-xs text-navy underline underline-offset-4 transition-colors hover:text-primary-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy"
+    >
+      ← Back to sessions
+    </Link>
+  );
+
   if (loading) {
     return (
-      <ProtectedRoute>
-        <div className="min-h-screen bg-bg-light flex items-center justify-center">
-          <div className="h-8 w-24 bg-border rounded animate-pulse" />
-        </div>
-      </ProtectedRoute>
+      <div className="panel" aria-hidden="true">
+        <div className="h-4 w-24 bg-border rounded animate-pulse" />
+      </div>
     );
   }
 
   if (error || !session) {
     return (
-      <ProtectedRoute>
-        <div className="min-h-screen bg-bg-light">
-          <Navbar />
-          <div className="max-w-6xl mx-auto px-6 py-10">
-            <div className="mb-4">
-              <Link
-                href="/admin/tutor-sessions"
-                className="text-xs text-primary hover:text-primary-dark underline underline-offset-4"
-              >
-                ← Back to sessions
-              </Link>
-            </div>
-            <FetchError
-              message={error || "Session not found."}
-              onRetry={() => {
-                const controller = new AbortController();
-                loadSession(controller.signal);
-              }}
-            />
-          </div>
-        </div>
-      </ProtectedRoute>
+      <div>
+        <div className="mb-4">{backLink}</div>
+        <FetchError
+          message={error || "Session not found."}
+          onRetry={() => {
+            const controller = new AbortController();
+            loadSession(controller.signal);
+          }}
+        />
+      </div>
     );
   }
 
   return (
-    <ProtectedRoute>
-      <div className="min-h-screen bg-bg-light">
-        <Navbar />
-        <main className="max-w-6xl mx-auto px-6 py-10">
-          <div className="mb-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <Link
-                  href="/admin/tutor-sessions"
-                  className="text-xs text-primary hover:text-primary-dark underline underline-offset-4"
-                >
-                  ← Back to sessions
-                </Link>
-              </div>
-              <div>
-                <h1 className="font-heading text-2xl sm:text-3xl font-bold text-navy">
-                  AI Tutor
-                </h1>
-                <p className="text-text-muted mt-2">
-                  Session: {session.id} &nbsp;•&nbsp; User: {session.userEmail || session.userId}
-                </p>
-              </div>
-            </div>
-          </div>
+    <div>
+      <div className="mb-4">{backLink}</div>
 
-          <div className="flex flex-col gap-6">
-            {session.question && (
-              <div className="card p-4 mb-4 bg-bg-light border-l-4 border-primary">
-                <div className="flex items-start gap-3">
-                  <span className="text-xs font-medium text-primary">Question</span>
-                </div>
-                <div className="p-3 rounded-lg bg-white border border-border text-text-body leading-relaxed whitespace-pre-wrap mt-2">
-                  {session.question}
-                </div>
-              </div>
-            )}
-            {session.answer && (
-              <div className="card p-4 mb-4 bg-bg-light border-l-4 border-green-500">
-                <div className="flex items-start gap-3">
-                  <span className="text-xs font-medium text-green-500">Answer</span>
-                </div>
-                <div className="p-3 rounded-lg bg-white border border-border text-text-body leading-relaxed whitespace-pre-wrap mt-2">
-                  {session.answer}
-                </div>
-              </div>
-            )}
-            <div className="card p-4">
-              <div className="flex items-center gap-3 mb-4 flex-wrap">
-                <span className="text-xs font-medium text-text-muted">
-                  Status: <span className="text-text-body capitalize">{session.status.toLowerCase()}</span>
-                </span>
-                <span className="text-xs font-medium text-text-muted">
-                  Tokens: <span className="text-text-body">{session.totalTokens}</span>
-                </span>
-                <span className="text-xs font-medium text-text-muted">
-                  Created: <span className="text-text-body">{new Date(session.createdAt).toLocaleString()}</span>
-                </span>
-                {session.completedAt && (
-                  <span className="text-xs font-medium text-text-muted">
-                    Completed: <span className="text-text-body">{new Date(session.completedAt).toLocaleString()}</span>
-                  </span>
-                )}
-              </div>
+      <header className="mb-8">
+        <h1 className="font-heading text-2xl font-semibold text-navy">
+          Tutor session
+        </h1>
+        <p className="mt-1 max-w-2xl text-sm text-text-muted">
+          User {session.userEmail || session.userId}
+        </p>
+      </header>
+
+      <div className="flex flex-col gap-6">
+        {session.question && (
+          <section>
+            <h2 className="mb-3 text-sm font-medium text-navy">Question</h2>
+            <div className="panel-sm whitespace-pre-wrap text-sm leading-relaxed text-text-body">
+              {session.question}
             </div>
-          </div>
-        </main>
+          </section>
+        )}
+        {session.answer && (
+          <section>
+            <h2 className="mb-3 text-sm font-medium text-navy">Answer</h2>
+            <div className="panel-sm whitespace-pre-wrap text-sm leading-relaxed text-text-body">
+              {session.answer}
+            </div>
+          </section>
+        )}
+        <section>
+          <h2 className="mb-3 text-sm font-medium text-navy">Session details</h2>
+          <dl className="panel grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="min-w-0">
+              <dt className="text-xs text-text-muted">Status</dt>
+              <dd className="mt-1 text-sm text-text-body capitalize">
+                {session.status.toLowerCase()}
+              </dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-xs text-text-muted">Tokens</dt>
+              <dd className="mt-1 text-sm text-text-body tabular-nums">
+                {session.totalTokens}
+              </dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-xs text-text-muted">Created</dt>
+              <dd className="mt-1 text-sm text-text-body tabular-nums">
+                {new Date(session.createdAt).toLocaleString()}
+              </dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-xs text-text-muted">Completed</dt>
+              <dd className="mt-1 text-sm text-text-body tabular-nums">
+                {session.completedAt
+                  ? new Date(session.completedAt).toLocaleString()
+                  : "n/a"}
+              </dd>
+            </div>
+          </dl>
+        </section>
       </div>
-    </ProtectedRoute>
+    </div>
   );
 }

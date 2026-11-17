@@ -45,7 +45,7 @@ function isContentAdminRoles(roles: string[]): boolean {
 function formatDate(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
-    ? "—"
+    ? "n/a"
     : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
@@ -79,7 +79,7 @@ function QuestionsContent() {
   // 403s everyone else, this redirect just keeps the UI honest. Anonymous
   // routing is AdminRoute's + AuthProvider's job.
   useEffect(() => {
-    if (user && !isContentAdmin) router.replace("/dashboard");
+    if (user && !isContentAdmin) router.replace("/admin");
   }, [user, isContentAdmin, router]);
 
   useEffect(() => {
@@ -98,7 +98,7 @@ function QuestionsContent() {
       .catch((e) => {
         if (cancelled) return;
         // stale local auth (expired session or server-side demotion): re-verify
-        // instead of a dead-end retry — me() 401s -> setUser(null) -> AuthProvider
+        // instead of a dead-end retry. me() 401s -> setUser(null) -> AuthProvider
         // routes to /login; a demoted caller gets refreshed roles and the guard reroutes.
         if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
           api
@@ -152,27 +152,29 @@ function QuestionsContent() {
 
   return (
     <>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-heading font-bold text-text-heading">Question bank</h1>
+          <h1 className="font-heading text-2xl font-semibold text-navy">
+            Question bank
+          </h1>
           {state?.ok && (
-            <p className="text-sm text-text-muted mt-1">
+            <p className="mt-1 max-w-2xl text-sm text-text-muted">
               {totalCount} question{totalCount === 1 ? "" : "s"}, page {page} of {totalPages}
             </p>
           )}
         </div>
         <button
           onClick={openPanel}
-          className="px-3 py-1.5 text-sm font-semibold text-white bg-primary hover:bg-primary-dark rounded-xl transition-colors cursor-pointer"
+          className="px-3 py-1.5 text-sm font-medium text-white bg-navy border border-navy rounded-[10px] cursor-pointer transition-colors hover:bg-navy-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy"
         >
           New question
         </button>
-      </div>
+      </header>
 
       {success && success.page === page && (
         <div
           role="status"
-          className="flex items-center gap-2.5 rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-4 py-3 text-sm font-medium text-[#15803D] mb-5"
+          className="mb-5 flex items-center gap-2.5 rounded-[10px] border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
         >
           <svg
             width="16"
@@ -200,12 +202,12 @@ function QuestionsContent() {
 
       {state?.ok &&
         (questions.length === 0 ? (
-          <div className="card text-center" role="status">
+          <div className="panel" role="status">
             <p className="text-sm font-medium text-text-heading">
               {totalCount === 0 ? "No questions yet." : "No questions on this page."}
             </p>
             {totalCount === 0 && (
-              <p className="text-sm text-text-muted mt-1">
+              <p className="mt-1 text-sm text-text-muted">
                 {panelOpen ? "Create the first one in the form above." : 'Create the first one with "New question".'}
               </p>
             )}
@@ -213,28 +215,28 @@ function QuestionsContent() {
         ) : (
           <>
             {/* card stack below md */}
-            <div className="md:hidden space-y-4">
+            <div className="md:hidden flex flex-col gap-3">
               {questions.map((q) => (
                 <QuestionCard key={q.id} q={q} />
               ))}
             </div>
 
             {/* table at md+ */}
-            <div className="hidden md:block rounded-2xl border border-border bg-bg-card overflow-x-auto">
+            <div className="hidden md:block panel overflow-x-auto">
               <table className="w-full text-sm">
                 <caption className="sr-only">Questions, newest first</caption>
                 <thead>
-                  <tr className="bg-bg-light text-left text-xs font-semibold uppercase tracking-wider text-text-muted">
-                    <th scope="col" className="px-4 py-3">Title</th>
-                    <th scope="col" className="px-4 py-3">Concept</th>
-                    <th scope="col" className="px-4 py-3">Difficulty</th>
-                    <th scope="col" className="px-4 py-3">Test cases</th>
-                    <th scope="col" className="px-4 py-3">Created</th>
+                  <tr className="border-b border-border text-left text-xs font-medium text-text-muted">
+                    <th scope="col" className="whitespace-nowrap px-4 py-3">Title</th>
+                    <th scope="col" className="whitespace-nowrap px-4 py-3">Concept</th>
+                    <th scope="col" className="whitespace-nowrap px-4 py-3">Difficulty</th>
+                    <th scope="col" className="whitespace-nowrap px-4 py-3">Test cases</th>
+                    <th scope="col" className="whitespace-nowrap px-4 py-3">Created</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {questions.map((q) => (
-                    <tr key={q.id} className="hover:bg-bg-light transition-colors">
+                    <tr key={q.id} className="transition-colors hover:bg-bg-light">
                       <td className="px-4 py-3 max-w-[22rem]">
                         <p className="font-medium text-text-heading truncate" title={q.title}>
                           {q.title}
@@ -243,12 +245,14 @@ function QuestionsContent() {
                           {q.description}
                         </p>
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-text-body">
+                      <td className="px-4 py-3 font-mono text-xs text-text-muted">
                         <span title={q.conceptId}>{q.conceptId.slice(0, 8)}…</span>
                       </td>
-                      <td className="px-4 py-3"><DifficultyBadge value={q.difficulty} /></td>
-                      <td className="px-4 py-3 text-text-body">{q.testCaseCount}</td>
-                      <td className="px-4 py-3 text-text-body whitespace-nowrap">
+                      <td className="px-4 py-3 font-mono text-xs tabular-nums text-text-body">
+                        {q.difficulty}/10
+                      </td>
+                      <td className="px-4 py-3 text-text-body tabular-nums">{q.testCaseCount}</td>
+                      <td className="px-4 py-3 text-text-body whitespace-nowrap tabular-nums">
                         {formatDate(q.createdAt)}
                       </td>
                     </tr>
@@ -257,21 +261,21 @@ function QuestionsContent() {
               </table>
             </div>
 
-            <nav className="flex items-center justify-between mt-4" aria-label="Pagination">
+            <nav className="flex items-center justify-between mt-4 px-1" aria-label="Pagination">
               <button
                 onClick={() => goToPage(page - 1)}
                 disabled={page === 1}
-                className="px-3 py-1.5 text-sm font-medium text-primary hover:bg-accent-light-blue rounded-xl transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                className="px-3 py-1.5 text-sm text-navy rounded-[10px] border border-border cursor-pointer transition-colors hover:bg-bg-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               >
                 Previous
               </button>
-              <span className="text-sm text-text-muted">
+              <span className="font-mono text-xs tabular-nums text-text-muted">
                 Page {page} of {totalPages}
               </span>
               <button
                 onClick={() => goToPage(page + 1)}
                 disabled={page >= totalPages}
-                className="px-3 py-1.5 text-sm font-medium text-primary hover:bg-accent-light-blue rounded-xl transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                className="px-3 py-1.5 text-sm text-navy rounded-[10px] border border-border cursor-pointer transition-colors hover:bg-bg-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               >
                 Next
               </button>
@@ -282,20 +286,14 @@ function QuestionsContent() {
   );
 }
 
-function DifficultyBadge({ value }: { value: number }) {
-  return (
-    <span className="inline-flex items-center rounded-full bg-accent-light-blue px-2.5 py-1 text-xs font-semibold text-primary">
-      {value}/10
-    </span>
-  );
-}
-
 function QuestionCard({ q }: { q: AdminQuestion }) {
   return (
-    <div className="rounded-2xl border border-border bg-bg-card p-4 space-y-2">
+    <div className="panel-sm space-y-2">
       <div className="flex items-start justify-between gap-3">
         <p className="font-medium text-text-heading">{q.title}</p>
-        <DifficultyBadge value={q.difficulty} />
+        <span className="font-mono text-xs tabular-nums text-text-muted">
+          {q.difficulty}/10
+        </span>
       </div>
       <p className="text-sm text-text-body line-clamp-2">{q.description}</p>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-text-muted">
@@ -307,11 +305,11 @@ function QuestionCard({ q }: { q: AdminQuestion }) {
         </div>
         <div className="flex gap-1">
           <dt className="shrink-0">Test cases:</dt>
-          <dd className="text-text-body">{q.testCaseCount}</dd>
+          <dd className="text-text-body tabular-nums">{q.testCaseCount}</dd>
         </div>
         <div className="flex gap-1 col-span-2">
           <dt className="shrink-0">Created:</dt>
-          <dd className="text-text-body">{formatDate(q.createdAt)}</dd>
+          <dd className="text-text-body tabular-nums">{formatDate(q.createdAt)}</dd>
         </div>
       </dl>
     </div>
@@ -419,7 +417,7 @@ function CreateQuestionForm({
           .then((me) => {
             setUser(me);
             if (!isContentAdminRoles(me.roles)) {
-              router.replace("/dashboard");
+              router.replace("/admin");
               return;
             }
             // refresh didn't explain the failure: show it
@@ -457,13 +455,13 @@ function CreateQuestionForm({
   }
 
   return (
-    <section className="card-flat mb-8" aria-labelledby="new-question-heading">
-      <div className="flex items-start justify-between gap-4 mb-6">
+    <section className="panel mb-8" aria-labelledby="new-question-heading">
+      <div className="flex items-start justify-between gap-4 border-b border-border pb-4">
         <h2
           id="new-question-heading"
           tabIndex={-1}
           ref={headingRef}
-          className="text-xl font-heading font-bold text-text-heading focus:outline-none"
+          className="text-sm font-medium text-navy"
         >
           New question
         </h2>
@@ -471,13 +469,13 @@ function CreateQuestionForm({
           type="button"
           onClick={onClose}
           disabled={submitting}
-          className="px-3 py-1.5 text-sm font-medium text-text-muted hover:text-text-heading hover:bg-accent-light-blue rounded-xl transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 text-sm text-text-muted rounded-[10px] border border-border cursor-pointer transition-colors hover:bg-bg-light hover:text-text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Cancel
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} noValidate>
+      <form onSubmit={handleSubmit} noValidate className="mt-5">
         {banner && (
           <div className="error-banner" role="alert">
             <svg
@@ -547,7 +545,7 @@ function CreateQuestionForm({
 
         <div className="grid gap-x-6 sm:grid-cols-2">
           <div className="input-group">
-            <label htmlFor="q-difficulty">Difficulty (1–10)</label>
+            <label htmlFor="q-difficulty">Difficulty (1-10)</label>
             <input
               id="q-difficulty"
               type="number"
@@ -588,7 +586,7 @@ function CreateQuestionForm({
             aria-invalid={!!fieldErrors.TestCases}
             aria-describedby={fieldErrors.TestCases ? "q-testCases-hint q-testCases-error" : "q-testCases-hint"}
           />
-          <p id="q-testCases-hint" className="mt-1.5 text-xs text-text-muted">
+          <p id="q-testCases-hint" className="mt-2 text-xs text-text-muted">
             One JSON object per line, e.g.{" "}
             <code className="font-mono">{SAMPLE_TEST_CASE}</code>. Optional{" "}
             <code className="font-mono">{'"hidden": true'}</code> entries must come last.
@@ -609,7 +607,7 @@ function CreateQuestionForm({
             aria-invalid={!!fieldErrors.Rubric}
             aria-describedby={fieldErrors.Rubric ? "q-rubric-hint q-rubric-error" : "q-rubric-hint"}
           />
-          <p id="q-rubric-hint" className="mt-1.5 text-xs text-text-muted">
+          <p id="q-rubric-hint" className="mt-2 text-xs text-text-muted">
             One JSON object per line, e.g.{" "}
             <code className="font-mono">{'{ "criterion": "Handles overflow", "points": 2 }'}</code>.
           </p>
@@ -619,7 +617,7 @@ function CreateQuestionForm({
         <button
           type="submit"
           disabled={submitting}
-          className="px-5 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-primary-dark rounded-xl transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          className="mt-2 px-4 py-2.5 text-sm font-medium text-white bg-navy border border-navy rounded-[10px] cursor-pointer transition-colors hover:bg-navy-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {submitting ? (
             <span className="flex items-center justify-center gap-2">
@@ -627,7 +625,7 @@ function CreateQuestionForm({
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              Creating...
+              Creating
             </span>
           ) : (
             "Create question"
@@ -640,7 +638,7 @@ function CreateQuestionForm({
 
 function QuestionsSkeleton() {
   return (
-    <div className="card" aria-hidden="true">
+    <div className="panel" aria-hidden="true">
       <div className="space-y-5">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="space-y-2">

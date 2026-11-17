@@ -7,9 +7,8 @@ interface MasteryProgressBarProps {
 }
 
 /**
- * Color-coded mastery progress bar.
- * Red <30%, yellow 30–70%, green >70%, gray when no data.
- * The component renders only the bar — callers render their own text so the
+ * Sequential blue mastery bar: neutral when unpracticed, then light blue,
+ * primary, and navy as mastery rises. Callers render their own text so the
  * percentage is never duplicated. Exposes progressbar semantics for screen
  * readers and clamps the fill to the track.
  */
@@ -24,21 +23,24 @@ export default function MasteryProgressBar({
   let barColor: string;
   let ariaValueText: string;
   if (mastery === null) {
-    barColor = "#E2E8F0"; // gray — no data
+    barColor = "var(--border)";
     ariaValueText = "not practiced";
-  } else if (mastery < 0.3) {
-    barColor = "#EF4444"; // red — danger
+  } else if (mastery < 0.4) {
+    barColor = "var(--accent-light-blue)";
     ariaValueText = `${percentage}%`;
   } else if (mastery < 0.7) {
-    barColor = "#F5A623"; // yellow — accent/gold
+    barColor = "var(--primary)";
     ariaValueText = `${percentage}%`;
   } else {
-    barColor = "#10B981"; // green — success
+    barColor = "var(--navy)";
     ariaValueText = `${percentage}%`;
   }
 
   return (
-    <div className="w-full relative bg-gray-200 rounded-full" style={{ height }}>
+    <div
+      className="w-full relative rounded-full"
+      style={{ height, backgroundColor: "var(--border)" }}
+    >
       <div
         role="progressbar"
         aria-valuenow={percentage}

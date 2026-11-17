@@ -28,7 +28,7 @@ function isContentAdminRoles(roles: string[]): boolean {
 
 function formatTimestamp(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString();
+  return Number.isNaN(d.getTime()) ? "n/a" : d.toLocaleString();
 }
 
 function CorpusContent() {
@@ -53,7 +53,7 @@ function CorpusContent() {
   // maps the ManageContent policy (ContentAdmin, SuperAdmin) — the server 403s
   // everyone else, this redirect just keeps the UI honest.
   useEffect(() => {
-    if (user && !isContentAdmin) router.replace("/dashboard");
+    if (user && !isContentAdmin) router.replace("/admin");
   }, [user, isContentAdmin, router]);
 
   // Stale identity (expired session or server-side demotion): re-verify instead of a
@@ -67,7 +67,7 @@ function CorpusContent() {
         .then((me) => {
           setUser(me);
           if (!isContentAdminRoles(me.roles)) {
-            router.replace("/dashboard");
+            router.replace("/admin");
             return;
           }
           onStillAuthorized?.();
@@ -179,21 +179,22 @@ function CorpusContent() {
 
   return (
     <>
-      <h1 className="text-2xl font-heading font-bold text-text-heading">Corpus upload</h1>
-      <p className="text-sm text-text-muted mt-1">
-        Upload textbook or article content (.pdf/.txt, up to {MAX_FILE_LABEL}) to chunk, embed and
-        map it into the tutor&apos;s knowledge base.
-      </p>
+      <header className="mb-8">
+        <h1 className="font-heading text-2xl font-semibold text-navy">
+          Corpus upload
+        </h1>
+        <p className="mt-1 max-w-2xl text-sm text-text-muted">
+          Upload textbook or article content (.pdf/.txt, up to {MAX_FILE_LABEL}) to chunk, embed and
+          map it into the tutor&apos;s knowledge base.
+        </p>
+      </header>
 
-      <section className="card-flat mt-6 mb-8" aria-labelledby="corpus-upload-heading">
-        <h2
-          id="corpus-upload-heading"
-          className="text-xl font-heading font-bold text-text-heading mb-6"
-        >
+      <section className="panel mb-8" aria-labelledby="corpus-upload-heading">
+        <h2 id="corpus-upload-heading" className="text-sm font-medium text-navy">
           Upload content
         </h2>
 
-        <form onSubmit={handleSubmit} noValidate>
+        <form onSubmit={handleSubmit} noValidate className="mt-5">
           {banner && (
             <div className="error-banner" role="alert">
               <svg
@@ -251,7 +252,7 @@ function CorpusContent() {
                 fieldErrors.concept ? "corpus-concept-hint corpus-concept-error" : "corpus-concept-hint"
               }
             />
-            <p id="corpus-concept-hint" className="mt-1.5 text-xs text-text-muted">
+            <p id="corpus-concept-hint" className="mt-2 text-xs text-text-muted">
               Every chunk of this file is mapped to that concept. Leave blank to ingest it without
               a concept mapping.
             </p>
@@ -262,7 +263,7 @@ function CorpusContent() {
             type="submit"
             disabled={uploading}
             aria-busy={uploading}
-            className="px-5 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-primary-dark rounded-xl transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="mt-2 px-4 py-2.5 text-sm font-medium text-white bg-navy border border-navy rounded-[10px] cursor-pointer transition-colors hover:bg-navy-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {uploading ? (
               <span className="flex items-center justify-center gap-2">
@@ -270,10 +271,10 @@ function CorpusContent() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                Uploading...
+                Uploading
               </span>
             ) : (
-              "Upload & ingest"
+              "Upload and ingest"
             )}
           </button>
         </form>
@@ -302,11 +303,11 @@ function FieldError({ id, message }: { id: string; message: string | undefined }
   );
 }
 
-const STATUS_BADGE: Record<TextbookJobStatus, string> = {
-  Pending: "bg-[#FEF3C7] text-[#B45309]",
-  Processing: "bg-accent-light-blue text-primary",
-  Completed: "bg-[#DCFCE7] text-[#15803D]",
-  Failed: "bg-[#FEE2E2] text-[#B91C1C]",
+const STATUS_TEXT: Record<TextbookJobStatus, string> = {
+  Pending: "text-text-muted",
+  Processing: "text-primary",
+  Completed: "text-green-700",
+  Failed: "text-red-700",
 };
 
 function JobPanel({
@@ -322,19 +323,17 @@ function JobPanel({
   const terminal = isTerminalStatus(job.status);
 
   return (
-    <section className="card-flat" aria-labelledby="corpus-job-heading">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <section className="panel" aria-labelledby="corpus-job-heading">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
         <div className="min-w-0">
-          <h2 id="corpus-job-heading" className="text-xl font-heading font-bold text-text-heading">
+          <h2 id="corpus-job-heading" className="text-sm font-medium text-navy">
             Ingestion job
           </h2>
-          <p className="text-sm text-text-muted mt-1 break-all" title={job.fileName}>
+          <p className="mt-1 break-all font-mono text-xs text-text-muted" title={job.fileName}>
             {job.fileName}
           </p>
         </div>
-        <span
-          className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_BADGE[job.status]}`}
-        >
+        <span className={`font-mono text-xs tabular-nums ${STATUS_TEXT[job.status]}`}>
           {job.status}
         </span>
       </div>
@@ -357,7 +356,7 @@ function JobPanel({
             <line x1="9" x2="15" y1="9" y2="15" />
           </svg>
           <span>
-            {job.error ?? "Ingestion failed."} Upload the file again to retry — failed jobs are not
+            {job.error ?? "Ingestion failed."} Upload the file again to retry. Failed jobs are not
             re-run.
           </span>
         </div>
@@ -373,31 +372,33 @@ function JobPanel({
             aria-label={`Embedding ${job.fileName}`}
           >
             <div
-              className="h-full bg-primary transition-[width] duration-500 ease-out"
+              className="h-full bg-navy transition-[width] duration-500 ease-out"
               style={{ width: `${percent}%` }}
             />
           </div>
           {job.status === "Completed" ? (
-            <p className="text-sm font-medium text-[#15803D] mt-3" role="status">
+            <p className="mt-3 text-sm text-green-700 tabular-nums" role="status">
               {job.totalChunks} chunk{job.totalChunks === 1 ? "" : "s"} indexed
               {job.completedAt ? ` at ${formatTimestamp(job.completedAt)}` : ""}.
             </p>
           ) : (
-            <p className="text-sm text-text-muted mt-2" role="status">
+            <p className="mt-2 text-sm text-text-muted tabular-nums" role="status">
               {job.totalChunks > 0
                 ? `${job.processedChunks} / ${job.totalChunks} chunks embedded (${percent}%)`
                 : job.status === "Pending"
-                  ? "Queued — waiting for an ingestion worker."
+                  ? "Queued, waiting for an ingestion worker."
                   : "Reading the file and counting chunks..."}
             </p>
           )}
         </div>
       )}
 
-      <p className="text-xs text-text-muted mt-4">
-        Job <span className="font-mono">{job.jobId}</span> · started{" "}
-        {formatTimestamp(job.createdAt)}
-        {!terminal && !pollError && ` · refreshing every ${POLL_INTERVAL_MS / 1000}s`}
+      <p className="mt-4 text-xs text-text-muted">
+        Job <span className="font-mono">{job.jobId}</span>
+        <span className="mt-1 block">Started {formatTimestamp(job.createdAt)}</span>
+        {!terminal && !pollError && (
+          <span className="mt-1 block">Refreshing every {POLL_INTERVAL_MS / 1000}s</span>
+        )}
       </p>
 
       {pollError && (

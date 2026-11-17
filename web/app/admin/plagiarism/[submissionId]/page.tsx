@@ -29,7 +29,7 @@ export default function AdminPlagiarismSubmissionPage({
     !!user && user.roles.some((role) => PLATFORM_ADMINS.includes(role));
 
   useEffect(() => {
-    if (user && !isPlatformAdmin) router.replace("/dashboard");
+    if (user && !isPlatformAdmin) router.replace("/admin");
   }, [user, isPlatformAdmin, router]);
 
   useEffect(() => {
@@ -68,7 +68,7 @@ export default function AdminPlagiarismSubmissionPage({
         .catch((e) => {
           if (signal?.aborted) return;
           // stale local auth (expired session or server-side demotion): re-verify
-          // instead of a dead-end retry — me() 401s -> setUser(null) -> AuthProvider
+          // instead of a dead-end retry. me() 401s -> setUser(null) -> AuthProvider
           // routes to /login; a demoted caller gets refreshed roles and the guard reroutes.
           if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
             return api
@@ -122,7 +122,7 @@ export default function AdminPlagiarismSubmissionPage({
   const backLink = (
     <Link
       href="/admin/plagiarism"
-      className="text-xs text-primary hover:text-primary-dark underline underline-offset-4"
+      className="inline-block text-xs text-navy underline underline-offset-4 transition-colors hover:text-primary-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy"
     >
       ← Back to submissions
     </Link>
@@ -130,8 +130,8 @@ export default function AdminPlagiarismSubmissionPage({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <div className="h-8 w-24 bg-border rounded animate-pulse" />
+      <div className="panel" aria-hidden="true">
+        <div className="h-4 w-24 bg-border rounded animate-pulse" />
       </div>
     );
   }
@@ -156,123 +156,112 @@ export default function AdminPlagiarismSubmissionPage({
   }
 
   const score = submission.plagiarismScore;
-  const scoreColor =
+  const severity =
     score == null
-      ? "text-text-muted"
+      ? "n/a"
       : score >= 0.7
-        ? "text-red-600"
+        ? "high"
         : score >= 0.4
-          ? "text-yellow-600"
-          : "text-green-600";
+          ? "medium"
+          : "low";
 
   return (
     <div>
-      <div className="mb-8 flex items-center justify-between">
-        <div>{backLink}</div>
-        <div className="text-right">
-          <h1 className="font-heading text-2xl sm:text-3xl font-bold text-navy">
-            Plagiarism review
-          </h1>
-          <p className="text-text-muted mt-2">
-            Submission: {submission.id} &nbsp;•&nbsp; User:{" "}
-            {submission.userEmail ?? submission.userId}
-          </p>
-        </div>
-      </div>
+      <div className="mb-4">{backLink}</div>
+
+      <header className="mb-8">
+        <h1 className="font-heading text-2xl font-semibold text-navy">
+          Plagiarism review
+        </h1>
+        <p className="mt-1 max-w-2xl text-sm text-text-muted">
+          User {submission.userEmail ?? submission.userId}
+        </p>
+      </header>
 
       <div className="flex flex-col gap-6">
-        <div className="card p-4">
-          <div className="flex items-center justify-between mb-4">
-            <span className="font-medium text-navy text-sm">
-              Submission details
-            </span>
-            <span className={`text-xs font-medium ${scoreColor}`}>
-              Similarity: {score != null ? `${(score * 100).toFixed(1)}%` : "—"}
-            </span>
+        <div className="panel">
+          <div className="flex items-baseline justify-between gap-4 border-b border-border pb-4">
+            <h2 className="text-sm font-medium text-navy">Submission details</h2>
+            <p className="text-right">
+              <span className="font-mono text-xl tabular-nums text-navy">
+                {score != null ? `${(score * 100).toFixed(1)}%` : "n/a"}
+              </span>
+              <span className="mt-0.5 block text-xs text-text-muted">
+                similarity ({severity})
+              </span>
+            </p>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            <div className="bg-white p-3 rounded-lg border border-border">
-              <span className="text-xs text-text-muted uppercase tracking-wider">
-                Question
-              </span>
-              <p className="text-sm text-text-body mt-1 truncate">
-                {submission.questionTitle ?? submission.questionId}
-              </p>
-            </div>
-            <div className="bg-white p-3 rounded-lg border border-border">
-              <span className="text-xs text-text-muted uppercase tracking-wider">
-                Language
-              </span>
-              <p className="text-sm text-text-body mt-1">
-                {submission.language}
-              </p>
-            </div>
-            <div className="bg-white p-3 rounded-lg border border-border">
-              <span className="text-xs text-text-muted uppercase tracking-wider">
-                Status
-              </span>
-              <p className="text-sm text-text-body mt-1">
-                {SUBMISSION_STATUS_LABELS[submission.status] ??
-                  String(submission.status)}
-              </p>
-            </div>
-            <div className="bg-white p-3 rounded-lg border border-border">
-              <span className="text-xs text-text-muted uppercase tracking-wider">
-                Test cases
-              </span>
-              <p className="text-sm text-text-body mt-1">
-                {submission.testCasesPassed}/{submission.testCasesTotal}
-              </p>
-            </div>
-            <div className="bg-white p-3 rounded-lg border border-border">
-              <span className="text-xs text-text-muted uppercase tracking-wider">
-                Created
-              </span>
-              <p className="text-sm text-text-body mt-1">
-                {new Date(submission.createdAt).toLocaleDateString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </p>
-            </div>
-            <div className="bg-white p-3 rounded-lg border border-border">
-              <span className="text-xs text-text-muted uppercase tracking-wider">
-                User ID
-              </span>
-              <p className="text-sm text-text-body mt-1 truncate">
-                {submission.userId}
-              </p>
-            </div>
-          </div>
+          <dl className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="Question" value={submission.questionTitle ?? submission.questionId} />
+            <Field label="Language" value={submission.language} />
+            <Field
+              label="Status"
+              value={SUBMISSION_STATUS_LABELS[submission.status] ?? String(submission.status)}
+            />
+            <Field
+              label="Test cases"
+              value={`${submission.testCasesPassed}/${submission.testCasesTotal}`}
+              numeric
+            />
+            <Field
+              label="Created"
+              value={new Date(submission.createdAt).toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+              numeric
+            />
+            <Field label="User ID" value={submission.userId} mono />
+          </dl>
         </div>
 
-        <div>
+        <section>
           {/* The queue is read-only by design (see PlagiarismReviewController):
               the admin compares this flagged source against peer submissions. */}
-          <h2 className="text-sm font-medium text-text-heading uppercase tracking-wider mb-3">
-            Submitted code
-          </h2>
-          <div className="p-4 rounded-lg bg-white border border-border">
+          <h2 className="mb-3 text-sm font-medium text-navy">Submitted code</h2>
+          <div className="panel-sm">
             <pre className="whitespace-pre-wrap text-sm text-text-body font-mono">
               {submission.code}
             </pre>
           </div>
-        </div>
+        </section>
 
         {submission.aiEvaluation && (
-          <div>
-            <h2 className="text-sm font-medium text-text-heading uppercase tracking-wider mb-3">
-              AI evaluation
-            </h2>
-            <div className="p-4 rounded-lg bg-white border border-border">
+          <section>
+            <h2 className="mb-3 text-sm font-medium text-navy">AI evaluation</h2>
+            <div className="panel-sm">
               <div className="whitespace-pre-wrap text-sm text-text-body">
                 {submission.aiEvaluation}
               </div>
             </div>
-          </div>
+          </section>
         )}
       </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  mono = false,
+  numeric = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  numeric?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-text-muted">{label}</dt>
+      <dd
+        title={value}
+        className={`mt-1 truncate text-sm text-text-body ${mono ? "font-mono text-xs" : ""} ${numeric ? "tabular-nums" : ""}`}
+      >
+        {value}
+      </dd>
     </div>
   );
 }

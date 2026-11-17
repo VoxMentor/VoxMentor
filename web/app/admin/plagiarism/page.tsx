@@ -45,7 +45,7 @@ function PlagiarismContent() {
     !!user && user.roles.some((role) => PLATFORM_ADMINS.includes(role));
 
   useEffect(() => {
-    if (user && !isPlatformAdmin) router.replace("/dashboard");
+    if (user && !isPlatformAdmin) router.replace("/admin");
   }, [user, isPlatformAdmin, router]);
 
   // keyed results: only the request for the current page/reload can update
@@ -68,7 +68,7 @@ function PlagiarismContent() {
       .catch((e) => {
         if (cancelled) return;
         // stale local auth (expired session or server-side demotion): re-verify
-        // instead of a dead-end retry — me() 401s -> setUser(null) -> AuthProvider
+        // instead of a dead-end retry. me() 401s -> setUser(null) -> AuthProvider
         // routes to /login; a demoted caller gets refreshed roles and the guard reroutes.
         if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
           api
@@ -114,14 +114,14 @@ function PlagiarismContent() {
 
   return (
     <>
-      <div className="mb-6">
-        <h1 className="text-2xl font-heading font-bold text-text-heading">
+      <header className="mb-8">
+        <h1 className="font-heading text-2xl font-semibold text-navy">
           Plagiarism review
         </h1>
-        <p className="text-sm text-text-muted mt-1">
+        <p className="mt-1 max-w-2xl text-sm text-text-muted">
           Flagged submissions, highest similarity first.
         </p>
-      </div>
+      </header>
 
       {loading && <PlagiarismSkeleton />}
       {loadError && (
@@ -131,7 +131,7 @@ function PlagiarismContent() {
       {state?.ok && (
         <>
           {items.length === 0 ? (
-            <div className="card p-8 text-center">
+            <div className="panel">
               <p className="text-sm text-text-muted">
                 {page > 1
                   ? "No submissions on this page."
@@ -139,43 +139,27 @@ function PlagiarismContent() {
               </p>
             </div>
           ) : (
-            <div className="card overflow-hidden">
+            <div className="panel overflow-hidden">
               <table className="w-full text-left border-collapse">
                 <caption className="sr-only">
                   Flagged submissions, highest similarity first
                 </caption>
                 <thead>
                   <tr className="border-b border-border">
-                    <th scope="col" className="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                      Submission
-                    </th>
-                    <th scope="col" className="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                      User
-                    </th>
-                    <th scope="col" className="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                      Score
-                    </th>
-                    <th scope="col" className="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th scope="col" className="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                      Created
-                    </th>
+                    <th scope="col" className="whitespace-nowrap px-4 py-3 text-xs font-medium text-text-muted">Submission</th>
+                    <th scope="col" className="whitespace-nowrap px-4 py-3 text-xs font-medium text-text-muted">User</th>
+                    <th scope="col" className="whitespace-nowrap px-4 py-3 text-xs font-medium text-text-muted">Score</th>
+                    <th scope="col" className="whitespace-nowrap px-4 py-3 text-xs font-medium text-text-muted">Status</th>
+                    <th scope="col" className="whitespace-nowrap px-4 py-3 text-xs font-medium text-text-muted">Created</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {items.map((item) => (
-                    <tr
-                      key={item.id}
-                      onClick={() => router.push(`/admin/plagiarism/${item.id}`)}
-                      className="hover:bg-accent-light-blue transition-colors cursor-pointer"
-                    >
-                      <td className="px-4 py-3 text-sm text-text-body">
-                        {/* keyboard-accessible primary action; the row click is a pointer shortcut */}
+                    <tr key={item.id} className="transition-colors hover:bg-bg-light">
+                      <td className="px-4 py-3 text-sm text-navy">
                         <Link
                           href={`/admin/plagiarism/${item.id}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-primary hover:text-primary-dark underline"
+                          className="font-mono text-xs underline underline-offset-2 transition-colors hover:text-primary-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy"
                         >
                           {item.id}
                         </Link>
@@ -183,15 +167,15 @@ function PlagiarismContent() {
                       <td className="px-4 py-3 text-sm text-text-body truncate max-w-[200px]">
                         {item.userEmail ?? item.userId}
                       </td>
-                      <td className="px-4 py-3 text-sm text-text-body">
+                      <td className="px-4 py-3 text-sm text-text-body tabular-nums">
                         {item.plagiarismScore != null
                           ? `${Math.round(item.plagiarismScore * 100)}%`
-                          : "—"}
+                          : "n/a"}
                       </td>
                       <td className="px-4 py-3 text-sm text-text-body">
                         {SUBMISSION_STATUS_LABELS[item.status] ?? String(item.status)}
                       </td>
-                      <td className="px-4 py-3 text-sm text-text-muted">
+                      <td className="px-4 py-3 text-sm text-text-muted tabular-nums">
                         {new Date(item.createdAt).toLocaleDateString(undefined, {
                           month: "short",
                           day: "numeric",
@@ -207,22 +191,24 @@ function PlagiarismContent() {
 
           {/* Pagination renders for empty pages too (e.g. out-of-range page),
               so Previous can bring the user back. */}
-          <nav className="flex items-center justify-between mt-4 px-4" aria-label="Pagination">
+          <nav className="flex items-center justify-between mt-4 px-1" aria-label="Pagination">
             <button
               onClick={() => goToPage(page - 1)}
               disabled={page === 1}
-              className="px-3 py-1.5 text-sm font-medium text-primary hover:bg-accent-light-blue rounded-xl transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              className="px-3 py-1.5 text-sm text-navy rounded-[10px] border border-border cursor-pointer transition-colors hover:bg-bg-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             >
               Previous
             </button>
-            <span className="text-sm text-text-muted">Page {page}</span>
-            {/* ponytail: API returns the page only, no totalCount — Next is
+            <span className="font-mono text-xs tabular-nums text-text-muted">
+              Page {page}
+            </span>
+            {/* ponytail: API returns the page only, no totalCount -- Next is
                 a full-page heuristic like /admin/audit; an exact multiple of
                 PAGE_SIZE can land on one empty page. Add totals if needed. */}
             <button
               onClick={() => goToPage(page + 1)}
               disabled={items.length < PAGE_SIZE}
-              className="px-3 py-1.5 text-sm font-medium text-primary hover:bg-accent-light-blue rounded-xl transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              className="px-3 py-1.5 text-sm text-navy rounded-[10px] border border-border cursor-pointer transition-colors hover:bg-bg-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             >
               Next
             </button>
@@ -235,15 +221,15 @@ function PlagiarismContent() {
 
 function PlagiarismSkeleton() {
   return (
-    <div className="card p-8" aria-hidden="true">
+    <div className="panel" aria-hidden="true">
       <div className="space-y-4">
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="flex items-center gap-4">
-            <div className="h-10 w-40 bg-border rounded animate-pulse" />
-            <div className="h-10 w-32 bg-border rounded animate-pulse" />
-            <div className="h-10 w-48 bg-border rounded animate-pulse" />
-            <div className="h-10 w-28 bg-border rounded animate-pulse" />
-            <div className="h-10 w-12 bg-border rounded animate-pulse" />
+            <div className="h-4 w-40 bg-border rounded animate-pulse" />
+            <div className="h-4 w-32 bg-border rounded animate-pulse" />
+            <div className="h-4 w-48 bg-border rounded animate-pulse" />
+            <div className="h-4 w-28 bg-border rounded animate-pulse" />
+            <div className="h-4 w-12 bg-border rounded animate-pulse" />
           </div>
         ))}
       </div>

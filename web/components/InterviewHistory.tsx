@@ -109,9 +109,9 @@ export default function InterviewHistory({
 
   if (items === null) {
     return (
-      <div className="card !p-5 flex flex-col gap-2">
+      <div className="flex flex-col gap-2">
         {Array.from({ length: 3 }, (_, i) => (
-          <div key={i} className="h-12 bg-border rounded-xl animate-pulse" />
+          <div key={i} className="h-12 rounded-[10px] bg-border animate-pulse" />
         ))}
       </div>
     );
@@ -119,11 +119,9 @@ export default function InterviewHistory({
 
   if (items.length === 0) {
     return (
-      <div className="card !p-5">
-        <p className="text-sm text-text-muted">
-          No interviews yet. Start one and it will show up here.
-        </p>
-      </div>
+      <p className="text-sm text-text-muted">
+        No interviews yet. Start one and it will show up here.
+      </p>
     );
   }
 
@@ -138,25 +136,25 @@ export default function InterviewHistory({
               type="button"
               onClick={() => onSelect?.(item)}
               disabled={!onSelect}
-              className={`w-full text-left card-flat !p-4 transition-colors cursor-pointer ${
+              className={`w-full rounded-[10px] border-l-2 px-3 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy ${
                 selected
-                  ? "!border-primary bg-accent-light-blue"
-                  : "hover:bg-bg-light"
+                  ? "border-primary bg-accent-light-blue/50"
+                  : "border-transparent hover:bg-bg-light"
               } disabled:cursor-default disabled:hover:bg-transparent`}
             >
               <div className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium text-navy">
+                <span className="text-sm text-navy">
                   {item.type} interview
                 </span>
-                <span className="text-xs text-text-muted">
+                <span className="shrink-0 font-mono text-xs text-text-muted">
                   {formatDate(item.date)}
                 </span>
               </div>
-              <div className="flex items-center gap-3 mt-1">
+              <div className="mt-1 flex items-center justify-between gap-3">
                 <span className="text-xs text-text-muted">{item.status}</span>
                 {item.score != null && (
-                  <span className="text-xs font-semibold text-navy">
-                    Score {Math.round(item.score)}
+                  <span className="font-mono text-xs tabular-nums text-navy">
+                    {Math.round(item.score)} / 100
                   </span>
                 )}
               </div>
@@ -171,12 +169,12 @@ export default function InterviewHistory({
             type="button"
             onClick={loadMore}
             disabled={loadingMore}
-            className="w-full px-4 py-2 text-sm font-medium text-primary border border-border rounded-xl hover:bg-accent-light-blue transition-colors cursor-pointer disabled:opacity-60"
+            className="w-full cursor-pointer rounded-[10px] border border-border px-3 py-2 text-sm font-medium text-navy transition-colors hover:bg-bg-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy disabled:opacity-60"
           >
             {loadingMore ? "Loading…" : "Load more"}
           </button>
           {loadMoreError && (
-            <p className="text-xs text-danger mt-1">
+            <p className="mt-1 text-xs text-text-muted">
               {loadMoreError}
             </p>
           )}

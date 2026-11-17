@@ -13,7 +13,7 @@ const MASTERED_THRESHOLD = 0.85;
 /**
  * Per-concept mastery card: concept name, mastery %, "Mastered" badge
  * (>=0.85), problems solved count, and a color-coded progress bar.
- * Renders its own percentage and badge — MasteryProgressBar only draws the
+ * Renders its own percentage and badge. MasteryProgressBar only draws the
  * bar, so nothing is duplicated.
  */
 export default function ConceptCard({
@@ -26,10 +26,10 @@ export default function ConceptCard({
   const solved = problemsSolved ?? concept.correctAttempts;
 
   return (
-    <div className="card p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-medium text-text-heading">
+    <div className="flex flex-col gap-2.5 rounded-[10px] border border-border p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate text-sm font-medium text-navy">
             {concept.name}
           </h3>
           <p className="text-xs text-text-muted">
@@ -39,15 +39,15 @@ export default function ConceptCard({
           </p>
         </div>
         {isMastered && (
-          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-teal-500/10 border border-teal-500/20 text-teal-600">
+          <span className="shrink-0 rounded-md bg-accent-light-blue px-2 py-0.5 text-xs font-medium text-navy">
             Mastered
           </span>
         )}
       </div>
       <div className="flex items-center gap-3">
         <MasteryProgressBar mastery={concept.masteryProbability} height="6px" label={concept.name} />
-        <span className="text-sm font-medium text-text-body w-12 text-right">
-          {concept.masteryProbability === null ? "—" : `${pct}%`}
+        <span className="w-12 shrink-0 text-right text-sm font-medium text-text-body">
+          {concept.masteryProbability === null ? "n/a" : `${pct}%`}
         </span>
       </div>
       <div className="flex items-center justify-between text-xs text-text-muted border-t border-border pt-2">
