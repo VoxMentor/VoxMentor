@@ -263,7 +263,14 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("AllowFrontend");
-app.UseHttpsRedirection();
+// ponytail: dev web proxies to http://localhost:5253 (web/.env BACKEND_ORIGIN).
+// Redirecting those calls to https://localhost:7150 made the browser follow a
+// 307 cross-port, losing the auth cookie and turning every /me into a 401.
+// Production still forces HTTPS; dev keeps the proxy origin the browser used.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 app.UseAuthentication();
 app.UseAuthorization();
 
